@@ -231,7 +231,10 @@ jobs:
                   if (stripped.startswith("compileSdkVersion") or
                       stripped.startswith("compileSdk ") or
                       stripped.startswith("compileSdk=")):
-                      output.append(indent + "compileSdkVersion 36")
+                      if gradle_file.name.endswith(".gradle.kts"):
+                          output.append(indent + "compileSdk = 36")
+                      else:
+                          output.append(indent + "compileSdkVersion 36")
                       changed = True
                   else:
                       output.append(line)
