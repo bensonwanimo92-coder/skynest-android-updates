@@ -217,9 +217,9 @@ jobs:
               s = p.read_text()
               original = s
               s = re.sub(r"(?m)^(\s*)compileSdkVersion\s+[^\n]+$",
-                         r"\\g<1>compileSdkVersion 36", s)
+                         r"\g<1>compileSdkVersion 36", s)
               s = re.sub(r"(?m)^(\s*)compileSdk\s*=\s*[^\n]+$",
-                         r"\\g<1>compileSdk = 36", s)
+                         r"\g<1>compileSdk = 36", s)
               if s != original:
                   p.write_text(s)
                   changed.append(str(p))
