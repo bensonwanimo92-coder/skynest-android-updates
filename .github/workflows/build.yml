@@ -47,6 +47,15 @@ jobs:
               content = content.replace("</application>", meta + "\n    </application>")
           p.write_text(content)
           PY
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+          s = s.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 36")
+          if "compileSdk = 36" not in s:
+              raise SystemExit("Could not set Android compileSdk to 36")
+          p.write_text(s)
+          PY
 
       - name: Configure Firebase Android app (optional)
         id: firebase
