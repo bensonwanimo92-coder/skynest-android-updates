@@ -2,6 +2,8 @@ name: SkyNest Gold Build
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -29,7 +31,9 @@ jobs:
           cache: true
 
       - name: Generate Android project files
-        run: flutter create --platforms=android --org com.hello22_ --project-name chuka .
+        run: |
+          flutter create --platforms=android --org com.hello22_ --project-name chuka .
+          sed -i 's/android:label="chuka"/android:label="SkyNest"/' android/app/src/main/AndroidManifest.xml
 
       - name: Resolve dependencies
         run: flutter pub get
