@@ -202,7 +202,7 @@ class HousesScreen extends StatelessWidget {
     appBar: AppBar(title: const Text('Houses')),
     floatingActionButton: FloatingActionButton(onPressed: () => addHouse(context), child: const Icon(Icons.add)),
     body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('houses').snapshots(),
+      stream: FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
       builder: (context, s) {
         if (s.hasError) return errorView('Houses could not load: ' + s.error.toString());
         if (!s.hasData) return const Center(child: CircularProgressIndicator());
@@ -254,7 +254,7 @@ class TenantsScreen extends StatelessWidget {
     appBar: AppBar(title: const Text('Tenants')),
     floatingActionButton: FloatingActionButton(onPressed: () => addTenant(context), child: const Icon(Icons.person_add_alt_1)),
     body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('tenants').snapshots(),
+      stream: FirebaseFirestore.instance.collection('tenants').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
       builder: (context, s) {
         if (s.hasError) return errorView('Tenants could not load: ' + s.error.toString());
         if (!s.hasData) return const Center(child: CircularProgressIndicator());
@@ -281,7 +281,7 @@ class PaymentsScreen extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Payment records')),
     body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('payments').orderBy('createdAt', descending: true).snapshots(),
+      stream: FirebaseFirestore.instance.collection('payments').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
       builder: (context, s) {
         if (s.hasError) return errorView('Payments could not load: ' + s.error.toString());
         if (!s.hasData) return const Center(child: CircularProgressIndicator());
@@ -320,7 +320,7 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
       await FirebaseFirestore.instance.collection('payments').add({
         'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(), 'amount': value,
         'method': 'Manual / awaiting M-Pesa confirmation', 'status': 'Pending verification',
-        'createdAt': FieldValue.serverTimestamp(), 'recordedBy': FirebaseAuth.instance.currentUser?.uid,
+        'createdAt': FieldValue.serverTimestamp(), 'createdBy': FirebaseAuth.instance.currentUser?.uid,
       });
       if (mounted) { amount.clear(); snack(context, 'Saved as pending verification. No M-Pesa STK Push was sent.'); }
     } catch (e) { snack(context, 'Could not save: ' + e.toString()); }
@@ -385,7 +385,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Rent calendar')),
     body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('payments').snapshots(),
+      stream: FirebaseFirestore.instance.collection('payments').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
       builder: (context, s) {
         if (s.hasError) return errorView('Calendar could not load: ' + s.error.toString());
         if (!s.hasData) return const Center(child: CircularProgressIndicator());
@@ -452,7 +452,7 @@ class PlansScreen extends StatelessWidget {
     appBar: AppBar(title: const Text('Plans and reminders')),
     floatingActionButton: FloatingActionButton(onPressed: () => addPlan(context), child: const Icon(Icons.add)),
     body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('plans').snapshots(),
+      stream: FirebaseFirestore.instance.collection('plans').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
       builder: (context, s) {
         if (s.hasError) return errorView('Plans could not load: ' + s.error.toString());
         if (!s.hasData) return const Center(child: CircularProgressIndicator());
@@ -472,11 +472,11 @@ class AchievementsScreen extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Achievements')),
     body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('houses').snapshots(),
+      stream: FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
       builder: (context, h) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('tenants').snapshots(),
+        stream: FirebaseFirestore.instance.collection('tenants').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
         builder: (context, t) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance.collection('payments').snapshots(),
+          stream: FirebaseFirestore.instance.collection('payments').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
           builder: (context, p) {
             if (h.hasError || t.hasError || p.hasError) return errorView('Could not load achievement counts.');
             if (!h.hasData || !t.hasData || !p.hasData) return const Center(child: CircularProgressIndicator());
