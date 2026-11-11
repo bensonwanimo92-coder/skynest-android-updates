@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function ownsExistingRecord() {
+      return signedIn() && resource.data.createdBy == request.auth.uid;
+    }
+    function ownsNewRecord() {
+      return signedIn() && request.resource.data.createdBy == request.auth.uid;
+    }
+
+    match /houses/{recordId} {
+      allow create: if ownsNewRecord();
+      allow read, delete: if ownsExistingRecord();
+      allow update: if ownsExistingRecord() && ownsNewRecord();
+    }
+    match /tenants/{recordId} {
+      allow create: if ownsNewRecord();
+      allow read, delete: if ownsExistingRecord();
+      allow update: if ownsExistingRecord() && ownsNewRecord();
+    }
+    match /payments/{recordId} {
+      allow create: if ownsNewRecord();
+      allow read, delete: if ownsExistingRecord();
+      allow update: if ownsExistingRecord() && ownsNewRecord();
+    }
+    match /plans/{recordId} {
+      allow create: if ownsNewRecord();
+      allow read, delete: if ownsExistingRecord();
+      allow update: if ownsExistingRecord() && ownsNewRecord();
+    }
+    match /subscriptions/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      // Premium status is written only by a trusted administrator/server.
+      allow write: if false;
+    }
+  }
+}
