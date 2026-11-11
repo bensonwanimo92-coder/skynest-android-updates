@@ -1,17 +1,30 @@
-# SkyNest
+# SkyNest Android
 
-SkyNest Android app source and automated APK builds.
+Flutter rental-management application. The Android application ID must remain `com.hello22_.chuka` so signed releases can update the existing installation.
 
-## Android identity
+## Included modules
+- Firebase email/password sign-in, account creation and password reset
+- Houses and tenant records stored in Cloud Firestore
+- Payment ledger (manual records remain **Pending verification**)
+- Rent calculator and payment calendar
+- Plans/reminders, achievement counts, pamphlets and selectable themes
+- Google Mobile Ads integration currently uses Google's **test** banner unit
 
-- Display name: SkyNest
-- Android application ID: `com.hello22_.chuka`
-- Version: `1.0.7+2005`
+## Firebase setup required
+The repository intentionally does not contain a Firebase project configuration. To enable authentication and Firestore:
 
-The Android project scaffolding is generated in GitHub Actions so the repository keeps only the Flutter source and avoids committing generated build files.
+1. In Firebase Console, open the Firebase project and add an Android app with package name `com.hello22_.chuka`.
+2. Download that app's `google-services.json`.
+3. Convert the file to Base64 using a trusted local/offline Base64 encoder. Do not paste passwords or keystore contents into chat.
+4. In GitHub repository Settings → Secrets and variables → Actions, add a repository secret named `FIREBASE_ANDROID_CONFIG_BASE64` and paste the Base64 output.
+5. Publish the rules in `firestore.rules` to the project's Cloud Firestore database.
 
-## Build
+Without that secret, the build can be checked, but the app will display a Firebase setup warning and the workflow will not publish a release APK.
 
-The workflow uses the current stable Flutter SDK and Java 17. Push a version tag beginning with `v` to build an APK and attach it to a GitHub Release. You can also run the workflow manually from the Actions tab.
+## Important payment and subscription limitations
+- The payment screen records a payment as **Pending verification**. It does not call Safaricom Daraja or send an STK Push.
+- Premium status is read from `subscriptions/{uid}.isPremium`; the app does not let a client grant itself Premium. A trusted admin/server must update this field after payment verification.
+- Live M-Pesa and subscription payments need a secure backend; Daraja secrets must never be embedded in the Flutter app.
 
-**Signing note:** without the original private release keystore configured in GitHub Secrets, the generated release APK uses the debug signing key. It is suitable for testing, but it may not install as an update over an APK signed with a different key.
+## Firestore data ownership
+The app writes a `createdBy` UID to houses, tenants, plans and payment records, and queries only the signed-in user's records. Deploy `firestore.rules` before using the app with real tenant information.
