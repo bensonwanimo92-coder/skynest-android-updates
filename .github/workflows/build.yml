@@ -53,7 +53,7 @@ jobs:
           p = Path("android/app/build.gradle.kts")
           if p.exists():
               s = p.read_text()
-              s, count = re.subn(r"(?m)^\\s*compileSdk\\s*=\\s*[^\\n]+", "    compileSdk = 36", s, count=1)
+              s, count = re.subn(r"(?m)^\s*compileSdk\s*=\s*[^\n]+", "    compileSdk = 36", s, count=1)
               if count == 0:
                   raise SystemExit("Could not locate compileSdk in build.gradle.kts")
               p.write_text(s)
@@ -62,9 +62,9 @@ jobs:
               if not p.exists():
                   raise SystemExit("Flutter Android Gradle file not found")
               s = p.read_text()
-              s, count = re.subn(r"(?m)^\\s*compileSdkVersion\\s+[^\\n]+", "    compileSdkVersion 36", s, count=1)
+              s, count = re.subn(r"(?m)^\s*compileSdkVersion\s+[^\n]+", "    compileSdkVersion 36", s, count=1)
               if count == 0:
-                  s, count = re.subn(r"(?m)^\\s*compileSdk\\s+[^\\n]+", "    compileSdk 36", s, count=1)
+                  s, count = re.subn(r"(?m)^\s*compileSdk\s+[^\n]+", "    compileSdk 36", s, count=1)
               if count == 0:
                   raise SystemExit("Could not locate compileSdk in build.gradle")
               p.write_text(s)
