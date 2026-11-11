@@ -209,41 +209,44 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           root = Path.home() / ".pub-cache" / "hosted" / "pub.dev"
           if not root.is_dir():
               raise SystemExit("Flutter pub cache not found after dependency resolution.")
 
-          # Patch every Android plugin declaration, including Groovy and Kotlin DSL.
-          patterns = [
-              re.compile(r"(?m)^([ \\t]*)compileSdkVersion[ \\t]*(?:=[ \\t]*)?[^\\r\\n]*$"),
-              re.compile(r"(?m)^([ \\t]*)compileSdk[ \\t]*(?:=[ \\t]*)?[^\\r\\n]*$"),
-          ]
-          patched_files = []
           auth_files = list(root.glob("firebase_auth-*/android/build.gradle*"))
           if not auth_files:
               raise SystemExit("firebase_auth Android Gradle file was not found.")
 
+          patched = []
           for gradle_file in root.rglob("build.gradle*"):
               if "android" not in gradle_file.parts:
                   continue
-              source = gradle_file.read_text()
-              updated = source
-              for pattern in patterns:
-                  updated = pattern.sub(lambda match: match.group(1) + "compileSdkVersion 36", updated)
-              if updated != source:
-                  gradle_file.write_text(updated)
-                  patched_files.append(str(gradle_file))
+              lines = gradle_file.read_text().splitlines()
+              output = []
+              changed = False
+              for line in lines:
+                  stripped = line.lstrip()
+                  indent = line[:len(line) - len(stripped)]
+                  if (stripped.startswith("compileSdkVersion") or
+                      stripped.startswith("compileSdk ") or
+                      stripped.startswith("compileSdk=")):
+                      output.append(indent + "compileSdkVersion 36")
+                      changed = True
+                  else:
+                      output.append(line)
+              if changed:
+                  gradle_file.write_text("\\n".join(output) + "\\n")
+                  patched.append(str(gradle_file))
 
           for auth_file in auth_files:
-              content = auth_file.read_text()
-              if not re.search(r"(?m)^([ \\t]*)compileSdkVersion[ \\t]+36[ \\t]*$", content):
-                  raise SystemExit(f"firebase_auth compile SDK was not successfully set to 36: {auth_file}")
+              lines = auth_file.read_text().splitlines()
+              if not any(line.strip() == "compileSdkVersion 36" for line in lines):
+                  raise SystemExit(f"firebase_auth compile SDK was not set to 36: {auth_file}")
 
-          print(f"Patched {len(patched_files)} Android plugin Gradle files.")
+          print(f"Patched {len(patched)} Android plugin Gradle files.")
           print("Verified firebase_auth compileSdkVersion 36.")
-          for file in patched_files:
+          for file in patched:
               print(f"Patched: {file}")
           PY
 
