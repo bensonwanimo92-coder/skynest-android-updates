@@ -18,6 +18,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -28,10 +30,9 @@ jobs:
           distribution: zulu
           java-version: '17'
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - name: Set up Shorebird and Flutter
+        uses: shorebirdtech/setup-shorebird@v1
         with:
-          channel: stable
           cache: true
 
       - name: Generate Android project files
@@ -253,12 +254,12 @@ jobs:
               print(f"Patched: {file}")
           PY
 
-      - name: Build signed release APK
+      - name: Build and register signed Shorebird release APK
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: flutter build apk --release --build-name=1.1.0 --build-number=2008
+        run: shorebird release android --artifact apk --build-name=1.1.1 --build-number=2009
 
       - name: Verify built APK package and signature
         shell: bash
