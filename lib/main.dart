@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -15,10 +17,31 @@ final dateFormat = DateFormat('dd MMM yyyy');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try { await Firebase.initializeApp(); firebaseReady = true; }
-  catch (e) { firebaseError = e.toString(); }
-  try { await MobileAds.instance.initialize(); } catch (_) {}
+
+  // Firebase is required by the authentication and rental-management screens.
+  // Keep startup resilient so a Firebase configuration issue is visible in-app.
+  try {
+    await Firebase.initializeApp();
+    firebaseReady = true;
+  } catch (e, stackTrace) {
+    firebaseError = e.toString();
+    debugPrint('SkyNest Firebase initialization failed: $e');
+    debugPrintStack(stackTrace: stackTrace);
+  }
+
+  // Render the first screen before initializing optional advertising services.
+  // A native ads SDK startup issue must not prevent the login screen from opening.
   runApp(const SkynestApp());
+  unawaited(_initializeAds());
+}
+
+Future<void> _initializeAds() async {
+  try {
+    await MobileAds.instance.initialize();
+  } catch (e, stackTrace) {
+    debugPrint('SkyNest Mobile Ads initialization failed: $e');
+    debugPrintStack(stackTrace: stackTrace);
+  }
 }
 
 class ThemeManager extends ChangeNotifier {
