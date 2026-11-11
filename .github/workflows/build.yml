@@ -61,7 +61,7 @@ jobs:
             sed -E 's/(password|storepass|keypass)[^[:cntrl:]]*/[REDACTED]/Ig' /tmp/skynest-keytool-check.txt
             exit 1
           fi
-          actual="$(awk -F': *' '/SHA256:/{gsub(/:/, "", $2); print toupper($2); exit}' /tmp/skynest-keytool-check.txt)"
+          actual="$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' /tmp/skynest-keytool-check.txt | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
           expected="106BEBFDDB78488B4817608A97417ED5AFAE4C88D5FCB00B29572B4DA554BB0F"
           if [ -z "$actual" ]; then
             echo "ERROR: Could not read SHA-256 from the supplied keystore. Check the alias and keystore password."
