@@ -206,6 +206,7 @@ jobs:
 
       - name: Force Android API 36 for every Flutter plugin
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -213,20 +214,46 @@ jobs:
           if not root.exists():
               raise SystemExit("Flutter pub cache not found after dependency resolution.")
           changed = []
-          for p in root.glob("*/android/build.gradle*"):
+          firebase_auth_files = []
+          for p in root.rglob("build.gradle*"):
+              if "android" not in p.parts:
+                  continue
               s = p.read_text()
               original = s
-              s = re.sub(r"(?m)^(\s*)compileSdkVersion\s+[^\n]+$",
-                         r"\g<1>compileSdkVersion 36", s)
-              s = re.sub(r"(?m)^(\s*)compileSdk\s*=\s*[^\n]+$",
-                         r"\g<1>compileSdk = 36", s)
+              s = re.sub(r"(?m)^(\\s*)compileSdkVersion\\s*(?:=\\s*)?[^\\n]+$",
+                         r"\\g<1>compileSdkVersion 36", s)
+              s = re.sub(r"(?m)^(\\s*)compileSdk\\s*(?:=\\s*)?[^\\n]+$",
+                         r"\\g<1>compileSdk = 36", s)
               if s != original:
                   p.write_text(s)
                   changed.append(str(p))
-          print("Patched plugin Android compileSdk to 36 in", len(changed), "Gradle files")
+              if p.parent.parent.name.startswith("firebase_auth-"):
+                  firebase_auth_files.append(str(p))
+          print("Patched plugin Gradle files:", len(changed))
           for p in changed:
               print("Patched:", p)
+          if not firebase_auth_files:
+              raise SystemExit("Could not locate firebase_auth Android Gradle file in pub cache.")
+          print("firebase_auth Gradle files:", *firebase_auth_files, sep="\\n  ")
           PY
+          cat > android/force-compile-sdk.gradle <<'GRADLE'
+          gradle.projectsEvaluated {
+              gradle.rootProject.allprojects { project ->
+                  def androidExtension = project.extensions.findByName("android")
+                  if (androidExtension != null) {
+                      androidExtension.compileSdkVersion(36)
+                  }
+              }
+          }
+          GRADLE
+          if [ ! -f android/build.gradle.kts ]; then
+            echo "ERROR: Expected root android/build.gradle.kts was not generated."
+            exit 1
+          fi
+          if ! grep -q 'force-compile-sdk.gradle' android/build.gradle.kts; then
+            printf '\\napply(from = "force-compile-sdk.gradle")\\n' >> android/build.gradle.kts
+          fi
+          echo "Installed Gradle-wide compileSdk 36 override for all Android modules."
 
       - name: Build signed release APK
         env:
