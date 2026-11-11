@@ -204,7 +204,23 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
+      - name: Force Android API 36 for app and plugin modules
+        run: |
+          cat > android/force-android-compile-sdk.gradle <<'GRADLE'
+          allprojects {
+            afterEvaluate { project ->
+              def androidExtension = project.extensions.findByName('android')
+              if (androidExtension != null) {
+                androidExtension.compileSdkVersion(36)
+                println "SkyNest compileSdk override: ${project.path} -> Android 36"
+              }
+            }
+          }
+          GRADLE
+
       - name: Build signed release APK
+        env:
+          GRADLE_OPTS: -I ${{ github.workspace }}/android/force-android-compile-sdk.gradle
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
