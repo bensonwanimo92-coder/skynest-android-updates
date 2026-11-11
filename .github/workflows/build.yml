@@ -58,6 +58,9 @@ jobs:
               s, count = re.subn(r"(?m)^\s*compileSdk\s*=\s*[^\n]+", "    compileSdk = 36", s, count=1)
               if count == 0:
                   raise SystemExit("Could not locate compileSdk in build.gradle.kts")
+              s, min_count = re.subn(r"(?m)^\s*minSdk\s*=\s*[^\n]+", "    minSdk = 24", s, count=1)
+              if min_count == 0:
+                  raise SystemExit("Could not locate minSdk in build.gradle.kts")
               p.write_text(s)
           else:
               p = Path("android/app/build.gradle")
@@ -69,6 +72,11 @@ jobs:
                   s, count = re.subn(r"(?m)^\s*compileSdk\s+[^\n]+", "    compileSdk 36", s, count=1)
               if count == 0:
                   raise SystemExit("Could not locate compileSdk in build.gradle")
+              s, min_count = re.subn(r"(?m)^\s*minSdkVersion\s+[^\n]+", "    minSdkVersion 24", s, count=1)
+              if min_count == 0:
+                  s, min_count = re.subn(r"(?m)^\s*minSdk\s+[^\n]+", "    minSdk 24", s, count=1)
+              if min_count == 0:
+                  raise SystemExit("Could not locate minSdk in build.gradle")
               p.write_text(s)
           PY
 
