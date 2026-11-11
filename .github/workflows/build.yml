@@ -204,23 +204,32 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
-      - name: Force Android API 36 for app and plugin modules
+      - name: Force Android API 36 for every Flutter plugin
         run: |
-          cat > android/force-android-compile-sdk.gradle <<'GRADLE'
-          allprojects {
-            afterEvaluate { project ->
-              def androidExtension = project.extensions.findByName('android')
-              if (androidExtension != null) {
-                androidExtension.compileSdkVersion(36)
-                println "SkyNest compileSdk override: ${project.path} -> Android 36"
-              }
-            }
-          }
-          GRADLE
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path.home() / ".pub-cache" / "hosted" / "pub.dev"
+          if not root.exists():
+              raise SystemExit("Flutter pub cache not found after dependency resolution.")
+          changed = []
+          for p in root.glob("*/android/build.gradle*"):
+              s = p.read_text()
+              original = s
+              s = re.sub(r"(?m)^(\\s*)compileSdkVersion\\s+[^\\n]+$",
+                         r"\\g<1>compileSdkVersion 36", s)
+              s = re.sub(r"(?m)^(\\s*)compileSdk\\s*=\\s*[^\\n]+$",
+                         r"\\g<1>compileSdk = 36", s)
+              if s != original:
+                  p.write_text(s)
+                  changed.append(str(p))
+          print("Patched plugin Android compileSdk to 36 in", len(changed), "Gradle files")
+          for p in changed:
+              print("Patched:", p)
+          PY
 
       - name: Build signed release APK
         env:
-          GRADLE_OPTS: -I ${{ github.workspace }}/android/force-android-compile-sdk.gradle
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
