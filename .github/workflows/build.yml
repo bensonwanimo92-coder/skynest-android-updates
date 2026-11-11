@@ -140,12 +140,27 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: flutter build apk --release --build-name=1.0.8 --build-number=2006
+        run: flutter build apk --release --build-name=1.0.9 --build-number=2007
+
+      - name: Verify built APK package and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/skynest-apk-signature.txt
+          package="$("$BUILD_TOOLS/aapt" dump badging "$APK" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
+          echo "APK package: $package"
+          test "$package" = "com.hello22_.chuka" || { echo "ERROR: Wrong APK package ID"; exit 1; }
+          actual="$(sed -n 's/.*certificate SHA-256 digest: //p' /tmp/skynest-apk-signature.txt | head -n 1 | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+          expected="106BEBFDDB78488B4817608A97417ED5AFAE4C88D5FCB00B29572B4DA554BB0F"
+          test "$actual" = "$expected" || { echo "ERROR: Built APK certificate does not match original"; echo "Actual: $actual"; exit 1; }
+          echo "Built APK package and original signing certificate verified."
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: skynest-android-1.0.8-2006
+          name: skynest-android-1.0.9-2007
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
@@ -154,8 +169,8 @@ jobs:
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref == 'refs/heads/main' && 'v1.0.8+2006' || github.ref_name }}
-          name: SkyNest Android 1.0.8 (build 2006)
+          tag_name: ${{ github.ref == 'refs/heads/main' && 'v1.0.9+2007' || github.ref_name }}
+          name: SkyNest Android 1.0.9 (build 2007)
           target_commitish: ${{ github.sha }}
           files: build/app/outputs/flutter-apk/app-release.apk
           token: ${{ secrets.GITHUB_TOKEN }}
