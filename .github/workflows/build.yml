@@ -221,7 +221,6 @@ jobs:
       - name: Build signed release APK
         env:
           GRADLE_OPTS: -I ${{ github.workspace }}/android/force-android-compile-sdk.gradle
-        env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
