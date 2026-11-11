@@ -1,0 +1,5 @@
+# This file is used to configure the Shorebird updater used by your app.
+# Learn more at https://docs.shorebird.dev
+# This file does not contain any sensitive information and should be checked into version control.
+
+app_id: 9b442607-fd7b-4908-9a3f-3f3d50d7d0d3
