@@ -49,12 +49,25 @@ jobs:
           PY
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p = Path("android/app/build.gradle.kts")
-          s = p.read_text()
-          s = s.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 36")
-          if "compileSdk = 36" not in s:
-              raise SystemExit("Could not set Android compileSdk to 36")
-          p.write_text(s)
+          if p.exists():
+              s = p.read_text()
+              s, count = re.subn(r"(?m)^\\s*compileSdk\\s*=\\s*[^\\n]+", "    compileSdk = 36", s, count=1)
+              if count == 0:
+                  raise SystemExit("Could not locate compileSdk in build.gradle.kts")
+              p.write_text(s)
+          else:
+              p = Path("android/app/build.gradle")
+              if not p.exists():
+                  raise SystemExit("Flutter Android Gradle file not found")
+              s = p.read_text()
+              s, count = re.subn(r"(?m)^\\s*compileSdkVersion\\s+[^\\n]+", "    compileSdkVersion 36", s, count=1)
+              if count == 0:
+                  s, count = re.subn(r"(?m)^\\s*compileSdk\\s+[^\\n]+", "    compileSdk 36", s, count=1)
+              if count == 0:
+                  raise SystemExit("Could not locate compileSdk in build.gradle")
+              p.write_text(s)
           PY
 
       - name: Configure Firebase Android app (optional)
