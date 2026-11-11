@@ -50,6 +50,9 @@ jobs:
           from pathlib import Path
           p = Path("android/app/src/main/AndroidManifest.xml")
           content = p.read_text()
+          internet = '    <uses-permission android:name="android.permission.INTERNET"/>\n'
+          if "android.permission.INTERNET" not in content:
+              content = content.replace("<application", internet + "    <application", 1)
           meta = '        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3940256099942544~3347511713"/>'
           if "com.google.android.gms.ads.APPLICATION_ID" not in content:
               content = content.replace("</application>", meta + "\n    </application>")
