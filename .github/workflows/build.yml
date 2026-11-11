@@ -1,4 +1,4 @@
-name: SkyNest Gold Build
+name: SkyNest Signed Release Build
 
 on:
   push:
@@ -35,16 +35,105 @@ jobs:
           flutter create --platforms=android --org com.hello22_ --project-name chuka .
           sed -i 's/android:label="chuka"/android:label="SkyNest"/' android/app/src/main/AndroidManifest.xml
 
+      - name: Verify original signing certificate and configure release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/skynest-release.jks
+
+          actual="$(keytool -list -v -keystore android/app/skynest-release.jks -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>/dev/null | awk -F': ' '/SHA256:/{print $2; exit}' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          expected="106BEBFDDB78488B4817608A97417ED5AFAE4C88D5FCB00B29572B4DA554BB0F"
+          if [ -z "$actual" ]; then
+            echo "ERROR: Could not read SHA-256 from the supplied keystore. Check the alias and keystore password."
+            exit 1
+          fi
+          if [ "$actual" != "$expected" ]; then
+            echo "ERROR: Signing certificate does not match the installed SkyNest app. Build stopped to protect app updates."
+            echo "Expected original certificate SHA-256: $expected"
+            echo "Supplied keystore certificate SHA-256: $actual"
+            exit 1
+          fi
+          echo "Original SkyNest signing certificate verified."
+
+          if [ -f android/app/build.gradle.kts ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+          signing = '''    signingConfigs {
+                  create("release") {
+                      keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                      keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                      storeFile = file("skynest-release.jks")
+                      storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                  }
+              }
+
+          '''
+          if 'signingConfigs {' not in s:
+              marker = '    buildTypes {'
+              if marker not in s:
+                  raise SystemExit("Could not find buildTypes in build.gradle.kts")
+              s = s.replace(marker, signing + marker, 1)
+          s = s.replace('signingConfig = signingConfigs.getByName("debug")',
+                        'signingConfig = signingConfigs.getByName("release")')
+          if 'signingConfig = signingConfigs.getByName("release")' not in s:
+              raise SystemExit("Could not attach release signing config")
+          p.write_text(s)
+          PY
+          elif [ -f android/app/build.gradle ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle")
+          s = p.read_text()
+          signing = '''    signingConfigs {
+                  release {
+                      keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                      keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+                      storeFile file('skynest-release.jks')
+                      storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                  }
+              }
+
+          '''
+          if 'signingConfigs {' not in s:
+              marker = '    buildTypes {'
+              if marker not in s:
+                  raise SystemExit("Could not find buildTypes in build.gradle")
+              s = s.replace(marker, signing + marker, 1)
+          s = s.replace("signingConfig signingConfigs.debug",
+                        "signingConfig signingConfigs.release")
+          if 'signingConfig signingConfigs.release' not in s:
+              raise SystemExit("Could not attach release signing config")
+          p.write_text(s)
+          PY
+          else
+            echo "ERROR: Flutter Android Gradle file not found."
+            exit 1
+          fi
+
       - name: Resolve dependencies
         run: flutter pub get
 
-      - name: Build release APK
-        run: flutter build apk --release --build-name=1.0.7 --build-number=2005
+      - name: Build signed release APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: flutter build apk --release --build-name=1.0.8 --build-number=2006
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: skynest-android-1.0.7-2005
+          name: skynest-android-1.0.8-2006
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
@@ -53,8 +142,8 @@ jobs:
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref == 'refs/heads/main' && 'v1.0.7+2005' || github.ref_name }}
-          name: SkyNest Android 1.0.7 (build 2005)
+          tag_name: ${{ github.ref == 'refs/heads/main' && 'v1.0.8+2006' || github.ref_name }}
+          name: SkyNest Android 1.0.8 (build 2006)
           target_commitish: ${{ github.sha }}
           files: build/app/outputs/flutter-apk/app-release.apk
           token: ${{ secrets.GITHUB_TOKEN }}
