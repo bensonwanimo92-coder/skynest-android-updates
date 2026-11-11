@@ -236,7 +236,7 @@ jobs:
                   else:
                       output.append(line)
               if changed:
-                                                  gradle_file.write_text(chr(10).join(output) + chr(10))
+                  gradle_file.write_text(chr(10).join(output) + chr(10))
                   patched.append(str(gradle_file))
 
           for auth_file in auth_files:
