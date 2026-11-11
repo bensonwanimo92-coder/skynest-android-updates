@@ -31,14 +31,20 @@ jobs:
           distribution: zulu
           java-version: '17'
 
-      - name: Set up Shorebird and Flutter
+      - name: Set up Shorebird
         uses: shorebirdtech/setup-shorebird@v1
         with:
           cache: true
 
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
       - name: Generate Android project files
         run: |
-          shorebird flutter create --platforms=android --org com.hello22_ --project-name chuka .
+          flutter create --platforms=android --org com.hello22_ --project-name chuka .
           sed -i 's/android:label="chuka"/android:label="SkyNest"/' android/app/src/main/AndroidManifest.xml
           python3 - <<'PY'
           from pathlib import Path
@@ -212,7 +218,7 @@ jobs:
           fi
 
       - name: Resolve dependencies
-        run: shorebird flutter pub get
+        run: flutter pub get
 
       - name: Force Android API 36 for every Flutter plugin
         run: |
