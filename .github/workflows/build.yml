@@ -210,50 +210,42 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
+
           root = Path.home() / ".pub-cache" / "hosted" / "pub.dev"
-          if not root.exists():
+          if not root.is_dir():
               raise SystemExit("Flutter pub cache not found after dependency resolution.")
-          changed = []
-          auth_found = False
-          for p in root.rglob("build.gradle*"):
-              if "android" not in p.parts:
-                  continue
-              s = p.read_text()
-              original = s
-              s = re.sub(r"(?m)^(\s*)compileSdkVersion\s*(?:=\s*)?[^\n]+$",
-                         r"\g<1>compileSdkVersion 36", s)
-              s = re.sub(r"(?m)^(\s*)compileSdk\s*(?:=\s*)?[^\n]+$",
-                         r"\g<1>compileSdk = 36", s)
-              if s != original:
-                  p.write_text(s)
-                  changed.append(str(p))
-              if p.parent.parent.name.startswith("firebase_auth-"):
-                  auth_found = True
-          print("Patched Android plugin Gradle files:", len(changed))
-          if not auth_found:
+
+          # Patch every Android plugin declaration, including Groovy and Kotlin DSL.
+          patterns = [
+              re.compile(r"(?m)^([ \\t]*)compileSdkVersion[ \\t]*(?:=[ \\t]*)?[^\\r\\n]*$"),
+              re.compile(r"(?m)^([ \\t]*)compileSdk[ \\t]*(?:=[ \\t]*)?[^\\r\\n]*$"),
+          ]
+          patched_files = []
+          auth_files = list(root.glob("firebase_auth-*/android/build.gradle*"))
+          if not auth_files:
               raise SystemExit("firebase_auth Android Gradle file was not found.")
+
+          for gradle_file in root.rglob("build.gradle*"):
+              if "android" not in gradle_file.parts:
+                  continue
+              source = gradle_file.read_text()
+              updated = source
+              for pattern in patterns:
+                  updated = pattern.sub(lambda match: match.group(1) + "compileSdkVersion 36", updated)
+              if updated != source:
+                  gradle_file.write_text(updated)
+                  patched_files.append(str(gradle_file))
+
+          for auth_file in auth_files:
+              content = auth_file.read_text()
+              if not re.search(r"(?m)^([ \\t]*)compileSdkVersion[ \\t]+36[ \\t]*$", content):
+                  raise SystemExit(f"firebase_auth compile SDK was not successfully set to 36: {auth_file}")
+
+          print(f"Patched {len(patched_files)} Android plugin Gradle files.")
+          print("Verified firebase_auth compileSdkVersion 36.")
+          for file in patched_files:
+              print(f"Patched: {file}")
           PY
-          cat > android/force-compile-sdk.gradle <<'GRADLE'
-          gradle.projectsEvaluated {
-              gradle.rootProject.allprojects { project ->
-                  def androidExtension = project.extensions.findByName("android")
-                  if (androidExtension != null) {
-                      androidExtension.compileSdkVersion(36)
-                  }
-              }
-          }
-          GRADLE
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("android/build.gradle.kts")
-          if not p.exists():
-              raise SystemExit("Expected root android/build.gradle.kts was not generated.")
-          s = p.read_text()
-          marker = 'apply(from = "force-compile-sdk.gradle")'
-          if marker not in s:
-              p.write_text(s.rstrip() + "\n\n" + marker + "\n")
-          PY
-          echo "Installed Gradle-wide compileSdk 36 override for all Android modules."
 
       - name: Build signed release APK
         env:
