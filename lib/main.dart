@@ -416,7 +416,7 @@ class HousesScreen extends StatelessWidget {
         FilledButton(onPressed: () async {
           if (!key.currentState!.validate()) return;
           try {
-            await FirebaseFirestore.instance.collection('houses').add({'houseNo': number.text.trim(), 'rent': double.parse(rent.text), 'isOccupied': false, 'createdAt': FieldValue.serverTimestamp(), 'createdBy': FirebaseAuth.instance.currentUser?.uid});
+            await FirebaseFirestore.instance.collection('houses').add({'houseNo': number.text.trim(), 'rent': double.parse(rent.text), 'isOccupied': false, 'status': 'vacant', 'landlordId': FirebaseAuth.instance.currentUser?.uid, 'caretakerIds': <String>[], 'createdAt': FieldValue.serverTimestamp(), 'createdBy': FirebaseAuth.instance.currentUser?.uid});
             if (d.mounted) Navigator.pop(d);
           } catch (e) { snack(context, 'Could not save house: ' + e.toString()); }
         }, child: const Text('Save')),
@@ -1416,7 +1416,7 @@ class CaretakerPaymentsScreen extends StatelessWidget {
   const CaretakerPaymentsScreen({super.key});
   Future<void> confirm(BuildContext context, String id) async {
     try {
-      await FirebaseFirestore.instance.collection('payments').doc(id).update({
+      await FirebaseFirestore.instance.collection('paymentConfirmations').doc(id).update({
         'status': 'confirmed_by_caretaker', 'confirmedBy': FirebaseAuth.instance.currentUser?.uid,
         'confirmedAt': FieldValue.serverTimestamp(),
       });
@@ -1428,7 +1428,7 @@ class CaretakerPaymentsScreen extends StatelessWidget {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     return Scaffold(appBar: AppBar(title: const Text('Rent confirmations')),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('payments').where('caretakerId', isEqualTo: uid).snapshots(),
+        stream: FirebaseFirestore.instance.collection('paymentConfirmations').where('caretakerId', isEqualTo: uid).snapshots(),
         builder: (context, snap) {
           if (snap.hasError) return errorView('Assigned payment records could not load.');
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
