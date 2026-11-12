@@ -88,6 +88,7 @@ jobs:
           tree = ET.parse(manifest)
           root = tree.getroot()
           android = "{http://schemas.android.com/apk/res/android}"
+          ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
           permissions = [
               "android.permission.INTERNET",
               "android.permission.FOREGROUND_SERVICE",
