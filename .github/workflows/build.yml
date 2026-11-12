@@ -317,59 +317,7 @@ jobs:
           # Resolve the actual launcher component from the installed package instead of
           # assuming Flutter's generated activity name. Keep diagnostics on every failure.
           script: |
-            set -Eeuo pipefail
-            APK="build/app/outputs/flutter-apk/app-release.apk"
-            PACKAGE="com.hello22_.chuka"
-
-            fail_with_diagnostics() {
-              echo "::error::$1"
-              echo "----- package state -----"
-              adb shell dumpsys package "$PACKAGE" | grep -E "versionName|versionCode|codePath|enabled=" | head -n 30 || true
-              echo "----- activity state -----"
-              adb shell dumpsys activity activities | grep -E "ResumedActivity|topResumedActivity|$PACKAGE" | tail -n 60 || true
-              echo "----- crash and app logcat -----"
-              adb logcat -d -t 8000 | grep -E -i "FATAL EXCEPTION|AndroidRuntime|flutter|$PACKAGE|INSTALL_FAILED" | tail -n 220 || true
-              exit 1
-            }
-
-            test -s "$APK" || fail_with_diagnostics "Release APK is missing or empty."
-            adb wait-for-device
-            for attempt in $(seq 1 60); do
-              booted="$(adb shell getprop sys.boot_completed | tr -d '\r')"
-              [ "$booted" = "1" ] && break
-              sleep 2
-            done
-            [ "${booted:-}" = "1" ] || fail_with_diagnostics "Android 14 emulator did not finish booting."
-
-            if ! adb install -r "$APK"; then
-              fail_with_diagnostics "Android 14 rejected the APK during installation."
-            fi
-
-            component="$(adb shell cmd package resolve-activity --brief -c android.intent.category.LAUNCHER "$PACKAGE" 2>&1 | tr -d '\r' | tail -n 1)"
-            case "$component" in
-              */*) ;;
-              *) fail_with_diagnostics "No launcher activity resolved for $PACKAGE. Resolver output: $component" ;;
-            esac
-            echo "Resolved launcher component: $component"
-
-            adb shell am force-stop "$PACKAGE" || true
-            if ! adb shell am start -W -n "$component"; then
-              fail_with_diagnostics "Android installed the APK but could not start its launcher activity."
-            fi
-
-            for attempt in $(seq 1 30); do
-              pid="$(adb shell pidof "$PACKAGE" 2>/dev/null | tr -d '\r' || true)"
-              resumed="$(adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -F "$PACKAGE" || true)"
-              if [ -n "$pid" ] && [ -n "$resumed" ]; then
-                echo "PASS: SkyNest installed, launched, and remained in the foreground on Android 14."
-                echo "Process ID: $pid"
-                echo "$resumed"
-                exit 0
-              fi
-              sleep 2
-            done
-
-            fail_with_diagnostics "SkyNest did not remain running in the foreground after launch."
+            adb wait-for-device && adb install -r build/app/outputs/flutter-apk/app-release.apk && component="$(adb shell cmd package resolve-activity --brief -c android.intent.category.LAUNCHER com.hello22_.chuka | tr -d '\\r' | tail -n 1)" && echo "Resolved launcher component: $component" && test "${component#*/}" != "$component" && adb shell am force-stop com.hello22_.chuka && adb shell am start -W -n "$component" && sleep 5 && test -n "$(adb shell pidof com.hello22_.chuka)" && adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -F "com.hello22_.chuka" && echo "PASS: SkyNest installed, launched, and remained running on Android 14."
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
