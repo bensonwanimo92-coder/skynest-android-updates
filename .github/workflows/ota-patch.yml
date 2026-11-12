@@ -1,15 +1,12 @@
-name: SkyNest Build 143 OTA Startup Fix (1.1.3+2026)
+name: SkyNest OTA Patch (Exact Shorebird Release)
 
 on:
-  push:
-    branches:
-      - feature/role-based-sky-nest
-    paths:
-      - 'lib/**'
-      - 'pubspec.yaml'
-      - 'shorebird.yaml'
-      - '.github/workflows/ota-patch.yml'
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Exact Shorebird release version produced by the successful APK workflow'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -40,6 +37,13 @@ jobs:
       - name: Generate Android project files
         run: |
           flutter create --platforms=android --org com.hello22_ --project-name chuka .
+          # Flutter stable now generates AGP 9; disable the new DSL until all plugins support it.
+          if grep -q '^android.newDsl=' android/gradle.properties; then
+            sed -i 's/^android.newDsl=.*/android.newDsl=false/' android/gradle.properties
+          else
+            echo 'android.newDsl=false' >> android/gradle.properties
+          fi
+          grep -qx 'android.newDsl=false' android/gradle.properties
           sed -i 's/android:label="chuka"/android:label="SkyNest"/' android/app/src/main/AndroidManifest.xml
           python3 - <<'PY'
           from pathlib import Path
@@ -408,23 +412,32 @@ jobs:
         with:
           cache: true
 
-      - name: Pin the exact installed release version
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          p = Path("pubspec.yaml")
-          source = p.read_text()
-          source, count = re.subn(r"(?m)^version: *[^\\n]+$", "version: 1.1.3+2026", source, count=1)
-          if count != 1:
-              raise SystemExit("Could not set pubspec version to 1.1.3+2026")
-          p.write_text(source)
-          print("Patch target pinned to 1.1.3+2026")
-          PY
-
-      - name: Publish Shorebird OTA patch for Build 143
+      - name: Pin the exact newly built Shorebird release version
         env:
-          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          PATCH_RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           set -euo pipefail
-          shorebird patch android --release-version=1.1.3+2026
+          if ! [[ "$PATCH_RELEASE_VERSION" =~ ^1\\.1\\.3\\+[0-9]+$ ]]; then
+            echo "Invalid Shorebird release version: $PATCH_RELEASE_VERSION"
+            exit 1
+          fi
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          p = Path("pubspec.yaml")
+          source = p.read_text()
+          version = os.environ["PATCH_RELEASE_VERSION"]
+          source, count = re.subn(r"(?m)^version: *[^\\n]+$", "version: " + version, source, count=1)
+          if count != 1:
+              raise SystemExit("Could not align pubspec.yaml with the selected Shorebird release.")
+          p.write_text(source)
+          print("Patch target pinned to " + version)
+          PY
+
+      - name: Publish Shorebird OTA patch for the exact release
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          PATCH_RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          shorebird patch android --release-version="$PATCH_RELEASE_VERSION" --track=stable

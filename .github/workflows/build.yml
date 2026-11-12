@@ -1,4 +1,4 @@
-name: SkyNest Signed APK Build (No Emulator)
+name: SkyNest Signed APK Build (Android 15 Smoke Test)
 
 on:
   push:
@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: skynest-release
@@ -38,6 +39,13 @@ jobs:
       - name: Generate Android project files
         run: |
           flutter create --platforms=android --org com.hello22_ --project-name chuka .
+          # Flutter stable now generates AGP 9; disable the new DSL until all plugins support it.
+          if grep -q '^android.newDsl=' android/gradle.properties; then
+            sed -i 's/^android.newDsl=.*/android.newDsl=false/' android/gradle.properties
+          else
+            echo 'android.newDsl=false' >> android/gradle.properties
+          fi
+          grep -qx 'android.newDsl=false' android/gradle.properties
           sed -i 's/android:label="chuka"/android:label="SkyNest"/' android/app/src/main/AndroidManifest.xml
           python3 - <<'PY'
           from pathlib import Path
@@ -475,6 +483,39 @@ jobs:
           test "$actual" = "$expected" || { echo "ERROR: Built APK certificate does not match original"; echo "Actual: $actual"; exit 1; }
           echo "Built APK package and original signing certificate verified."
 
+      - name: Android 15 emulator launch smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            adb wait-for-device
+            adb install -r build/app/outputs/flutter-apk/app-release.apk
+            adb shell am force-stop com.hello22_.chuka
+            adb shell monkey -p com.hello22_.chuka -c android.intent.category.LAUNCHER 1
+            launched=false
+            for attempt in $(seq 1 35); do
+              if adb shell pidof com.hello22_.chuka | tr -d '\\r' | grep -Eq '[0-9]'; then
+                sleep 8
+                if adb shell pidof com.hello22_.chuka | tr -d '\\r' | grep -Eq '[0-9]'; then
+                  launched=true
+                  break
+                fi
+              fi
+              sleep 1
+            done
+            if [ "$launched" != true ]; then
+              adb logcat -d -t 5000 > /tmp/skynest-emulator-logcat.txt
+              grep -E -i 'FATAL EXCEPTION|AndroidRuntime|Fatal signal|Process: com.hello22_.chuka' /tmp/skynest-emulator-logcat.txt | tail -n 120 || true
+              echo 'SkyNest process did not remain alive after launch on Android 15 emulator.'
+              exit 1
+            fi
+            echo 'PASS: SkyNest installed and remained running after launch on Android 15 emulator.'
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -482,6 +523,16 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Trigger OTA patch for the exact newly built release
+        if: github.ref == 'refs/heads/feature/role-based-sky-nest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh workflow run .github/workflows/ota-patch.yml --ref "$GITHUB_REF_NAME" \\
+            -f release_version='${{ steps.release_version.outputs.release_version }}'
+          echo "Dispatched OTA patch for release ${{ steps.release_version.outputs.release_version }}."
 
       - name: Publish GitHub release
         if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && steps.firebase.outputs.configured == 'true'
