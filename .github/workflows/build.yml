@@ -42,7 +42,7 @@ jobs:
           from pathlib import Path
           p = Path("android/app/src/main/AndroidManifest.xml")
           content = p.read_text()
-          meta = '        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3940256099942544~3347511713"/>'
+          meta = '        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-1281241380359357~6894041283"/>'
           if "com.google.android.gms.ads.APPLICATION_ID" not in content:
               content = content.replace("</application>", meta + "\n    </application>")
           p.write_text(content)
