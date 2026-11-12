@@ -417,20 +417,21 @@ jobs:
           PATCH_RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           set -euo pipefail
-          if ! [[ "$PATCH_RELEASE_VERSION" =~ ^1\\.1\\.3\\+[0-9]+$ ]]; then
+          if ! [[ "$PATCH_RELEASE_VERSION" =~ ^1[.]1[.]3[+][0-9]+$ ]]; then
             echo "Invalid Shorebird release version: $PATCH_RELEASE_VERSION"
             exit 1
           fi
           python3 - <<'PY'
-          import os, re
+          import os
           from pathlib import Path
           p = Path("pubspec.yaml")
-          source = p.read_text()
+          lines = p.read_text().splitlines()
           version = os.environ["PATCH_RELEASE_VERSION"]
-          source, count = re.subn(r"(?m)^version: *[^\\n]+$", "version: " + version, source, count=1)
-          if count != 1:
-              raise SystemExit("Could not align pubspec.yaml with the selected Shorebird release.")
-          p.write_text(source)
+          matches = [i for i, line in enumerate(lines) if line.startswith("version:")]
+          if len(matches) != 1:
+              raise SystemExit("Expected exactly one version entry in pubspec.yaml.")
+          lines[matches[0]] = "version: " + version
+          p.write_text("\\n".join(lines) + "\\n")
           print("Patch target pinned to " + version)
           PY
 

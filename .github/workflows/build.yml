@@ -530,8 +530,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh workflow run .github/workflows/ota-patch.yml --ref "$GITHUB_REF_NAME" \\
-            -f release_version='${{ steps.release_version.outputs.release_version }}'
+          gh workflow run .github/workflows/ota-patch.yml --ref "$GITHUB_REF_NAME" -f "release_version=${{ steps.release_version.outputs.release_version }}"
           echo "Dispatched OTA patch for release ${{ steps.release_version.outputs.release_version }}."
 
       - name: Publish GitHub release
