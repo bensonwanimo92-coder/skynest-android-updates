@@ -1038,6 +1038,29 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
       'status': status, 'lastUpdatedAt': FieldValue.serverTimestamp(), 'lastUpdatedBy': FirebaseAuth.instance.currentUser?.uid,
     }); } catch (e) { if (mounted) snack(context, 'Could not update complaint: ' + e.toString()); }
   }
+  Future<void> respond(String id) async {
+    final controller = TextEditingController();
+    await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Respond to complaint'),
+      content: TextField(controller: controller, minLines: 2, maxLines: 5,
+        decoration: const InputDecoration(labelText: 'Response to tenant')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+        FilledButton(onPressed: () async {
+          if (controller.text.trim().isEmpty) return;
+          try {
+            await FirebaseFirestore.instance.collection('complaints').doc(id).update({
+              'response': controller.text.trim(), 'status': 'in_progress',
+              'lastUpdatedAt': FieldValue.serverTimestamp(), 'lastUpdatedBy': FirebaseAuth.instance.currentUser?.uid,
+            });
+            if (dialogContext.mounted) Navigator.pop(dialogContext);
+            if (mounted) snack(context, 'Response sent to tenant.');
+          } catch (e) { if (mounted) snack(context, 'Could not send response: ' + e.toString()); }
+        }, child: const Text('SEND RESPONSE')),
+      ],
+    ));
+    controller.dispose();
+  }
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -1073,8 +1096,18 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                   title: Text(d['subject']?.toString() ?? 'Complaint'),
                   subtitle: Text((d['createdByName'] ?? 'User').toString() + ' • ' + (d['status'] ?? 'open').toString()),
                   children: [
-                    Padding(padding: const EdgeInsets.all(14), child: Align(alignment: Alignment.centerLeft, child: Text(d['details']?.toString() ?? ''))),
+                    Padding(padding: const EdgeInsets.all(14), child: Align(alignment: Alignment.centerLeft, child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(d['details']?.toString() ?? ''),
+                        if ((d['response'] ?? '').toString().isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          const Text('Manager response', style: TextStyle(fontWeight: FontWeight.bold)),
+                          Text(d['response'].toString()),
+                        ],
+                      ],
+                    ))),
                     if (role != 'tenant') Wrap(spacing: 8, children: [
+                      TextButton(onPressed: () => respond(doc.id), child: const Text('Reply')),
                       TextButton(onPressed: () => updateStatus(doc.id, 'in_progress'), child: const Text('In progress')),
                       TextButton(onPressed: () => updateStatus(doc.id, 'resolved'), child: const Text('Resolve')),
                     ]),
