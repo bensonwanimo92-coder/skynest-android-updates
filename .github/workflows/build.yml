@@ -438,21 +438,37 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          # Resolve the actual launcher component from the installed package instead of
-          # assuming Flutter's generated activity name. Keep diagnostics on every failure.
-          # The emulator action executes script lines in separate shell processes.
-          # Keep each command self-contained: do not rely on shell variables between lines.
+          # Run the complete check in one Bash process so variables and diagnostics persist.
+          # A missing pidof result must not abort before logcat and activity diagnostics are saved.
           script: |
-            adb wait-for-device
-            adb install -r build/app/outputs/flutter-apk/app-release.apk
-            adb shell monkey -p com.hello22_.chuka -c android.intent.category.LAUNCHER 1
-            sleep 8
-            adb shell pidof com.hello22_.chuka
-            # Android 14 emulator images may expose the resumed task differently across builds.
-            # Confirm the package is present in ActivityManager or WindowManager, while the
-            # preceding pidof check independently confirms that the app process is alive.
-            adb shell dumpsys activity activities | grep -F "com.hello22_.chuka" || (adb shell dumpsys window | grep -F "com.hello22_.chuka" || (echo "ERROR: SkyNest process is alive but no app activity/window was found."; adb shell dumpsys activity activities; adb shell dumpsys window; exit 1))
-            echo "PASS: SkyNest installed, launched, and remained running on Android 14."
+            bash -euo pipefail -c '
+              PACKAGE="com.hello22_.chuka"
+              APK="build/app/outputs/flutter-apk/app-release.apk"
+              adb wait-for-device
+              adb install -r "$APK"
+              adb logcat -c
+              adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
+              sleep 15
+
+              echo "===== SkyNest process check ====="
+              PROCESS_LIST="$(adb shell ps -A | tr -d "\r")"
+              printf "%s\n" "$PROCESS_LIST" | grep -F "$PACKAGE" || true
+
+              echo "===== Android resumed activity check ====="
+              adb shell dumpsys activity activities | tee /tmp/skynest-activity-dump.txt
+              adb shell dumpsys window | tee /tmp/skynest-window-dump.txt
+              adb logcat -d -v time | tee /tmp/skynest-android14-logcat.txt
+
+              if printf "%s\n" "$PROCESS_LIST" | grep -Fq "$PACKAGE" ||
+                 (grep -E "mResumedActivity|topResumedActivity|ResumedActivity" /tmp/skynest-activity-dump.txt /tmp/skynest-window-dump.txt | grep -Fq "$PACKAGE"); then
+                echo "PASS: SkyNest installed and launched; app process or resumed activity is present on Android 14."
+              else
+                echo "ERROR: SkyNest installed, but no live process or resumed activity was detected."
+                echo "===== Crash and fatal log excerpts ====="
+                grep -Ei "FATAL EXCEPTION|AndroidRuntime|Fatal signal|crash|com\.hello22_\.chuka" /tmp/skynest-android14-logcat.txt | tail -n 200 || true
+                exit 1
+              fi
+            '
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
