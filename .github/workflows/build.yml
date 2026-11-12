@@ -314,7 +314,8 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: adb install -r build/app/outputs/flutter-apk/app-release.apk && adb shell monkey -p com.hello22_.chuka 1 && sleep 20 && (adb shell pidof com.hello22_.chuka >/dev/null || { echo "ERROR: SkyNest did not remain running after launch on Android 14."; adb logcat -d -t 4000 | grep -E -i "FATAL EXCEPTION|AndroidRuntime|com.hello22_.chuka" | tail -n 120 || true; exit 1; }) && echo "PASS: SkyNest installed and remained running on Android 14 emulator."
+          script: >-
+            adb install -r build/app/outputs/flutter-apk/app-release.apk && adb shell monkey -p com.hello22_.chuka 1 && sleep 20 && (adb shell pidof com.hello22_.chuka >/dev/null || { echo "ERROR: SkyNest did not remain running after launch on Android 14."; adb logcat -d -t 4000 | grep -E -i "FATAL EXCEPTION|AndroidRuntime|com.hello22_.chuka" | tail -n 120 || true; exit 1; }) && echo "PASS: SkyNest installed and remained running on Android 14 emulator."
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
