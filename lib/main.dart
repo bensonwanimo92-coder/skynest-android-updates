@@ -814,6 +814,637 @@ class PremiumScreen extends StatelessWidget {
   }
 }
 
+
+class PendingApprovalScreen extends StatelessWidget {
+  const PendingApprovalScreen({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Account approval')),
+    body: const Center(child: Padding(padding: EdgeInsets.all(24), child: Column(
+      mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.hourglass_top_rounded, size: 72, color: brand),
+        SizedBox(height: 18),
+        Text('Your account is awaiting approval', textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        SizedBox(height: 10),
+        Text('Your landlord or an authorised caretaker must approve your access.', textAlign: TextAlign.center),
+      ],
+    ))),
+    floatingActionButton: FloatingActionButton.extended(onPressed: () async {
+      await FirebaseAuth.instance.signOut();
+      if (!context.mounted) return;
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute<void>(builder: (_) => const LoginScreen()), (_) => false);
+    }, icon: const Icon(Icons.logout), label: const Text('Sign out')),
+  );
+}
+
+class InvitationsScreen extends StatefulWidget {
+  const InvitationsScreen({super.key});
+  @override
+  State<InvitationsScreen> createState() => _InvitationsScreenState();
+}
+class _InvitationsScreenState extends State<InvitationsScreen> {
+  String role = 'tenant';
+  bool saving = false;
+  String? latestCode;
+  Future<void> createInvitation() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    setState(() => saving = true);
+    try {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      final random = Random.secure();
+      final code = List.generate(8, (_) => chars[random.nextInt(chars.length)]).join();
+      await FirebaseFirestore.instance.collection('invitations').doc(code).set({
+        'role': role, 'landlordId': uid, 'createdBy': uid, 'propertyIds': <String>[],
+        'status': 'open', 'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
+      });
+      if (mounted) setState(() => latestCode = code);
+      if (mounted) snack(context, 'Invitation created. It expires in 7 days.');
+    } catch (e) { if (mounted) snack(context, 'Could not create invitation: ' + e.toString()); }
+    finally { if (mounted) setState(() => saving = false); }
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Caretakers & invitations')),
+    body: ListView(padding: const EdgeInsets.all(18), children: [
+      const Text('Invite a tenant or caretaker to join your property account. Codes are single-use and expire after seven days.'),
+      const SizedBox(height: 18),
+      DropdownButtonFormField<String>(value: role, decoration: const InputDecoration(labelText: 'Invite role'),
+        items: const [DropdownMenuItem(value: 'tenant', child: Text('Tenant')), DropdownMenuItem(value: 'caretaker', child: Text('Caretaker'))],
+        onChanged: (v) => setState(() => role = v ?? 'tenant')),
+      const SizedBox(height: 14),
+      FilledButton.icon(onPressed: saving ? null : createInvitation, icon: const Icon(Icons.key),
+        label: Text(saving ? 'Creating...' : 'GENERATE INVITATION CODE')),
+      if (latestCode != null) Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+        const Text('Share this code with the invited person'),
+        SelectableText(latestCode!, style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: 4)),
+        const Text('Long-press the code to copy it.'),
+      ]))),
+      const Divider(height: 32),
+      const Text('Linked accounts', style: TextStyle(fontWeight: FontWeight.bold)),
+      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance.collection('users').where('landlordId', isEqualTo: FirebaseAuth.instance.currentUser?.uid).snapshots(),
+        builder: (context, snap) {
+          if (snap.hasError) return errorView('Could not load linked accounts.');
+          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          if (snap.data!.docs.isEmpty) return const EmptyView('No invited accounts yet.');
+          return Column(children: snap.data!.docs.map((doc) {
+            final d = doc.data();
+            return Card(child: ListTile(leading: const Icon(Icons.person_outline),
+              title: Text(d['displayName']?.toString() ?? d['email']?.toString() ?? 'Account'),
+              subtitle: Text((d['role'] ?? 'user').toString() + ' • ' + (d['status'] ?? 'unknown').toString())));
+          }).toList());
+        },
+      ),
+    ]),
+  );
+}
+
+class TenantPortalScreen extends StatelessWidget {
+  const TenantPortalScreen({super.key});
+  Future<void> requestHouse(BuildContext context, QueryDocumentSnapshot<Map<String, dynamic>> house) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final p = profile.data() ?? {};
+      final landlordId = p['landlordId']?.toString();
+      if (landlordId == null || landlordId.isEmpty) { snack(context, 'Ask your landlord for an invitation first.'); return; }
+      await FirebaseFirestore.instance.collection('houseRequests').add({
+        'tenantId': uid, 'tenantName': p['displayName'] ?? 'Tenant', 'landlordId': landlordId,
+        'houseId': house.id, 'houseNo': house.data()['houseNo'] ?? '',
+        'status': 'pending', 'createdAt': FieldValue.serverTimestamp(),
+      });
+      if (context.mounted) snack(context, 'House request sent for approval.');
+    } catch (e) { if (context.mounted) snack(context, 'Could not send request: ' + e.toString()); }
+  }
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return Scaffold(appBar: AppBar(title: const Text('Vacant houses')),
+      body: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        future: uid == null ? null : FirebaseFirestore.instance.collection('users').doc(uid).get(),
+        builder: (context, profile) {
+          if (!profile.hasData) return const Center(child: CircularProgressIndicator());
+          final landlordId = profile.data?.data()?['landlordId']?.toString();
+          if (landlordId == null) return const EmptyView('Your account is not linked to a landlord.');
+          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance.collection('houses').where('landlordId', isEqualTo: landlordId).where('isOccupied', isEqualTo: false).snapshots(),
+            builder: (context, snap) {
+              if (snap.hasError) return errorView('Vacant houses could not load.');
+              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+              if (snap.data!.docs.isEmpty) return const EmptyView('No vacant houses declared yet.');
+              return ListView(children: snap.data!.docs.map((house) {
+                final d = house.data();
+                return Card(child: ListTile(leading: const Icon(Icons.home_outlined),
+                  title: Text('House ' + (d['houseNo'] ?? '').toString()),
+                  subtitle: Text(currency.format((d['rent'] as num?)?.toDouble() ?? 0) + ' / month'),
+                  trailing: FilledButton(onPressed: () => requestHouse(context, house), child: const Text('REQUEST')));
+              }).toList());
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class ComplaintsScreen extends StatefulWidget {
+  const ComplaintsScreen({super.key});
+  @override
+  State<ComplaintsScreen> createState() => _ComplaintsScreenState();
+}
+class _ComplaintsScreenState extends State<ComplaintsScreen> {
+  final subject = TextEditingController(), details = TextEditingController();
+  bool saving = false;
+  @override
+  void dispose() { subject.dispose(); details.dispose(); super.dispose(); }
+  Future<void> submit() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || subject.text.trim().isEmpty || details.text.trim().isEmpty) { snack(context, 'Enter a subject and describe the issue.'); return; }
+    setState(() => saving = true);
+    try {
+      final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final p = profile.data() ?? {};
+      final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
+      if (landlordId == null) throw StateError('Your account is not linked to a landlord.');
+      await FirebaseFirestore.instance.collection('complaints').add({
+        'createdBy': uid, 'createdByName': p['displayName'] ?? 'User', 'role': p['role'] ?? 'tenant',
+        'landlordId': landlordId, 'subject': subject.text.trim(), 'details': details.text.trim(),
+        'status': 'open', 'createdAt': FieldValue.serverTimestamp(),
+      });
+      subject.clear(); details.clear();
+      if (mounted) snack(context, 'Complaint submitted.');
+    } catch (e) { if (mounted) snack(context, 'Could not submit complaint: ' + e.toString()); }
+    finally { if (mounted) setState(() => saving = false); }
+  }
+  Future<void> updateStatus(String id, String status) async {
+    try { await FirebaseFirestore.instance.collection('complaints').doc(id).update({
+      'status': status, 'lastUpdatedAt': FieldValue.serverTimestamp(), 'lastUpdatedBy': FirebaseAuth.instance.currentUser?.uid,
+    }); } catch (e) { if (mounted) snack(context, 'Could not update complaint: ' + e.toString()); }
+  }
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return Scaffold(appBar: AppBar(title: const Text('Smart complaint channel')),
+      body: Column(children: [
+        Padding(padding: const EdgeInsets.all(14), child: Column(children: [
+          TextField(controller: subject, decoration: const InputDecoration(labelText: 'Complaint subject', border: OutlineInputBorder())),
+          const SizedBox(height: 8),
+          TextField(controller: details, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Describe the issue', border: OutlineInputBorder())),
+          const SizedBox(height: 8),
+          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: saving ? null : submit,
+            icon: const Icon(Icons.send), label: Text(saving ? 'Sending...' : 'SUBMIT COMPLAINT'))),
+        ])),
+        const Divider(height: 1),
+        Expanded(child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          future: uid == null ? null : FirebaseFirestore.instance.collection('users').doc(uid).get(),
+          builder: (context, profile) {
+            if (!profile.hasData) return const Center(child: CircularProgressIndicator());
+            final p = profile.data?.data() ?? {};
+            final role = p['role']?.toString() ?? 'tenant';
+            final stream = role == 'landlord'
+              ? FirebaseFirestore.instance.collection('complaints').where('landlordId', isEqualTo: uid).snapshots()
+              : role == 'caretaker'
+                ? FirebaseFirestore.instance.collection('complaints').where('landlordId', isEqualTo: p['landlordId']).snapshots()
+                : FirebaseFirestore.instance.collection('complaints').where('createdBy', isEqualTo: uid).snapshots();
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(stream: stream, builder: (context, snap) {
+              if (snap.hasError) return errorView('Complaints could not load.');
+              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+              if (snap.data!.docs.isEmpty) return const EmptyView('No complaints yet.');
+              return ListView(children: snap.data!.docs.map((doc) {
+                final d = doc.data();
+                return Card(child: ExpansionTile(leading: const Icon(Icons.report_problem_outlined),
+                  title: Text(d['subject']?.toString() ?? 'Complaint'),
+                  subtitle: Text((d['createdByName'] ?? 'User').toString() + ' • ' + (d['status'] ?? 'open').toString()),
+                  children: [
+                    Padding(padding: const EdgeInsets.all(14), child: Align(alignment: Alignment.centerLeft, child: Text(d['details']?.toString() ?? ''))),
+                    if (role != 'tenant') Wrap(spacing: 8, children: [
+                      TextButton(onPressed: () => updateStatus(doc.id, 'in_progress'), child: const Text('In progress')),
+                      TextButton(onPressed: () => updateStatus(doc.id, 'resolved'), child: const Text('Resolve')),
+                    ]),
+                  ]));
+              }).toList());
+            });
+          },
+        )),
+      ]),
+    );
+  }
+}
+
+class TenantGroupsScreen extends StatefulWidget {
+  const TenantGroupsScreen({super.key});
+  @override
+  State<TenantGroupsScreen> createState() => _TenantGroupsScreenState();
+}
+class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
+  final name = TextEditingController();
+  bool saving = false;
+  @override
+  void dispose() { name.dispose(); super.dispose(); }
+  Future<void> createGroup() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || name.text.trim().isEmpty) { snack(context, 'Enter a group name.'); return; }
+    setState(() => saving = true);
+    try {
+      final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final p = profile.data() ?? {};
+      final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
+      if (landlordId == null) throw StateError('Your account is not linked to a property.');
+      final ref = FirebaseFirestore.instance.collection('groups').doc();
+      await ref.set({'name': name.text.trim(), 'createdBy': uid, 'landlordId': landlordId,
+        'createdAt': FieldValue.serverTimestamp(), 'memberIds': [uid]});
+      await ref.collection('members').doc(uid).set({'joinedAt': FieldValue.serverTimestamp(), 'role': p['role'] ?? 'tenant'});
+      name.clear();
+      if (mounted) snack(context, 'Group created.');
+    } catch (e) { if (mounted) snack(context, 'Could not create group: ' + e.toString()); }
+    finally { if (mounted) setState(() => saving = false); }
+  }
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return Scaffold(appBar: AppBar(title: const Text('Tenant-to-tenant groups')),
+      body: Column(children: [
+        Padding(padding: const EdgeInsets.all(12), child: Row(children: [
+          Expanded(child: TextField(controller: name, decoration: const InputDecoration(labelText: 'New group name'))),
+          IconButton(onPressed: saving ? null : createGroup, icon: const Icon(Icons.add_circle, size: 32)),
+        ])),
+        Expanded(child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          future: uid == null ? null : FirebaseFirestore.instance.collection('users').doc(uid).get(),
+          builder: (context, profile) {
+            if (!profile.hasData) return const Center(child: CircularProgressIndicator());
+            final p = profile.data?.data() ?? {};
+            final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
+            if (landlordId == null) return const EmptyView('Join a landlord property account first.');
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance.collection('groups').where('landlordId', isEqualTo: landlordId).snapshots(),
+              builder: (context, snap) {
+                if (snap.hasError) return errorView('Groups could not load.');
+                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                if (snap.data!.docs.isEmpty) return const EmptyView('No groups yet. Create the first group.');
+                return ListView(children: snap.data!.docs.map((doc) => Card(child: ListTile(
+                  leading: const Icon(Icons.groups_outlined), title: Text(doc.data()['name']?.toString() ?? 'Group'),
+                  subtitle: Text(((doc.data()['memberIds'] as List?)?.length ?? 1).toString() + ' members'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => GroupChatScreen(groupId: doc.id, groupName: doc.data()['name']?.toString() ?? 'Group'))),
+                ))).toList());
+              },
+            );
+          },
+        )),
+      ]),
+    );
+  }
+}
+
+class GroupChatScreen extends StatefulWidget {
+  final String groupId, groupName;
+  const GroupChatScreen({super.key, required this.groupId, required this.groupName});
+  @override
+  State<GroupChatScreen> createState() => _GroupChatScreenState();
+}
+class _GroupChatScreenState extends State<GroupChatScreen> {
+  final message = TextEditingController();
+  @override
+  void dispose() { message.dispose(); super.dispose(); }
+  Future<void> send() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || message.text.trim().isEmpty) return;
+    final text = message.text.trim(); message.clear();
+    try { await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('messages').add({
+      'senderId': uid, 'text': text, 'createdAt': FieldValue.serverTimestamp(),
+    }); } catch (e) { if (mounted) snack(context, 'Message not sent: ' + e.toString()); }
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(widget.groupName)),
+    body: Column(children: [
+      Expanded(child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('messages').orderBy('createdAt').snapshots(),
+        builder: (context, snap) {
+          if (snap.hasError) return errorView('Messages could not load. Group membership may be required.');
+          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          return ListView(children: snap.data!.docs.map((doc) => ListTile(
+            title: Text(doc.data()['text']?.toString() ?? ''),
+            subtitle: Text(doc.data()['senderId'] == FirebaseAuth.instance.currentUser?.uid ? 'You' : 'Group member'),
+          )).toList());
+        },
+      )),
+      SafeArea(child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [
+        Expanded(child: TextField(controller: message, decoration: const InputDecoration(hintText: 'Write a message'))),
+        IconButton(onPressed: send, icon: const Icon(Icons.send)),
+      ]))),
+    ]),
+  );
+}
+
+class HouseRequestsScreen extends StatelessWidget {
+  const HouseRequestsScreen({super.key});
+  Future<void> decide(BuildContext context, String id, String status, Map<String, dynamic> data) async {
+    try {
+      await FirebaseFirestore.instance.collection('houseRequests').doc(id).update({
+        'status': status, 'reviewedAt': FieldValue.serverTimestamp(), 'reviewedBy': FirebaseAuth.instance.currentUser?.uid,
+      });
+      if (status == 'approved') {
+        await FirebaseFirestore.instance.collection('houses').doc(data['houseId']?.toString()).update({
+          'isOccupied': true, 'status': 'occupied', 'assignedTenantId': data['tenantId'],
+        });
+        await FirebaseFirestore.instance.collection('tenants').add({
+          'name': data['tenantName'] ?? 'Tenant', 'houseNo': data['houseNo'] ?? '',
+          'tenantId': data['tenantId'], 'landlordId': data['landlordId'],
+          'createdBy': data['landlordId'], 'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+      if (context.mounted) snack(context, 'Request ' + status + '.');
+    } catch (e) { if (context.mounted) snack(context, 'Could not process request: ' + e.toString()); }
+  }
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return Scaffold(appBar: AppBar(title: const Text('House requests')),
+      body: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        future: uid == null ? null : FirebaseFirestore.instance.collection('users').doc(uid).get(),
+        builder: (context, profile) {
+          if (!profile.hasData) return const Center(child: CircularProgressIndicator());
+          final p = profile.data?.data() ?? {};
+          final role = p['role']?.toString() ?? 'tenant';
+          final stream = role == 'tenant'
+            ? FirebaseFirestore.instance.collection('houseRequests').where('tenantId', isEqualTo: uid).snapshots()
+            : FirebaseFirestore.instance.collection('houseRequests').where('landlordId', isEqualTo: role == 'landlord' ? uid : p['landlordId']).snapshots();
+          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(stream: stream, builder: (context, snap) {
+            if (snap.hasError) return errorView('Requests could not load.');
+            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+            if (snap.data!.docs.isEmpty) return const EmptyView('No house requests.');
+            return ListView(children: snap.data!.docs.map((doc) {
+              final d = doc.data();
+              return Card(child: ListTile(title: Text('House ' + (d['houseNo'] ?? '').toString()),
+                subtitle: Text((d['tenantName'] ?? 'Tenant').toString() + ' • ' + (d['status'] ?? 'pending').toString()),
+                trailing: role == 'tenant' ? null : Wrap(children: [
+                  IconButton(tooltip: 'Approve', onPressed: d['status'] == 'pending' ? () => decide(context, doc.id, 'approved', d) : null, icon: const Icon(Icons.check_circle, color: Colors.green)),
+                  IconButton(tooltip: 'Decline', onPressed: d['status'] == 'pending' ? () => decide(context, doc.id, 'declined', d) : null, icon: const Icon(Icons.cancel_outlined, color: Colors.red)),
+                ])));
+            }).toList());
+          });
+        },
+      ),
+    );
+  }
+}
+
+class NoticesScreen extends StatefulWidget {
+  const NoticesScreen({super.key});
+  @override
+  State<NoticesScreen> createState() => _NoticesScreenState();
+}
+class _NoticesScreenState extends State<NoticesScreen> {
+  final title = TextEditingController(), body = TextEditingController();
+  bool saving = false;
+  @override
+  void dispose() { title.dispose(); body.dispose(); super.dispose(); }
+  Future<void> publish() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || title.text.trim().isEmpty || body.text.trim().isEmpty) { snack(context, 'Enter a notice title and message.'); return; }
+    setState(() => saving = true);
+    try {
+      final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final p = profile.data() ?? {};
+      final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
+      if (landlordId == null) throw StateError('Your account is not linked to a landlord.');
+      await FirebaseFirestore.instance.collection('notices').add({
+        'title': title.text.trim(), 'body': body.text.trim(), 'landlordId': landlordId,
+        'createdBy': uid, 'createdAt': FieldValue.serverTimestamp(), 'audience': 'all',
+      });
+      title.clear(); body.clear();
+      if (mounted) snack(context, 'Notice published.');
+    } catch (e) { if (mounted) snack(context, 'Could not publish notice: ' + e.toString()); }
+    finally { if (mounted) setState(() => saving = false); }
+  }
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return Scaffold(appBar: AppBar(title: const Text('Property notices')),
+      body: Column(children: [
+        FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          future: uid == null ? null : FirebaseFirestore.instance.collection('users').doc(uid).get(),
+          builder: (context, profile) {
+            if (!profile.hasData) return const SizedBox.shrink();
+            if (profile.data?.data()?['role'] == 'tenant') return const SizedBox.shrink();
+            return Padding(padding: const EdgeInsets.all(12), child: Column(children: [
+              TextField(controller: title, decoration: const InputDecoration(labelText: 'Notice title')),
+              TextField(controller: body, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Message')),
+              SizedBox(width: double.infinity, child: FilledButton(onPressed: saving ? null : publish, child: Text(saving ? 'Publishing...' : 'PUBLISH NOTICE'))),
+            ]));
+          },
+        ),
+        const Divider(height: 1),
+        Expanded(child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          future: uid == null ? null : FirebaseFirestore.instance.collection('users').doc(uid).get(),
+          builder: (context, profile) {
+            if (!profile.hasData) return const Center(child: CircularProgressIndicator());
+            final p = profile.data?.data() ?? {};
+            final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
+            if (landlordId == null) return const EmptyView('No landlord linked.');
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance.collection('notices').where('landlordId', isEqualTo: landlordId).snapshots(),
+              builder: (context, snap) {
+                if (snap.hasError) return errorView('Notices could not load.');
+                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                return ListView(children: snap.data!.docs.map((doc) => Card(child: ListTile(
+                  leading: const Icon(Icons.campaign_outlined), title: Text(doc.data()['title']?.toString() ?? ''),
+                  subtitle: Text(doc.data()['body']?.toString() ?? ''),
+                ))).toList());
+              },
+            );
+          },
+        )),
+      ]),
+    );
+  }
+}
+
+class ElectricityScreen extends StatefulWidget {
+  const ElectricityScreen({super.key});
+  @override
+  State<ElectricityScreen> createState() => _ElectricityScreenState();
+}
+class _ElectricityScreenState extends State<ElectricityScreen> {
+  final meterName = TextEditingController(), meterNumber = TextEditingController(), houseNo = TextEditingController(), amount = TextEditingController();
+  String billing = 'prepaid';
+  bool saving = false;
+  @override
+  void dispose() { meterName.dispose(); meterNumber.dispose(); houseNo.dispose(); amount.dispose(); super.dispose(); }
+  Future<void> saveMeter() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || meterName.text.trim().isEmpty || meterNumber.text.trim().isEmpty) { snack(context, 'Enter meter name and meter number.'); return; }
+    setState(() => saving = true);
+    try {
+      await FirebaseFirestore.instance.collection('meters').add({
+        'landlordId': uid, 'name': meterName.text.trim(), 'meterNumber': meterNumber.text.trim(),
+        'billingType': billing, 'createdAt': FieldValue.serverTimestamp(),
+      });
+      meterName.clear(); meterNumber.clear();
+      if (mounted) snack(context, 'Meter registered.');
+    } catch (e) { if (mounted) snack(context, 'Could not save meter: ' + e.toString()); }
+    finally { if (mounted) setState(() => saving = false); }
+  }
+  Future<void> allocateUnit() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final value = double.tryParse(amount.text.trim());
+    if (uid == null || houseNo.text.trim().isEmpty || value == null || value < 0) { snack(context, 'Enter a house number and valid amount.'); return; }
+    setState(() => saving = true);
+    try {
+      await FirebaseFirestore.instance.collection('electricityAllocations').add({
+        'landlordId': uid, 'houseNo': houseNo.text.trim(), 'amount': value,
+        'billingType': billing, 'interval': 'monthly', 'createdAt': FieldValue.serverTimestamp(),
+      });
+      houseNo.clear(); amount.clear();
+      if (mounted) snack(context, 'Electricity allocation saved.');
+    } catch (e) { if (mounted) snack(context, 'Could not save allocation: ' + e.toString()); }
+    finally { if (mounted) setState(() => saving = false); }
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Electricity management')),
+    body: ListView(padding: const EdgeInsets.all(16), children: [
+      const Text('Register prepaid or postpaid meters and record per-unit electricity allocations.'),
+      DropdownButtonFormField<String>(value: billing, decoration: const InputDecoration(labelText: 'Billing model'),
+        items: const [DropdownMenuItem(value: 'prepaid', child: Text('Prepaid')), DropdownMenuItem(value: 'postpaid', child: Text('Postpaid'))],
+        onChanged: (v) => setState(() => billing = v ?? 'prepaid')),
+      const SizedBox(height: 10),
+      TextField(controller: meterName, decoration: const InputDecoration(labelText: 'Meter label')),
+      TextField(controller: meterNumber, decoration: const InputDecoration(labelText: 'Meter number / reference')),
+      FilledButton(onPressed: saving ? null : saveMeter, child: const Text('REGISTER METER')),
+      const Divider(height: 30),
+      const Text('Per-house electricity allocation', style: TextStyle(fontWeight: FontWeight.bold)),
+      TextField(controller: houseNo, decoration: const InputDecoration(labelText: 'House / unit number')),
+      TextField(controller: amount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Amount (KSh) per interval')),
+      FilledButton(onPressed: saving ? null : allocateUnit, child: const Text('SAVE UNIT ALLOCATION')),
+      const SizedBox(height: 12),
+      const Text('This stores meter and billing allocation records only. It does not purchase KPLC tokens or automatically pay electricity bills; live transactions need a verified provider integration and secure backend.'),
+    ]));
+}
+
+class ActivityLogScreen extends StatelessWidget {
+  const ActivityLogScreen({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return Scaffold(appBar: AppBar(title: const Text('Caretaker activity log')),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance.collection('activityLogs').where('landlordId', isEqualTo: uid).snapshots(),
+        builder: (context, snap) {
+          if (snap.hasError) return errorView('Activity log could not load.');
+          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          if (snap.data!.docs.isEmpty) return const EmptyView('No recorded caretaker activity yet.');
+          return ListView(children: snap.data!.docs.map((doc) => ListTile(
+            leading: const Icon(Icons.history), title: Text(doc.data()['action']?.toString() ?? 'Activity'),
+            subtitle: Text(doc.data()['actorName']?.toString() ?? 'Account'),
+          )).toList());
+        },
+      ),
+    );
+  }
+}
+
+class CaretakerHousesScreen extends StatelessWidget {
+  const CaretakerHousesScreen({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return Scaffold(appBar: AppBar(title: const Text('Assigned properties')),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance.collection('houses').where('caretakerIds', arrayContains: uid).snapshots(),
+        builder: (context, snap) {
+          if (snap.hasError) return errorView('Assigned properties could not load.');
+          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          if (snap.data!.docs.isEmpty) return const EmptyView('No properties have been assigned to you yet.');
+          return ListView(children: snap.data!.docs.map((doc) => ListTile(
+            leading: const Icon(Icons.home_work_outlined), title: Text('House ' + (doc.data()['houseNo'] ?? '').toString()),
+            subtitle: Text(doc.data()['isOccupied'] == true ? 'Occupied' : 'Vacant'),
+          )).toList());
+        },
+      ),
+    );
+  }
+}
+
+class TenantApprovalsScreen extends StatelessWidget {
+  const TenantApprovalsScreen({super.key});
+  Future<void> approve(BuildContext context, String id, String status) async {
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(id).update({
+        'status': status, 'approvedAt': FieldValue.serverTimestamp(), 'approvedBy': FirebaseAuth.instance.currentUser?.uid,
+      });
+      if (context.mounted) snack(context, 'Account ' + status + '.');
+    } catch (e) { if (context.mounted) snack(context, 'Could not update account: ' + e.toString()); }
+  }
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return Scaffold(appBar: AppBar(title: const Text('Tenant approvals')),
+      body: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        future: uid == null ? null : FirebaseFirestore.instance.collection('users').doc(uid).get(),
+        builder: (context, profile) {
+          if (!profile.hasData) return const Center(child: CircularProgressIndicator());
+          final p = profile.data?.data() ?? {};
+          final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
+          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance.collection('users').where('landlordId', isEqualTo: landlordId).where('role', isEqualTo: 'tenant').snapshots(),
+            builder: (context, snap) {
+              if (snap.hasError) return errorView('Tenant accounts could not load.');
+              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+              if (snap.data!.docs.isEmpty) return const EmptyView('No tenant accounts awaiting approval.');
+              return ListView(children: snap.data!.docs.map((doc) {
+                final d = doc.data();
+                return Card(child: ListTile(title: Text(d['displayName']?.toString() ?? 'Tenant'),
+                  subtitle: Text((d['email'] ?? '').toString() + ' • ' + (d['status'] ?? 'pending').toString()),
+                  trailing: d['status'] == 'pending' ? Wrap(children: [
+                    IconButton(onPressed: () => approve(context, doc.id, 'active'), icon: const Icon(Icons.check_circle, color: Colors.green)),
+                    IconButton(onPressed: () => approve(context, doc.id, 'rejected'), icon: const Icon(Icons.cancel, color: Colors.red)),
+                  ]) : null));
+              }).toList());
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class CaretakerPaymentsScreen extends StatelessWidget {
+  const CaretakerPaymentsScreen({super.key});
+  Future<void> confirm(BuildContext context, String id) async {
+    try {
+      await FirebaseFirestore.instance.collection('payments').doc(id).update({
+        'status': 'confirmed_by_caretaker', 'confirmedBy': FirebaseAuth.instance.currentUser?.uid,
+        'confirmedAt': FieldValue.serverTimestamp(),
+      });
+      if (context.mounted) snack(context, 'Payment marked as confirmed by caretaker.');
+    } catch (e) { if (context.mounted) snack(context, 'Could not confirm payment: ' + e.toString()); }
+  }
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return Scaffold(appBar: AppBar(title: const Text('Rent confirmations')),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance.collection('payments').where('caretakerId', isEqualTo: uid).snapshots(),
+        builder: (context, snap) {
+          if (snap.hasError) return errorView('Assigned payment records could not load.');
+          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          if (snap.data!.docs.isEmpty) return const EmptyView('No rent confirmations assigned to you. The landlord controls financial totals.');
+          return ListView(children: snap.data!.docs.map((doc) {
+            final d = doc.data();
+            return ListTile(title: Text(d['tenantName']?.toString() ?? 'Tenant'),
+              subtitle: Text('House ' + (d['houseNo'] ?? '').toString() + ' • ' + (d['status'] ?? 'pending').toString()),
+              trailing: TextButton(onPressed: d['status'] == 'pending' ? () => confirm(context, doc.id) : null, child: const Text('CONFIRM')));
+          }).toList());
+        },
+      ),
+    );
+  }
+}
+
 class EmptyView extends StatelessWidget {
   final String text;
   const EmptyView(this.text, {super.key});
