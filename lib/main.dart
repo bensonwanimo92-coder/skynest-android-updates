@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/intl.dart';
+import 'dart:math';
 import 'package:table_calendar/table_calendar.dart';
 
 const brand = Color(0xFF1565C0);
@@ -301,34 +302,75 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   BannerAd? banner;
   bool loaded = false;
+  String userRole = 'landlord';
   @override
   void initState() {
     super.initState();
+    _loadUserRole();
     // AdMob is independent of Firebase, so load ads even if Firebase is unavailable.
     banner = BannerAd(adUnitId: skynestBannerAdUnitId, size: AdSize.banner, request: const AdRequest(), listener: BannerAdListener(
       onAdLoaded: (_) { if (mounted) setState(() => loaded = true); },
       onAdFailedToLoad: (ad, _) { ad.dispose(); banner = null; },
     ))..load();
   }
+  Future<void> _loadUserRole() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || !firebaseReady) return;
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (mounted && doc.exists) setState(() => userRole = doc.data()?['role']?.toString() ?? 'landlord');
+    } catch (_) {}
+  }
   @override
   void dispose() { banner?.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
-    final items = <_MenuItem>[
-      _MenuItem('Houses', Icons.home_work_outlined, Colors.orange, const HousesScreen()),
-      _MenuItem('Tenants', Icons.people_alt_outlined, Colors.green, const TenantsScreen()),
-      _MenuItem('Payments', Icons.payments_outlined, Colors.blue, const PaymentsScreen()),
-      _MenuItem('Pay rent', Icons.phone_android, Colors.teal, const TenantPayScreen()),
-      _MenuItem('Calculator', Icons.calculate_outlined, Colors.purple, const CalculatorScreen()),
-      _MenuItem('Calendar', Icons.calendar_month, Colors.cyan, const CalendarScreen()),
-      _MenuItem('Plans', Icons.assignment_outlined, Colors.indigo, const PlansScreen()),
-      _MenuItem('Achievements', Icons.emoji_events_outlined, Colors.amber, const AchievementsScreen()),
-      _MenuItem('Pamphlets', Icons.menu_book_outlined, Colors.brown, const PamphletsScreen()),
-      _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
-      _MenuItem('Premium', Icons.workspace_premium, Colors.deepOrange, const PremiumScreen()),
-    ];
+    final items = <_MenuItem>[];
+    if (userRole == 'landlord') {
+      items.addAll([
+
+        _MenuItem('Houses', Icons.home_work_outlined, Colors.orange, const HousesScreen()),
+        _MenuItem('Tenants', Icons.people_alt_outlined, Colors.green, const TenantsScreen()),
+        _MenuItem('Payments', Icons.payments_outlined, Colors.blue, const PaymentsScreen()),
+        _MenuItem('Caretakers & invitations', Icons.badge_outlined, Colors.teal, const InvitationsScreen()),
+        _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
+        _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
+        _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
+        _MenuItem('Electricity', Icons.electric_bolt, Colors.amber, const ElectricityScreen()),
+        _MenuItem('Activity log', Icons.fact_check_outlined, Colors.blueGrey, const ActivityLogScreen()),
+        _MenuItem('Calculator', Icons.calculate_outlined, Colors.purple, const CalculatorScreen()),
+        _MenuItem('Calendar', Icons.calendar_month, Colors.cyan, const CalendarScreen()),
+        _MenuItem('Plans', Icons.assignment_outlined, Colors.indigo, const PlansScreen()),
+        _MenuItem('Achievements', Icons.emoji_events_outlined, Colors.amber, const AchievementsScreen()),
+        _MenuItem('Pamphlets', Icons.menu_book_outlined, Colors.brown, const PamphletsScreen()),
+        _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
+        _MenuItem('Premium', Icons.workspace_premium, Colors.deepOrange, const PremiumScreen()),
+      ]);
+    } else if (userRole == 'caretaker') {
+      items.addAll([
+        _MenuItem('Assigned houses', Icons.home_work_outlined, Colors.orange, const CaretakerHousesScreen()),
+        _MenuItem('Tenant approvals', Icons.how_to_reg_outlined, Colors.green, const TenantApprovalsScreen()),
+        _MenuItem('Rent confirmations', Icons.fact_check_outlined, Colors.blue, const CaretakerPaymentsScreen()),
+        _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
+        _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
+        _MenuItem('House requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
+        _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
+        _MenuItem('Tenant portal', Icons.person_outline, Colors.cyan, const TenantPortalScreen()),
+        _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
+      ]);
+    } else {
+      items.addAll([
+        _MenuItem('Find a vacant house', Icons.home_work_outlined, Colors.orange, const TenantPortalScreen()),
+        _MenuItem('My complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
+        _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
+        _MenuItem('House change requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
+        _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
+        _MenuItem('Pay rent', Icons.phone_android, Colors.green, const TenantPayScreen()),
+        _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
+      ]);
+    }
     return Scaffold(
-      appBar: AppBar(title: const Text('SkyNest Dashboard'), actions: [
+      appBar: AppBar(title: Text('SkyNest • ' + userRole[0].toUpperCase() + userRole.substring(1)), actions: [
         IconButton(tooltip: 'Sign out', icon: const Icon(Icons.logout), onPressed: () async {
           if (firebaseReady) await FirebaseAuth.instance.signOut();
           if (!context.mounted) return;
