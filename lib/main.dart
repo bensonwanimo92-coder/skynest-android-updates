@@ -1262,10 +1262,10 @@ class NoticesScreen extends StatefulWidget {
   State<NoticesScreen> createState() => _NoticesScreenState();
 }
 class _NoticesScreenState extends State<NoticesScreen> {
-  final title = TextEditingController(), body = TextEditingController();
+  final title = TextEditingController(), body = TextEditingController(), targetUids = TextEditingController();
   bool saving = false;
   @override
-  void dispose() { title.dispose(); body.dispose(); super.dispose(); }
+  void dispose() { title.dispose(); body.dispose(); targetUids.dispose(); super.dispose(); }
   Future<void> publish() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || title.text.trim().isEmpty || body.text.trim().isEmpty) { snack(context, 'Enter a notice title and message.'); return; }
@@ -1275,11 +1275,19 @@ class _NoticesScreenState extends State<NoticesScreen> {
       final p = profile.data() ?? {};
       final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
       if (landlordId == null) throw StateError('Your account is not linked to a landlord.');
-      await FirebaseFirestore.instance.collection('notices').add({
+      final explicitTargets = targetUids.text.split(',').map((v) => v.trim()).where((v) => v.isNotEmpty).toSet().toList();
+      final recipients = explicitTargets.isNotEmpty ? explicitTargets :
+        (await FirebaseFirestore.instance.collection('users').where('landlordId', isEqualTo: landlordId).where('status', isEqualTo: 'active').get()).docs.map((d) => d.id).toList();
+      final notice = {
         'title': title.text.trim(), 'body': body.text.trim(), 'landlordId': landlordId,
-        'createdBy': uid, 'createdAt': FieldValue.serverTimestamp(), 'audience': 'all',
-      });
-      title.clear(); body.clear();
+        'createdBy': uid, 'createdAt': FieldValue.serverTimestamp(),
+        'audience': explicitTargets.isEmpty ? 'all' : 'selected',
+      };
+      final noticeRef = await FirebaseFirestore.instance.collection('notices').add(notice);
+      for (final recipient in recipients) {
+        await FirebaseFirestore.instance.collection('users').doc(recipient).collection('notices').doc(noticeRef.id).set(notice);
+      }
+      title.clear(); body.clear(); targetUids.clear();
       if (mounted) snack(context, 'Notice published.');
     } catch (e) { if (mounted) snack(context, 'Could not publish notice: ' + e.toString()); }
     finally { if (mounted) setState(() => saving = false); }
@@ -1297,6 +1305,7 @@ class _NoticesScreenState extends State<NoticesScreen> {
             return Padding(padding: const EdgeInsets.all(12), child: Column(children: [
               TextField(controller: title, decoration: const InputDecoration(labelText: 'Notice title')),
               TextField(controller: body, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Message')),
+              TextField(controller: targetUids, decoration: const InputDecoration(labelText: 'Specific tenant UIDs (comma-separated; leave blank for all tenants)')),
               SizedBox(width: double.infinity, child: FilledButton(onPressed: saving ? null : publish, child: Text(saving ? 'Publishing...' : 'PUBLISH NOTICE'))),
             ]));
           },
@@ -1309,8 +1318,11 @@ class _NoticesScreenState extends State<NoticesScreen> {
             final p = profile.data?.data() ?? {};
             final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
             if (landlordId == null) return const EmptyView('No landlord linked.');
+            final noticeStream = p['role'] == 'tenant'
+              ? FirebaseFirestore.instance.collection('users').doc(uid).collection('notices').snapshots()
+              : FirebaseFirestore.instance.collection('notices').where('landlordId', isEqualTo: landlordId).snapshots();
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance.collection('notices').where('landlordId', isEqualTo: landlordId).snapshots(),
+              stream: noticeStream,
               builder: (context, snap) {
                 if (snap.hasError) return errorView('Notices could not load.');
                 if (!snap.hasData) return const Center(child: CircularProgressIndicator());
