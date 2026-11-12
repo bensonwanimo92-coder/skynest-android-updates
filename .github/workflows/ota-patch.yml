@@ -431,7 +431,13 @@ jobs:
           if len(matches) != 1:
               raise SystemExit("Expected exactly one version entry in pubspec.yaml.")
           lines[matches[0]] = "version: " + version
-          p.write_text("\\n".join(lines) + "\\n")
+          p.write_text("\n".join(lines) + "\n")
+          updated = p.read_text()
+          if "shorebird.yaml" not in updated or not Path("shorebird.yaml").is_file():
+              raise SystemExit("shorebird.yaml asset is missing from the patch source.")
+          if not any(line.strip() == "- shorebird.yaml" for line in updated.splitlines()):
+              raise SystemExit("pubspec.yaml does not declare shorebird.yaml under Flutter assets.")
+          print("Verified shorebird.yaml asset and valid pubspec newlines.")
           print("Patch target pinned to " + version)
           PY
 
