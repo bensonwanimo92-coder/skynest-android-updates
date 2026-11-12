@@ -481,7 +481,7 @@ class TenantsScreen extends StatelessWidget {
     appBar: AppBar(title: const Text('Tenants')),
     floatingActionButton: FloatingActionButton(onPressed: () => addTenant(context), child: const Icon(Icons.person_add_alt_1)),
     body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('tenants').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
+      stream: FirebaseFirestore.instance.collection('tenants').where('landlordId', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
       builder: (context, s) {
         if (s.hasError) return errorView('Tenants could not load: ' + s.error.toString());
         if (!s.hasData) return const Center(child: CircularProgressIndicator());
@@ -544,11 +544,26 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
     if (tenant.text.trim().isEmpty || value == null || value <= 0) { snack(context, 'Enter tenant name and a valid amount.'); return; }
     setState(() => saving = true);
     try {
-      await FirebaseFirestore.instance.collection('payments').add({
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final paymentRef = await FirebaseFirestore.instance.collection('payments').add({
         'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(), 'amount': value,
         'method': 'Manual / awaiting M-Pesa confirmation', 'status': 'Pending verification',
-        'createdAt': FieldValue.serverTimestamp(), 'createdBy': FirebaseAuth.instance.currentUser?.uid,
+        'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
       });
+      if (uid != null) {
+        final matchingHouse = await FirebaseFirestore.instance.collection('houses')
+          .where('createdBy', isEqualTo: uid).where('houseNo', isEqualTo: house.text.trim()).limit(1).get();
+        if (matchingHouse.docs.isNotEmpty) {
+          final assigned = (matchingHouse.docs.first.data()['caretakerIds'] as List?)?.whereType<String>().toList() ?? <String>[];
+          if (assigned.isNotEmpty) {
+            await FirebaseFirestore.instance.collection('paymentConfirmations').add({
+              'landlordId': uid, 'caretakerId': assigned.first, 'paymentId': paymentRef.id,
+              'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(),
+              'status': 'pending', 'createdAt': FieldValue.serverTimestamp(),
+            });
+          }
+        }
+      }
       if (mounted) { amount.clear(); snack(context, 'Saved as pending verification. No M-Pesa STK Push was sent.'); }
     } catch (e) { snack(context, 'Could not save: ' + e.toString()); }
     finally { if (mounted) setState(() => saving = false); }
