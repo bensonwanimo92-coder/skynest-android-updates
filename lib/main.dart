@@ -1431,8 +1431,13 @@ class _NoticesScreenState extends State<NoticesScreen> {
       final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
       if (landlordId == null) throw StateError('Your account is not linked to a landlord.');
       final explicitTargets = targetUids.text.split(',').map((v) => v.trim()).where((v) => v.isNotEmpty).toSet().toList();
-      final recipients = explicitTargets.isNotEmpty ? explicitTargets :
-        (await FirebaseFirestore.instance.collection('users').where('landlordId', isEqualTo: landlordId).where('status', isEqualTo: 'active').get()).docs.map((d) => d.id).toList();
+      final linkedAccounts = await FirebaseFirestore.instance.collection('users')
+        .where('landlordId', isEqualTo: landlordId).where('status', isEqualTo: 'active').get();
+      final linkedIds = linkedAccounts.docs.map((d) => d.id).toSet();
+      if (explicitTargets.any((id) => !linkedIds.contains(id))) {
+        throw StateError('One or more selected tenant IDs do not belong to this property account.');
+      }
+      final recipients = explicitTargets.isNotEmpty ? explicitTargets : linkedAccounts.docs.map((d) => d.id).toList();
       final notice = {
         'title': title.text.trim(), 'body': body.text.trim(), 'landlordId': landlordId,
         'createdBy': uid, 'createdAt': FieldValue.serverTimestamp(),
@@ -1645,7 +1650,10 @@ class TenantApprovalsScreen extends StatelessWidget {
             builder: (context, snap) {
               if (snap.hasError) return errorView('Tenant accounts could not load.');
               if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-              final pendingAccounts = snap.data!.docs.where((doc) => ['tenant', 'caretaker'].contains(doc.data()['role']) && doc.data()['status'] == 'pending').toList();
+              final managerRole = p['role']?.toString() ?? 'tenant';
+              final pendingAccounts = snap.data!.docs.where((doc) =>
+                (doc.data()['role'] == 'tenant' || (managerRole == 'landlord' && doc.data()['role'] == 'caretaker')) &&
+                doc.data()['status'] == 'pending').toList();
               if (pendingAccounts.isEmpty) return const EmptyView('No tenant or caretaker accounts awaiting approval.');
               return ListView(children: pendingAccounts.map((doc) {
                 final d = doc.data();
