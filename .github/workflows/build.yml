@@ -217,6 +217,14 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
+      - name: Generate custom SkyNest launcher icons
+        run: |
+          set -euo pipefail
+          command -v convert >/dev/null || { echo "ImageMagick is required to render the SkyNest SVG icon."; exit 1; }
+          convert -background none assets/branding/skynest_launcher.svg -resize 1024x1024 assets/branding/skynest_launcher.png
+          dart run flutter_launcher_icons
+          echo "Generated SkyNest launcher icons for Android."
+
       - name: Force Android API 36 for every Flutter plugin
         run: |
           set -euo pipefail
