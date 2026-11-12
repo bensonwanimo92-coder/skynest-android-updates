@@ -439,35 +439,15 @@ jobs:
           disable-animations: true
           # Resolve the actual launcher component from the installed package instead of
           # assuming Flutter's generated activity name. Keep diagnostics on every failure.
+          # The emulator action executes script lines in separate shell processes.
+          # Keep each command self-contained: do not rely on shell variables between lines.
           script: |
-            set -Eeuo pipefail
-            APK="build/app/outputs/flutter-apk/app-release.apk"
-            PACKAGE="com.hello22_.chuka"
             adb wait-for-device
-            adb install -r "$APK"
-            component="$(adb shell cmd package resolve-activity --brief -c android.intent.category.LAUNCHER "$PACKAGE" | tr -d '\\r' | tail -n 1)"
-            echo "Resolved launcher component: $component"
-            if [[ "$component" != */* ]]; then
-              echo "FAIL: Android could not resolve a launcher activity."
-              adb shell dumpsys package "$PACKAGE" || true
-              exit 1
-            fi
-            adb shell am force-stop "$PACKAGE"
-            adb shell am start -W -n "$component"
+            adb install -r build/app/outputs/flutter-apk/app-release.apk
+            adb shell monkey -p com.hello22_.chuka -c android.intent.category.LAUNCHER 1
             sleep 8
-            if ! adb shell pidof "$PACKAGE" >/dev/null 2>&1; then
-              echo "FAIL: app process exited after launch. Capturing crash diagnostics:"
-              adb logcat -d -t 1500 | grep -iE "FATAL EXCEPTION|AndroidRuntime|Process: com.hello22_.chuka|Firebase|Exception|Fatal signal" | tail -n 160 || true
-              adb shell dumpsys activity activities || true
-              adb shell dumpsys package "$PACKAGE" || true
-              exit 1
-            fi
-            if ! adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -F "$PACKAGE"; then
-              echo "FAIL: app process is alive but launcher activity is not resumed."
-              adb shell dumpsys activity activities || true
-              adb logcat -d -t 800 | tail -n 200 || true
-              exit 1
-            fi
+            adb shell pidof com.hello22_.chuka
+            adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -F "com.hello22_.chuka"
             echo "PASS: SkyNest installed, launched, and remained running on Android 14."
 
       - name: Upload APK artifact
