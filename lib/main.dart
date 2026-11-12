@@ -16,9 +16,7 @@ final dateFormat = DateFormat('dd MMM yyyy');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try { await Firebase.initializeApp(); firebaseReady = true; }
-  catch (e) { firebaseError = e.toString(); }
-  try { await MobileAds.instance.initialize(); } catch (_) {}
+  // Render the Flutter application before starting native Firebase or AdMob work.
   runApp(const SkynestApp());
 }
 
@@ -64,8 +62,56 @@ class SkynestApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: themeManager,
-    builder: (_, __) => MaterialApp(title: 'SkyNest', debugShowCheckedModeBanner: false, theme: themeManager.value, home: const LoginScreen()),
+    builder: (_, __) => MaterialApp(title: 'SkyNest', debugShowCheckedModeBanner: false, theme: themeManager.value, home: const StartupGate()),
   );
+}
+
+class StartupGate extends StatefulWidget {
+  const StartupGate({super.key});
+  @override
+  State<StartupGate> createState() => _StartupGateState();
+}
+
+class _StartupGateState extends State<StartupGate> {
+  bool initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Let the first Flutter frame render before initializing native plugins.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initializeFirebase());
+  }
+
+  Future<void> _initializeFirebase() async {
+    try {
+      await Firebase.initializeApp();
+      firebaseReady = true;
+    } catch (e) {
+      firebaseError = e.toString();
+    }
+    if (mounted) setState(() => initialized = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!initialized) {
+      return const Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Preparing SkyNest...'),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return const LoginScreen();
+  }
 }
 
 class LoginScreen extends StatefulWidget {
@@ -310,11 +356,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _loadUserRole();
-    // AdMob is independent of Firebase, so load ads even if Firebase is unavailable.
-    banner = BannerAd(adUnitId: skynestBannerAdUnitId, size: AdSize.banner, request: const AdRequest(), listener: BannerAdListener(
-      onAdLoaded: (_) { if (mounted) setState(() => loaded = true); },
-      onAdFailedToLoad: (ad, _) { ad.dispose(); banner = null; },
-    ))..load();
+    // Initialize AdMob only after the dashboard is opened, never during app startup.
+    _initializeBannerAd();
+  }
+
+  Future<void> _initializeBannerAd() async {
+    try {
+      await MobileAds.instance.initialize();
+    } catch (_) {
+      // Ads are optional; an AdMob failure must not prevent property management.
+      return;
+    }
+    if (!mounted) return;
+    banner = BannerAd(
+      adUnitId: skynestBannerAdUnitId,
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) { if (mounted) setState(() => loaded = true); },
+        onAdFailedToLoad: (ad, _) { ad.dispose(); banner = null; },
+      ),
+    )..load();
   }
   Future<void> _loadUserRole() async {
     final user = FirebaseAuth.instance.currentUser;
