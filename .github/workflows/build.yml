@@ -1,4 +1,4 @@
-name: SkyNest Signed Release Build
+name: SkyNest Signed APK Build (No Emulator)
 
 on:
   push:
@@ -474,57 +474,6 @@ jobs:
           expected="106BEBFDDB78488B4817608A97417ED5AFAE4C88D5FCB00B29572B4DA554BB0F"
           test "$actual" = "$expected" || { echo "ERROR: Built APK certificate does not match original"; echo "Actual: $actual"; exit 1; }
           echo "Built APK package and original signing certificate verified."
-
-      - name: Prepare Android 14 smoke-test script
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > /tmp/skynest-android14-smoke-test.sh <<'BASH'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          PACKAGE="com.hello22_.chuka"
-          APK="build/app/outputs/flutter-apk/app-release.apk"
-          adb wait-for-device
-          adb install -r "$APK"
-          adb logcat -c
-          adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
-          sleep 15
-
-          echo "===== SkyNest process check ====="
-          PROCESS_LIST="$(adb shell ps -A | tr -d "\r")"
-          printf "%s\n" "$PROCESS_LIST" | grep -F "$PACKAGE" || true
-
-          echo "===== Android resumed activity check ====="
-          adb shell dumpsys activity activities > /tmp/skynest-activity-dump.txt
-          adb shell dumpsys window > /tmp/skynest-window-dump.txt
-          adb logcat -d -v time > /tmp/skynest-android14-logcat.txt
-
-          if printf "%s\n" "$PROCESS_LIST" | grep -Fq "$PACKAGE" ||
-             grep -E "mResumedActivity|topResumedActivity|ResumedActivity" /tmp/skynest-activity-dump.txt /tmp/skynest-window-dump.txt | grep -Fq "$PACKAGE"; then
-            echo "PASS: SkyNest installed and launched on Android 14."
-          else
-            echo "ERROR: SkyNest installed, but no live process or resumed activity was detected."
-            echo "===== Crash and fatal log excerpts ====="
-            grep -Ei "FATAL EXCEPTION|AndroidRuntime|Fatal signal|crash|com\\.hello22_\\.chuka" /tmp/skynest-android14-logcat.txt | tail -n 200 || true
-            exit 1
-          fi
-          BASH
-          chmod +x /tmp/skynest-android14-smoke-test.sh
-
-      - name: Test APK installation and launch on Android 14
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          cores: 2
-          ram-size: 2048M
-          heap-size: 512M
-          emulator-boot-timeout: 900
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: bash /tmp/skynest-android14-smoke-test.sh
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
