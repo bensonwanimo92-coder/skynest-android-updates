@@ -416,7 +416,7 @@ class HousesScreen extends StatelessWidget {
         FilledButton(onPressed: () async {
           if (!key.currentState!.validate()) return;
           try {
-            await FirebaseFirestore.instance.collection('houses').add({'houseNo': number.text.trim(), 'rent': double.parse(rent.text), 'isOccupied': false, 'status': 'vacant', 'landlordId': FirebaseAuth.instance.currentUser?.uid, 'caretakerIds': <String>[], 'createdAt': FieldValue.serverTimestamp(), 'createdBy': FirebaseAuth.instance.currentUser?.uid, 'landlordId': FirebaseAuth.instance.currentUser?.uid});
+            await FirebaseFirestore.instance.collection('houses').add({'houseNo': number.text.trim(), 'rent': double.parse(rent.text), 'isOccupied': false, 'status': 'vacant', 'landlordId': FirebaseAuth.instance.currentUser?.uid, 'caretakerIds': <String>[], 'createdAt': FieldValue.serverTimestamp(), 'createdBy': FirebaseAuth.instance.currentUser?.uid});
             if (d.mounted) Navigator.pop(d);
           } catch (e) { snack(context, 'Could not save house: ' + e.toString()); }
         }, child: const Text('Save')),
@@ -855,8 +855,13 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       final random = Random.secure();
       final code = List.generate(8, (_) => chars[random.nextInt(chars.length)]).join();
+      final propertyIds = <String>[];
+      if (role == 'caretaker') {
+        final houses = await FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: uid).get();
+        propertyIds.addAll(houses.docs.map((doc) => doc.id));
+      }
       await FirebaseFirestore.instance.collection('invitations').doc(code).set({
-        'role': role, 'landlordId': uid, 'createdBy': uid, 'propertyIds': <String>[],
+        'role': role, 'landlordId': uid, 'createdBy': uid, 'propertyIds': propertyIds,
         'status': 'open', 'createdAt': FieldValue.serverTimestamp(),
         'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
       });
@@ -1088,8 +1093,23 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                 return ListView(children: snap.data!.docs.map((doc) => Card(child: ListTile(
                   leading: const Icon(Icons.groups_outlined), title: Text(doc.data()['name']?.toString() ?? 'Group'),
                   subtitle: Text(((doc.data()['memberIds'] as List?)?.length ?? 1).toString() + ' members'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => GroupChatScreen(groupId: doc.id, groupName: doc.data()['name']?.toString() ?? 'Group'))),
+                  trailing: TextButton(
+                    onPressed: () async {
+                      try {
+                        final groupRef = FirebaseFirestore.instance.collection('groups').doc(doc.id);
+                        await groupRef.update({'memberIds': FieldValue.arrayUnion([uid])});
+                        await groupRef.collection('members').doc(uid).set({'joinedAt': FieldValue.serverTimestamp(), 'role': p['role'] ?? 'tenant'});
+                        if (context.mounted) snack(context, 'Joined group.');
+                      } catch (e) { if (context.mounted) snack(context, 'Could not join group: ' + e.toString()); }
+                    },
+                    child: Text(((doc.data()['memberIds'] as List?)?.contains(uid) ?? false) ? 'OPEN' : 'JOIN')),
+                  onTap: () {
+                    if (!((doc.data()['memberIds'] as List?)?.contains(uid) ?? false)) {
+                      snack(context, 'Join this group first.');
+                      return;
+                    }
+                    Navigator.push(context, MaterialPageRoute<void>(builder: (_) => GroupChatScreen(groupId: doc.id, groupName: doc.data()['name']?.toString() ?? 'Group')));
+                  },
                 ))).toList());
               },
             );
@@ -1373,9 +1393,30 @@ class TenantApprovalsScreen extends StatelessWidget {
   const TenantApprovalsScreen({super.key});
   Future<void> approve(BuildContext context, String id, String status) async {
     try {
-      await FirebaseFirestore.instance.collection('users').doc(id).update({
-        'status': status, 'approvedAt': FieldValue.serverTimestamp(), 'approvedBy': FirebaseAuth.instance.currentUser?.uid,
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final userRef = FirebaseFirestore.instance.collection('users').doc(id);
+      final user = await userRef.get();
+      final data = user.data() ?? {};
+      await userRef.update({
+        'status': status, 'approvedAt': FieldValue.serverTimestamp(), 'approvedBy': uid,
       });
+      if (status == 'active' && data['role'] == 'caretaker') {
+        final propertyIds = (data['propertyIds'] as List?)?.whereType<String>().toList() ?? <String>[];
+        for (final houseId in propertyIds) {
+          await FirebaseFirestore.instance.collection('houses').doc(houseId).update({
+            'caretakerIds': FieldValue.arrayUnion([id]),
+          });
+        }
+      }
+      final profile = uid == null ? null : await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final landlordId = profile?.data()?['role'] == 'landlord' ? uid : profile?.data()?['landlordId'];
+      if (landlordId != null) {
+        await FirebaseFirestore.instance.collection('activityLogs').add({
+          'landlordId': landlordId, 'actorId': uid, 'actorName': profile?.data()?['displayName'] ?? 'Manager',
+          'action': 'Account ' + status + ': ' + (data['displayName'] ?? data['email'] ?? id).toString(),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
       if (context.mounted) snack(context, 'Account ' + status + '.');
     } catch (e) { if (context.mounted) snack(context, 'Could not update account: ' + e.toString()); }
   }
@@ -1390,12 +1431,13 @@ class TenantApprovalsScreen extends StatelessWidget {
           final p = profile.data?.data() ?? {};
           final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
           return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance.collection('users').where('landlordId', isEqualTo: landlordId).where('role', isEqualTo: 'tenant').snapshots(),
+            stream: FirebaseFirestore.instance.collection('users').where('landlordId', isEqualTo: landlordId).snapshots(),
             builder: (context, snap) {
               if (snap.hasError) return errorView('Tenant accounts could not load.');
               if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-              if (snap.data!.docs.isEmpty) return const EmptyView('No tenant accounts awaiting approval.');
-              return ListView(children: snap.data!.docs.map((doc) {
+              final pendingAccounts = snap.data!.docs.where((doc) => ['tenant', 'caretaker'].contains(doc.data()['role']) && doc.data()['status'] == 'pending').toList();
+              if (pendingAccounts.isEmpty) return const EmptyView('No tenant or caretaker accounts awaiting approval.');
+              return ListView(children: pendingAccounts.map((doc) {
                 final d = doc.data();
                 return Card(child: ListTile(title: Text(d['displayName']?.toString() ?? 'Tenant'),
                   subtitle: Text((d['email'] ?? '').toString() + ' • ' + (d['status'] ?? 'pending').toString()),
