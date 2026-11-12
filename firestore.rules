@@ -63,6 +63,14 @@ service cloud.firestore {
           request.resource.data.role == resource.data.role &&
           request.resource.data.landlordId == resource.data.landlordId &&
           myRole() == 'landlord' && request.auth.uid == resource.data.landlordId
+        ) ||
+        (
+          resource.data.role == 'tenant' &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.status == resource.data.status &&
+          request.resource.data.landlordId == resource.data.landlordId &&
+          landlordFor(resource.data.landlordId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['houseId', 'houseNo'])
         )
       );
       allow delete: if signedIn() && request.auth.uid == userId;
