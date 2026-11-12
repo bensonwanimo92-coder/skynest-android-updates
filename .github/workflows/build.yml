@@ -167,7 +167,16 @@ jobs:
       - name: Install Android 14 SDK and Build Tools
         run: |
           set -euo pipefail
+          # sdkmanager may finish after accepting licenses before `yes` exits.
+          # Ignore the producer-side SIGPIPE, but still fail on sdkmanager errors.
+          set +e
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          license_status=${PIPESTATUS[1]}
+          set -e
+          if [ "$license_status" -ne 0 ]; then
+            echo "sdkmanager --licenses failed with exit code $license_status."
+            exit "$license_status"
+          fi
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
           echo "Android platform 34 and Build Tools 34.0.0 installed."
 
