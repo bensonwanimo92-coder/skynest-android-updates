@@ -45,41 +45,6 @@ jobs:
       - name: Generate Android project files
         run: |
           flutter create --platforms=android --org com.hello22_ --project-name chuka .
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          manifest = Path("android/app/src/main/AndroidManifest.xml")
-          text = manifest.read_text()
-          if "android.permission.INTERNET" not in text:
-              text = text.replace("<application", '    <uses-permission android:name="android.permission.INTERNET"/>\\n    <application', 1)
-          meta = '        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3940256099942544~3347511713"/>'
-          if "com.google.android.gms.ads.APPLICATION_ID" not in text:
-              text = text.replace("</application>", meta + "\\n    </application>")
-          manifest.write_text(text)
-          rules = """# Keep Firebase and Google Mobile Ads runtime classes.
-          -keep class com.google.firebase.** { *; }
-          -keep class com.google.android.gms.** { *; }
-          -keep class io.flutter.** { *; }
-          -dontwarn com.google.firebase.**
-          -dontwarn com.google.android.gms.**
-          """
-          Path("android/app/proguard-rules.pro").write_text(rules)
-          gradle = Path("android/app/build.gradle.kts")
-          if gradle.exists():
-              s = gradle.read_text()
-              if 'isMinifyEnabled = false' not in s:
-                  s = re.sub(r'(release\\s*\\{)', r'\\1\\n            isMinifyEnabled = false\\n            isShrinkResources = false\\n            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")', s, count=1)
-              gradle.write_text(s)
-          else:
-              gradle = Path("android/app/build.gradle")
-              if not gradle.exists():
-                  raise SystemExit("Android Gradle file missing after flutter create")
-              s = gradle.read_text()
-              if "minifyEnabled false" not in s:
-                  s = re.sub(r'(release\\s*\\{)', r'\\1\\n            minifyEnabled false\\n            shrinkResources false\\n            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"', s, count=1)
-              gradle.write_text(s)
-          print("Android manifest, AdMob application ID and ProGuard rules configured.")
-          PY
           sed -i 's/android:label="chuka"/android:label="SkyNest"/' android/app/src/main/AndroidManifest.xml
           python3 - <<'PY'
           from pathlib import Path
@@ -92,6 +57,40 @@ jobs:
           if "com.google.android.gms.ads.APPLICATION_ID" not in content:
               content = content.replace("</application>", meta + "\n    </application>")
           p.write_text(content)
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          rules = """# SkyNest Android release keep rules.
+          # R8 shrinking/minification is disabled while startup is diagnosed.
+          -keep class com.google.firebase.** { *; }
+          -keep class com.google.android.gms.** { *; }
+          -keep class io.flutter.** { *; }
+          -dontwarn com.google.firebase.**
+          -dontwarn com.google.android.gms.**
+          """
+          Path("android/app/proguard-rules.pro").write_text(rules)
+          gradle = Path("android/app/build.gradle.kts")
+          if gradle.exists():
+              s = gradle.read_text()
+              if "isMinifyEnabled = false" not in s:
+                  pattern = r'(getByName\("release"\)\s*\{|release\s*\{)'
+                  s, count = re.subn(pattern, r'\1\n            isMinifyEnabled = false\n            isShrinkResources = false\n            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")', s, count=1)
+                  if count == 0:
+                      raise SystemExit("Could not configure release build type in Kotlin Gradle file")
+              gradle.write_text(s)
+          else:
+              gradle = Path("android/app/build.gradle")
+              if not gradle.exists():
+                  raise SystemExit("Android Gradle file missing after flutter create")
+              s = gradle.read_text()
+              if "minifyEnabled false" not in s:
+                  pattern = r'(getByName\(["\']release["\']\)\s*\{|release\s*\{)'
+                  s, count = re.subn(pattern, r'\1\n            minifyEnabled false\n            shrinkResources false\n            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"', s, count=1)
+                  if count == 0:
+                      raise SystemExit("Could not configure release build type in Groovy Gradle file")
+              gradle.write_text(s)
+          print("ProGuard keep rules installed; release shrinking/minification disabled.")
           PY
           python3 - <<'PY'
           from pathlib import Path
