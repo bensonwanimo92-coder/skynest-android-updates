@@ -335,6 +335,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Houses', Icons.home_work_outlined, Colors.orange, const HousesScreen()),
         _MenuItem('Tenants', Icons.people_alt_outlined, Colors.green, const TenantsScreen()),
         _MenuItem('Payments', Icons.payments_outlined, Colors.blue, const PaymentsScreen()),
+        _MenuItem('Tenant payment submissions', Icons.fact_check_outlined, Colors.teal, const PaymentSubmissionsScreen()),
         _MenuItem('Caretakers & invitations', Icons.badge_outlined, Colors.teal, const InvitationsScreen()),
         _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
@@ -541,6 +542,22 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
   final tenant = TextEditingController(), house = TextEditingController(), amount = TextEditingController();
   bool saving = false;
   @override
+  void initState() {
+    super.initState();
+    _loadTenantDetails();
+  }
+  Future<void> _loadTenantDetails() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (profile.data()?['role'] == 'tenant' && mounted) {
+        tenant.text = profile.data()?['displayName']?.toString() ?? '';
+        house.text = profile.data()?['houseNo']?.toString() ?? '';
+      }
+    } catch (_) {}
+  }
+  @override
   void dispose() { tenant.dispose(); house.dispose(); amount.dispose(); super.dispose(); }
   Future<void> savePayment() async {
     final value = double.tryParse(amount.text.trim());
@@ -548,12 +565,25 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
     setState(() => saving = true);
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
-      final paymentRef = await FirebaseFirestore.instance.collection('payments').add({
-        'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(), 'amount': value,
-        'method': 'Manual / awaiting M-Pesa confirmation', 'status': 'Pending verification',
-        'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
-      });
-      if (uid != null) {
+      if (uid == null) throw StateError('Please sign in again.');
+      final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final p = profile.data() ?? {};
+      if (p['role'] == 'tenant') {
+        final landlordId = p['landlordId']?.toString();
+        if (landlordId == null || landlordId.isEmpty) throw StateError('Your tenant account is not linked to a landlord.');
+        await FirebaseFirestore.instance.collection('paymentSubmissions').add({
+          'tenantId': uid, 'tenantName': tenant.text.trim(), 'landlordId': landlordId,
+          'houseId': p['houseId'], 'houseNo': house.text.trim(), 'amount': value,
+          'method': 'Manual payment submission', 'status': 'pending',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        if (mounted) { amount.clear(); snack(context, 'Payment details sent to your landlord for verification. No automatic M-Pesa payment was made.'); }
+      } else {
+        final paymentRef = await FirebaseFirestore.instance.collection('payments').add({
+          'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(), 'amount': value,
+          'method': 'Manual / awaiting M-Pesa confirmation', 'status': 'Pending verification',
+          'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+        });
         final matchingHouse = await FirebaseFirestore.instance.collection('houses')
           .where('createdBy', isEqualTo: uid).where('houseNo', isEqualTo: house.text.trim()).limit(1).get();
         if (matchingHouse.docs.isNotEmpty) {
@@ -566,9 +596,9 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
             });
           }
         }
+        if (mounted) { amount.clear(); snack(context, 'Payment record saved. Confirm actual receipt before marking it received.'); }
       }
-      if (mounted) { amount.clear(); snack(context, 'Saved as pending verification. No M-Pesa STK Push was sent.'); }
-    } catch (e) { snack(context, 'Could not save: ' + e.toString()); }
+    } catch (e) { if (mounted) snack(context, 'Could not submit payment: ' + e.toString()); }
     finally { if (mounted) setState(() => saving = false); }
   }
   @override
@@ -589,6 +619,81 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
       const Text('This records a payment for verification only. It does not send an M-Pesa STK Push or confirm money received. Live Daraja payments require credentials and a secure backend server.'),
     ]),
   );
+}
+
+
+class PaymentSubmissionsScreen extends StatelessWidget {
+  const PaymentSubmissionsScreen({super.key});
+  Future<void> assignCaretaker(BuildContext context, String id, Map<String, dynamic> data) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final houses = await FirebaseFirestore.instance.collection('houses')
+        .where('createdBy', isEqualTo: uid).where('houseNo', isEqualTo: data['houseNo']).limit(1).get();
+      if (houses.docs.isEmpty) throw StateError('House record not found.');
+      final assigned = (houses.docs.first.data()['caretakerIds'] as List?)?.whereType<String>().toList() ?? <String>[];
+      if (assigned.isEmpty) throw StateError('No caretaker is assigned to this house.');
+      await FirebaseFirestore.instance.collection('paymentConfirmations').add({
+        'landlordId': uid, 'caretakerId': assigned.first, 'paymentId': id,
+        'tenantName': data['tenantName'] ?? 'Tenant', 'houseNo': data['houseNo'] ?? '',
+        'status': 'pending', 'createdAt': FieldValue.serverTimestamp(),
+      });
+      await FirebaseFirestore.instance.collection('paymentSubmissions').doc(id).update({'status': 'awaiting_caretaker'});
+      if (context.mounted) snack(context, 'A payment confirmation task was sent to the caretaker.');
+    } catch (e) { if (context.mounted) snack(context, 'Could not assign confirmation: ' + e.toString()); }
+  }
+  Future<void> markReceived(BuildContext context, String id, Map<String, dynamic> data) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final payment = await FirebaseFirestore.instance.collection('payments').add({
+        'tenantName': data['tenantName'] ?? 'Tenant', 'houseNo': data['houseNo'] ?? '',
+        'amount': data['amount'], 'method': data['method'] ?? 'Manual',
+        'status': 'Received (landlord verified)', 'createdAt': FieldValue.serverTimestamp(),
+        'createdBy': uid, 'landlordId': uid, 'tenantId': data['tenantId'],
+      });
+      await FirebaseFirestore.instance.collection('paymentSubmissions').doc(id).update({
+        'status': 'received', 'ledgerPaymentId': payment.id, 'reviewedAt': FieldValue.serverTimestamp(),
+      });
+      if (context.mounted) snack(context, 'Payment added to the landlord ledger.');
+    } catch (e) { if (context.mounted) snack(context, 'Could not verify payment: ' + e.toString()); }
+  }
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return Scaffold(appBar: AppBar(title: const Text('Tenant payment submissions')),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance.collection('paymentSubmissions').where('landlordId', isEqualTo: uid).snapshots(),
+        builder: (context, snap) {
+          if (snap.hasError) return errorView('Payment submissions could not load.');
+          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          if (snap.data!.docs.isEmpty) return const EmptyView('No tenant payment submissions.');
+          return ListView(children: snap.data!.docs.map((doc) {
+            final d = doc.data();
+            final status = d['status']?.toString() ?? 'pending';
+            return Card(child: ListTile(
+              title: Text(d['tenantName']?.toString() ?? 'Tenant'),
+              subtitle: Text('House ' + (d['houseNo'] ?? '').toString() + ' • ' +
+                currency.format((d['amount'] as num?)?.toDouble() ?? 0) + ' • ' + status),
+              isThreeLine: true,
+              trailing: status == 'received' || status == 'rejected' ? null : PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'assign') assignCaretaker(context, doc.id, d);
+                  if (value == 'received') markReceived(context, doc.id, d);
+                  if (value == 'reject') doc.reference.update({'status': 'rejected', 'reviewedAt': FieldValue.serverTimestamp()});
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'assign', child: Text('Send to caretaker')),
+                  PopupMenuItem(value: 'received', child: Text('Verify & record received')),
+                  PopupMenuItem(value: 'reject', child: Text('Reject submission')),
+                ],
+              ),
+            ));
+          }).toList());
+        },
+      ),
+    );
+  }
 }
 
 class CalculatorScreen extends StatefulWidget {
