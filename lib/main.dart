@@ -914,7 +914,22 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
             final d = doc.data();
             return Card(child: ListTile(leading: const Icon(Icons.person_outline),
               title: Text(d['displayName']?.toString() ?? d['email']?.toString() ?? 'Account'),
-              subtitle: Text((d['role'] ?? 'user').toString() + ' • ' + (d['status'] ?? 'unknown').toString())));
+              subtitle: Text((d['role'] ?? 'user').toString() + ' • ' + (d['status'] ?? 'unknown').toString()),
+              trailing: d['role'] == 'caretaker' && d['status'] == 'active'
+                ? IconButton(tooltip: 'Remove caretaker access', icon: const Icon(Icons.person_remove_alt_1, color: Colors.red),
+                    onPressed: () async {
+                      try {
+                        await doc.reference.update({'status': 'suspended'});
+                        final houses = await FirebaseFirestore.instance.collection('houses')
+                          .where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+                          .where('caretakerIds', arrayContains: doc.id).get();
+                        for (final house in houses.docs) {
+                          await house.reference.update({'caretakerIds': FieldValue.arrayRemove([doc.id])});
+                        }
+                        if (context.mounted) snack(context, 'Caretaker access removed.');
+                      } catch (e) { if (context.mounted) snack(context, 'Could not remove caretaker: ' + e.toString()); }
+                    })
+                : null));
           }).toList());
         },
       ),
@@ -935,6 +950,7 @@ class TenantPortalScreen extends StatelessWidget {
       await FirebaseFirestore.instance.collection('houseRequests').add({
         'tenantId': uid, 'tenantName': p['displayName'] ?? 'Tenant', 'landlordId': landlordId,
         'houseId': house.id, 'houseNo': house.data()['houseNo'] ?? '',
+        'currentHouseId': p['houseId'], 'requestType': p['houseId'] == null ? 'new' : 'transfer',
         'status': 'pending', 'createdAt': FieldValue.serverTimestamp(),
       });
       if (context.mounted) snack(context, 'House request sent for approval.');
@@ -1183,12 +1199,24 @@ class HouseRequestsScreen extends StatelessWidget {
         'status': status, 'reviewedAt': FieldValue.serverTimestamp(), 'reviewedBy': FirebaseAuth.instance.currentUser?.uid,
       });
       if (status == 'approved') {
+        final tenantId = data['tenantId']?.toString();
         await FirebaseFirestore.instance.collection('houses').doc(data['houseId']?.toString()).update({
-          'isOccupied': true, 'status': 'occupied', 'assignedTenantId': data['tenantId'],
+          'isOccupied': true, 'status': 'occupied', 'assignedTenantId': tenantId,
         });
+        final oldHouseId = data['currentHouseId']?.toString();
+        if (data['requestType'] == 'transfer' && oldHouseId != null && oldHouseId.isNotEmpty) {
+          await FirebaseFirestore.instance.collection('houses').doc(oldHouseId).update({
+            'isOccupied': false, 'status': 'vacant', 'assignedTenantId': FieldValue.delete(),
+          });
+        }
+        if (tenantId != null) {
+          await FirebaseFirestore.instance.collection('users').doc(tenantId).update({
+            'houseId': data['houseId'], 'houseNo': data['houseNo'],
+          });
+        }
         await FirebaseFirestore.instance.collection('tenants').add({
           'name': data['tenantName'] ?? 'Tenant', 'houseNo': data['houseNo'] ?? '',
-          'tenantId': data['tenantId'], 'landlordId': data['landlordId'],
+          'tenantId': tenantId, 'landlordId': data['landlordId'],
           'createdBy': FirebaseAuth.instance.currentUser?.uid, 'createdAt': FieldValue.serverTimestamp(),
         });
       }
