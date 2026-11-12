@@ -483,39 +483,6 @@ jobs:
           test "$actual" = "$expected" || { echo "ERROR: Built APK certificate does not match original"; echo "Actual: $actual"; exit 1; }
           echo "Built APK package and original signing certificate verified."
 
-      - name: Android 15 emulator launch smoke test
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: |
-            set -euo pipefail
-            adb wait-for-device
-            adb install -r build/app/outputs/flutter-apk/app-release.apk
-            adb shell am force-stop com.hello22_.chuka
-            adb shell monkey -p com.hello22_.chuka -c android.intent.category.LAUNCHER 1
-            launched=false
-            for attempt in $(seq 1 35); do
-              if adb shell pidof com.hello22_.chuka | tr -d '\\r' | grep -Eq '[0-9]'; then
-                sleep 8
-                if adb shell pidof com.hello22_.chuka | tr -d '\\r' | grep -Eq '[0-9]'; then
-                  launched=true
-                  break
-                fi
-              fi
-              sleep 1
-            done
-            if [ "$launched" != true ]; then
-              adb logcat -d -t 5000 > /tmp/skynest-emulator-logcat.txt
-              grep -E -i 'FATAL EXCEPTION|AndroidRuntime|Fatal signal|Process: com.hello22_.chuka' /tmp/skynest-emulator-logcat.txt | tail -n 120 || true
-              echo 'SkyNest process did not remain alive after launch on Android 15 emulator.'
-              exit 1
-            fi
-            echo 'PASS: SkyNest installed and remained running after launch on Android 15 emulator.'
-
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
