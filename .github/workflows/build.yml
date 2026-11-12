@@ -289,7 +289,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: shorebird release android --artifact apk -- --no-shrink --no-obfuscate --build-name=1.1.1 --build-number=2009 -x lintVitalRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease -x lintRelease
+        run: shorebird release android --artifact apk -- --no-shrink --no-obfuscate --build-name=1.1.1 --build-number=2009
 
       - name: Verify built APK package and signature
         shell: bash
