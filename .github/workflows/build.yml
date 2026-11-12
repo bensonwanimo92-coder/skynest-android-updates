@@ -51,6 +51,73 @@ jobs:
               p.write_text(s)
           print("Verified INTERNET permission in AndroidManifest.xml.")
           PY
+
+      - name: Enforce Android 14 app configuration and audit manifest
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as ET
+
+          gradle = Path("android/app/build.gradle.kts")
+          if not gradle.exists():
+              raise SystemExit("Expected generated Kotlin Gradle file is missing.")
+          source = gradle.read_text()
+          source, count = re.subn(r"(?m)^(\s*)compileSdk\s*=\s*[^\n]+",
+                                  r"\g<1>compileSdk = 34", source, count=1)
+          if count != 1:
+              raise SystemExit("Could not set compileSdk = 34")
+          source, count = re.subn(r"(?m)^(\s*)minSdk\s*=\s*[^\n]+",
+                                  r"\g<1>minSdk = 24", source, count=1)
+          if count != 1:
+              raise SystemExit("Could not set minSdk = 24")
+          source, count = re.subn(r"(?m)^(\s*)targetSdk\s*=\s*[^\n]+",
+                                  r"\g<1>targetSdk = 34", source, count=1)
+          if count != 1:
+              raise SystemExit("Could not set targetSdk = 34")
+          if re.search(r"(?m)^\s*buildToolsVersion\s*=", source):
+              source = re.sub(r'(?m)^\s*buildToolsVersion\s*=\s*[^\n]+',
+                              '    buildToolsVersion = "34.0.0"', source, count=1)
+          else:
+              source = re.sub(r"(?m)^(\s*compileSdk\s*=\s*34\s*)$",
+                              r'\1\n    buildToolsVersion = "34.0.0"', source, count=1)
+          gradle.write_text(source)
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          tree = ET.parse(manifest)
+          root = tree.getroot()
+          android = "{http://schemas.android.com/apk/res/android}"
+          permissions = [
+              "android.permission.INTERNET",
+              "android.permission.FOREGROUND_SERVICE",
+              "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+              "android.permission.POST_NOTIFICATIONS",
+              "android.permission.READ_MEDIA_IMAGES",
+              "android.permission.READ_MEDIA_VIDEO",
+          ]
+          present = {p.get(android + "name") for p in root.findall("uses-permission")}
+          for permission in permissions:
+              if permission not in present:
+                  ET.SubElement(root, "uses-permission", {android + "name": permission})
+          app = root.find("application")
+          if app is None:
+              raise SystemExit("Manifest has no application element.")
+          for kind in ("activity", "activity-alias", "service", "receiver"):
+              for item in app.findall(kind):
+                  if item.get(android + "exported") is None:
+                      item.set(android + "exported",
+                               "true" if item.find("intent-filter") is not None else "false")
+          tree.write(manifest, encoding="utf-8", xml_declaration=True)
+
+          text = gradle.read_text()
+          for expected in ('compileSdk = 34', 'minSdk = 24', 'targetSdk = 34',
+                           'buildToolsVersion = "34.0.0"'):
+              if expected not in text:
+                  raise SystemExit("Gradle configuration verification failed: " + expected)
+          print("PASS: app compileSdk 34 / targetSdk 34 / minSdk 24 / Build Tools 34.0.0")
+          print("PASS: Android 14 manifest permissions and exported component attributes")
+          PY
           python3 - <<'PY'
           from pathlib import Path
           p = Path("android/app/src/main/AndroidManifest.xml")
@@ -66,7 +133,7 @@ jobs:
           p = Path("android/app/build.gradle.kts")
           if p.exists():
               s = p.read_text()
-              s, count = re.subn(r"(?m)^\s*compileSdk\s*=\s*[^\n]+", "    compileSdk = 36", s, count=1)
+              s, count = re.subn(r"(?m)^\s*compileSdk\s*=\s*[^\n]+", "    compileSdk = 34", s, count=1)
               if count == 0:
                   raise SystemExit("Could not locate compileSdk in build.gradle.kts")
               p.write_text(s)
@@ -75,7 +142,7 @@ jobs:
               if not p.exists():
                   raise SystemExit("Flutter Android Gradle file not found")
               s = p.read_text()
-              s, count = re.subn(r"(?m)^\s*compileSdkVersion\s+[^\n]+", "    compileSdkVersion 36", s, count=1)
+              s, count = re.subn(r"(?m)^\s*compileSdkVersion\s+[^\n]+", "    compileSdkVersion 34", s, count=1)
               if count == 0:
                   s, count = re.subn(r"(?m)^\s*compileSdk\s+[^\n]+", "    compileSdk 36", s, count=1)
               if count == 0:
@@ -228,7 +295,7 @@ jobs:
           dart run flutter_launcher_icons
           echo "Generated SkyNest launcher icons for Android."
 
-      - name: Force Android API 36 for every Flutter plugin
+      - name: Align Flutter Android plugin compile SDK to API 34
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -256,9 +323,9 @@ jobs:
                       stripped.startswith("compileSdk ") or
                       stripped.startswith("compileSdk=")):
                       if gradle_file.name.endswith(".gradle.kts"):
-                          output.append(indent + "compileSdk = 36")
+                          output.append(indent + "compileSdk = 34")
                       else:
-                          output.append(indent + "compileSdkVersion 36")
+                          output.append(indent + "compileSdkVersion 34")
                       changed = True
                   else:
                       output.append(line)
@@ -268,11 +335,11 @@ jobs:
 
           for auth_file in auth_files:
               lines = auth_file.read_text().splitlines()
-              if not any(line.strip() == "compileSdkVersion 36" for line in lines):
+              if not any(line.strip() == "compileSdkVersion 34" for line in lines):
                   raise SystemExit(f"firebase_auth compile SDK was not set to 36: {auth_file}")
 
           print(f"Patched {len(patched)} Android plugin Gradle files.")
-          print("Verified firebase_auth compileSdkVersion 36.")
+          print("Verified firebase_auth compileSdkVersion 34.")
           for file in patched:
               print(f"Patched: {file}")
           PY
@@ -289,7 +356,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: shorebird release android --artifact apk -- --no-shrink --no-obfuscate --build-name=1.1.1 --build-number=2018
+        run: shorebird release android --artifact apk -- --no-shrink --no-obfuscate --build-name=1.1.1 --build-number=2019
 
       - name: Verify built APK package and signature
         shell: bash
@@ -322,7 +389,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: skynest-android-1.1.1-2018
+          name: skynest-android-1.1.1-2019
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
@@ -331,8 +398,8 @@ jobs:
         if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && steps.firebase.outputs.configured == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref == 'refs/heads/main' && 'v1.1.1+2018' || github.ref_name }}
-          name: SkyNest Android 1.1.1 (build 2018)
+          tag_name: ${{ github.ref == 'refs/heads/main' && 'v1.1.1+2019' || github.ref_name }}
+          name: SkyNest Android 1.1.1 (build 2019)
           target_commitish: ${{ github.sha }}
           files: build/app/outputs/flutter-apk/app-release.apk
           token: ${{ secrets.GITHUB_TOKEN }}
