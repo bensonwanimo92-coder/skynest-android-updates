@@ -366,7 +366,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: shorebird release android --artifact apk --build-name=1.1.1 --build-number=2009 -- --no-obfuscate
+        run: shorebird release android --artifact apk --build-name=1.1.2 --build-number=2010 -- --no-obfuscate
 
       - name: Verify built APK package and signature
         shell: bash
@@ -386,7 +386,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: skynest-android-1.1.0-2008
+          name: skynest-android-1.1.2-2010
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
