@@ -45,7 +45,7 @@ jobs:
           s = p.read_text()
           permission = '    <uses-permission android:name="android.permission.INTERNET"/>'
           if "android.permission.INTERNET" not in s:
-              s, count = re.subn(r"(?m)^(\s*)<application\b", permission + "\n\1<application", s, count=1)
+              s, count = re.subn(r"(?m)^(\s*)<application\b", lambda m: permission + "\n" + m.group(1) + "<application", s, count=1)
               if count != 1:
                   raise SystemExit("Could not find application tag to insert INTERNET permission.")
               p.write_text(s)
