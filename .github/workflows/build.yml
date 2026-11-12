@@ -110,7 +110,6 @@ jobs:
           # declarations contributed by dependency manifests during manifest merge.
           tools_ns = "{http://schemas.android.com/tools}"
           ET.register_namespace("tools", "http://schemas.android.com/tools")
-          root.set("xmlns:tools", "http://schemas.android.com/tools")
           for permission in ("android.permission.READ_EXTERNAL_STORAGE",
                              "android.permission.WRITE_EXTERNAL_STORAGE"):
               if permission not in present:
