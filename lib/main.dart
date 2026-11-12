@@ -83,20 +83,79 @@ class _LoginScreenState extends State<LoginScreen> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
   Future<void> signIn({bool create = false}) async {
-    if (!firebaseReady) { message('Firebase is not configured. Add google-services.json before login.'); return; }
-    if (email.text.trim().isEmpty || password.text.isEmpty) { message('Enter your email and password.'); return; }
+    if (busy) return;
+    if (!firebaseReady) {
+      message('Firebase is not configured. Please check the Firebase Android configuration.');
+      return;
+    }
+    final emailAddress = email.text.trim();
+    if (emailAddress.isEmpty || password.text.isEmpty) {
+      message('Enter your email and password.');
+      return;
+    }
+
     setState(() => busy = true);
     try {
+      final auth = FirebaseAuth.instance;
       if (create) {
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email.text.trim(), password: password.text);
+        await auth.createUserWithEmailAndPassword(
+          email: emailAddress,
+          password: password.text,
+        );
       } else {
-        await FirebaseAuth.instance.signInWithEmailAndPassword(email: email.text.trim(), password: password.text);
+        await auth.signInWithEmailAndPassword(
+          email: emailAddress,
+          password: password.text,
+        );
       }
+
       if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const DashboardScreen()));
-    } on FirebaseAuthException catch (e) { message(e.message ?? e.code); }
-    catch (e) { message('Login failed: ' + e.toString()); }
-    finally { if (mounted) setState(() => busy = false); }
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute<void>(builder: (_) => const DashboardScreen()),
+      );
+    } on FirebaseAuthException catch (e, stackTrace) {
+      debugPrint('SkyNest Firebase Auth error [${e.code}]: ${e.message}');
+      debugPrintStack(stackTrace: stackTrace);
+      message(_authErrorMessage(e));
+    } catch (e, stackTrace) {
+      debugPrint('SkyNest sign-in failed: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      final details = e.toString();
+      if (details.contains('PigeonUserDetails') ||
+          details.contains('List<Object?>')) {
+        message('Firebase sign-in plugin error. Please update SkyNest and try again.');
+      } else {
+        message('Login failed. Please check your connection and try again.');
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  String _authErrorMessage(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Email or password is incorrect.';
+      case 'user-disabled':
+        return 'This account has been disabled.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please wait and try again.';
+      case 'network-request-failed':
+        return 'Network error. Check your internet connection.';
+      case 'email-already-in-use':
+        return 'An account already exists for this email.';
+      case 'weak-password':
+        return 'Choose a stronger password.';
+      case 'operation-not-allowed':
+        return 'Email/password sign-in is not enabled in Firebase Authentication.';
+      default:
+        return e.message ?? 'Authentication failed (${e.code}).';
+    }
   }
   Future<void> resetPassword() async {
     if (!firebaseReady) { message('Firebase is not configured yet.'); return; }
