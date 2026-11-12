@@ -78,6 +78,12 @@ service cloud.firestore {
       match /houses/{houseId} {
         allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
       }
+      match /notices/{noticeId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn() && landlordFor(profile(userId).landlordId) &&
+          request.resource.data.landlordId == profile(userId).landlordId;
+        allow update, delete: if false;
+      }
     }
 
     match /invitations/{code} {
@@ -158,9 +164,18 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid &&
         linkedTo(request.resource.data.landlordId) && request.auth.uid in request.resource.data.memberIds;
       allow read: if linkedTo(resource.data.landlordId);
-      allow update: if signedIn() && linkedTo(resource.data.landlordId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'name']) &&
-        request.resource.data.memberIds.hasAll(resource.data.memberIds) && request.auth.uid in request.resource.data.memberIds;
+      allow update: if signedIn() && linkedTo(resource.data.landlordId) && (
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds']) &&
+          request.resource.data.memberIds.hasAll(resource.data.memberIds) &&
+          request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1 &&
+          request.auth.uid in request.resource.data.memberIds
+        ) ||
+        (
+          resource.data.createdBy == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        )
+      );
       allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
       match /members/{memberId} {
         allow read: if signedIn() && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
