@@ -75,61 +75,148 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final email = TextEditingController();
   final password = TextEditingController();
-  bool busy = false, obscure = true;
+  final confirmPassword = TextEditingController();
+  final displayName = TextEditingController();
+  bool busy = false, obscure = true, creating = false;
+
   @override
-  void dispose() { email.dispose(); password.dispose(); super.dispose(); }
+  void dispose() {
+    email.dispose(); password.dispose(); confirmPassword.dispose(); displayName.dispose();
+    super.dispose();
+  }
   void message(String text) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
-  Future<void> signIn({bool create = false}) async {
-    if (!firebaseReady) { message('Firebase is not configured. Add google-services.json before login.'); return; }
-    if (email.text.trim().isEmpty || password.text.isEmpty) { message('Enter your email and password.'); return; }
+  bool validEmail(String value) =>
+      RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value.trim());
+
+  String authMessage(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'email-already-in-use': return 'This email already has an account. Please log in or reset your password.';
+      case 'invalid-email': return 'That email address is not valid.';
+      case 'weak-password': return 'Choose a stronger password with at least 6 characters.';
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential': return 'Email or password is incorrect. You can reset your password if needed.';
+      case 'network-request-failed': return 'Network error. Check your internet connection and try again.';
+      case 'too-many-requests': return 'Too many attempts. Wait a little before trying again.';
+      case 'operation-not-allowed': return 'Email/password sign-in is not enabled in Firebase Authentication.';
+      default: return e.message ?? 'Authentication failed (' + e.code + ').';
+    }
+  }
+
+  Future<void> signIn() async {
+    if (!firebaseReady) { message('Firebase is not configured. Complete the Android Firebase setup first.'); return; }
+    if (!validEmail(email.text)) { message('Enter a valid email address.'); return; }
+    if (password.text.isEmpty) { message('Enter your password.'); return; }
     setState(() => busy = true);
     try {
-      if (create) {
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email.text.trim(), password: password.text);
-      } else {
-        await FirebaseAuth.instance.signInWithEmailAndPassword(email: email.text.trim(), password: password.text);
-      }
+      await FirebaseAuth.instance.signInWithEmailAndPassword(email: email.text.trim(), password: password.text);
       if (!mounted) return;
       Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const DashboardScreen()));
-    } on FirebaseAuthException catch (e) { message(e.message ?? e.code); }
-    catch (e) { message('Login failed: ' + e.toString()); }
+    } on FirebaseAuthException catch (e) { message(authMessage(e)); }
+    catch (_) { message('Login could not be completed. Check your connection and try again.'); }
     finally { if (mounted) setState(() => busy = false); }
   }
+
+  Future<void> createAccount() async {
+    if (!firebaseReady) { message('Firebase is not configured. Complete the Android Firebase setup first.'); return; }
+    if (displayName.text.trim().length < 2) { message('Enter your full name.'); return; }
+    if (!validEmail(email.text)) { message('Enter a valid email address.'); return; }
+    if (password.text.length < 6) { message('Use a password with at least 6 characters.'); return; }
+    if (password.text != confirmPassword.text) { message('The passwords do not match.'); return; }
+    setState(() => busy = true);
+    try {
+      final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email.text.trim(), password: password.text);
+      await credential.user?.updateDisplayName(displayName.text.trim());
+      if (!mounted) return;
+      Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const DashboardScreen()));
+      message('Account created successfully.');
+    } on FirebaseAuthException catch (e) { message(authMessage(e)); }
+    catch (_) { message('Account creation could not be completed. Check your connection and try again.'); }
+    finally { if (mounted) setState(() => busy = false); }
+  }
+
   Future<void> resetPassword() async {
     if (!firebaseReady) { message('Firebase is not configured yet.'); return; }
-    if (email.text.trim().isEmpty) { message('Enter your email first.'); return; }
+    if (!validEmail(email.text)) { message('Enter a valid email address in the Email field first.'); return; }
+    setState(() => busy = true);
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email.text.trim());
-      message('Password reset email sent.');
-    } on FirebaseAuthException catch (e) { message(e.message ?? e.code); }
+      message('If an account exists for this email, a password-reset link has been sent. Check your inbox and spam folder.');
+    } on FirebaseAuthException catch (e) { message(authMessage(e)); }
+    catch (_) { message('Could not send the reset email. Check your connection and try again.'); }
+    finally { if (mounted) setState(() => busy = false); }
   }
+
+  Future<void> showCreateAccount() async {
+    password.clear(); confirmPassword.clear(); displayName.clear();
+    await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext, setDialogState) => AlertDialog(
+        title: const Text('Create your SkyNest account'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: displayName, textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(labelText: 'Full name', prefixIcon: Icon(Icons.person_outline))),
+          const SizedBox(height: 12),
+          TextField(controller: email, keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined))),
+          const SizedBox(height: 12),
+          TextField(controller: password, obscureText: obscure,
+            decoration: InputDecoration(labelText: 'Password (minimum 6 characters)', prefixIcon: const Icon(Icons.lock_outline),
+              suffixIcon: IconButton(onPressed: () => setDialogState(() => obscure = !obscure),
+                icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)))),
+          const SizedBox(height: 12),
+          TextField(controller: confirmPassword, obscureText: obscure,
+            decoration: const InputDecoration(labelText: 'Confirm password', prefixIcon: Icon(Icons.lock_reset_outlined))),
+        ])),
+        actions: [
+          TextButton(onPressed: busy ? null : () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: busy ? null : () async {
+            Navigator.pop(dialogContext);
+            await createAccount();
+          }, child: const Text('CREATE ACCOUNT')),
+        ],
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     body: SafeArea(child: Column(children: [
       Expanded(child: Center(child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 440), child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+          crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const Icon(Icons.apartment_rounded, size: 78, color: brand),
             const SizedBox(height: 8),
-            const Text('SKYNEST PREMIUM', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+            const Text('SKYNEST PREMIUM', textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
             const Text('Rental management made simpler', textAlign: TextAlign.center),
             const SizedBox(height: 30),
-            TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined), border: OutlineInputBorder())),
+            TextField(controller: email, keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.username, AutofillHints.email],
+              decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined), border: OutlineInputBorder())),
             const SizedBox(height: 14),
-            TextField(controller: password, obscureText: obscure, decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)), border: const OutlineInputBorder())),
-            Align(alignment: Alignment.centerRight, child: TextButton(onPressed: resetPassword, child: const Text('Forgot password?'))),
-            FilledButton(onPressed: busy ? null : () => signIn(), child: busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('LOGIN')),
+            TextField(controller: password, obscureText: obscure, autofillHints: const [AutofillHints.password],
+              decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline),
+                suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure),
+                  icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)), border: const OutlineInputBorder())),
+            Align(alignment: Alignment.centerRight,
+              child: TextButton(onPressed: busy ? null : resetPassword, child: const Text('Forgot password? Reset here'))),
+            FilledButton(onPressed: busy ? null : signIn,
+              child: busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('LOGIN')),
             const SizedBox(height: 8),
-            OutlinedButton(onPressed: busy ? null : () => signIn(create: true), child: const Text('CREATE ACCOUNT')),
-            if (!firebaseReady) Card(color: Theme.of(context).colorScheme.errorContainer, child: Padding(padding: const EdgeInsets.all(12), child: Text('Firebase setup is required before login works.\\n' + (firebaseError ?? '')))),
+            OutlinedButton(onPressed: busy ? null : showCreateAccount, child: const Text('CREATE ACCOUNT')),
+            if (!firebaseReady) Card(color: Theme.of(context).colorScheme.errorContainer,
+              child: Padding(padding: const EdgeInsets.all(12),
+                child: Text('Firebase setup is required before login or registration works.\n' + (firebaseError ?? '')))),
           ],
         )),
       ))),
-      Padding(padding: const EdgeInsets.only(bottom: 14, top: 6), child: Text('Benson', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 2.0))),
+      Padding(padding: const EdgeInsets.only(bottom: 14, top: 6),
+        child: Text('Benson', style: TextStyle(color: Theme.of(context).colorScheme.primary,
+          fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 2.0))),
     ])),
   );
 }
