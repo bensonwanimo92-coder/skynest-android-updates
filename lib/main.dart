@@ -1002,6 +1002,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
         'status': 'open', 'createdAt': FieldValue.serverTimestamp(),
         'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
       });
+      await recordActivity(uid, 'Created a ' + role + ' invitation');
       if (mounted) setState(() => latestCode = code);
       if (mounted) snack(context, 'Invitation created. It expires in 7 days.');
     } catch (e) { if (mounted) snack(context, 'Could not create invitation: ' + e.toString()); }
@@ -1048,6 +1049,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
                         for (final house in houses.docs) {
                           await house.reference.update({'caretakerIds': FieldValue.arrayRemove([doc.id])});
                         }
+                        await recordActivity(FirebaseAuth.instance.currentUser!.uid, 'Removed caretaker access for ' + doc.id);
                         if (context.mounted) snack(context, 'Caretaker access removed.');
                       } catch (e) { if (context.mounted) snack(context, 'Could not remove caretaker: ' + e.toString()); }
                     })
@@ -1139,9 +1141,13 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
     finally { if (mounted) setState(() => saving = false); }
   }
   Future<void> updateStatus(String id, String status) async {
-    try { await FirebaseFirestore.instance.collection('complaints').doc(id).update({
-      'status': status, 'lastUpdatedAt': FieldValue.serverTimestamp(), 'lastUpdatedBy': FirebaseAuth.instance.currentUser?.uid,
-    }); } catch (e) { if (mounted) snack(context, 'Could not update complaint: ' + e.toString()); }
+    try {
+      final ref = FirebaseFirestore.instance.collection('complaints').doc(id);
+      final complaint = await ref.get();
+      await ref.update({'status': status, 'lastUpdatedAt': FieldValue.serverTimestamp(), 'lastUpdatedBy': FirebaseAuth.instance.currentUser?.uid});
+      final landlordId = complaint.data()?['landlordId']?.toString();
+      if (landlordId != null) await recordActivity(landlordId, 'Updated complaint status to ' + status);
+    } catch (e) { if (mounted) snack(context, 'Could not update complaint: ' + e.toString()); }
   }
   Future<void> respond(String id) async {
     final controller = TextEditingController();
@@ -1154,10 +1160,14 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
         FilledButton(onPressed: () async {
           if (controller.text.trim().isEmpty) return;
           try {
-            await FirebaseFirestore.instance.collection('complaints').doc(id).update({
+            final complaintRef = FirebaseFirestore.instance.collection('complaints').doc(id);
+            final complaint = await complaintRef.get();
+            await complaintRef.update({
               'response': controller.text.trim(), 'status': 'in_progress',
               'lastUpdatedAt': FieldValue.serverTimestamp(), 'lastUpdatedBy': FirebaseAuth.instance.currentUser?.uid,
             });
+            final landlordId = complaint.data()?['landlordId']?.toString();
+            if (landlordId != null) await recordActivity(landlordId, 'Responded to a tenant complaint');
             if (dialogContext.mounted) Navigator.pop(dialogContext);
             if (mounted) snack(context, 'Response sent to tenant.');
           } catch (e) { if (mounted) snack(context, 'Could not send response: ' + e.toString()); }
@@ -1375,6 +1385,8 @@ class HouseRequestsScreen extends StatelessWidget {
           'createdBy': FirebaseAuth.instance.currentUser?.uid, 'createdAt': FieldValue.serverTimestamp(),
         });
       }
+      final landlordId = data['landlordId']?.toString();
+      if (landlordId != null) await recordActivity(landlordId, status + ' a tenant house request for unit ' + (data['houseNo'] ?? '').toString());
       if (context.mounted) snack(context, 'Request ' + status + '.');
     } catch (e) { if (context.mounted) snack(context, 'Could not process request: ' + e.toString()); }
   }
@@ -1448,6 +1460,7 @@ class _NoticesScreenState extends State<NoticesScreen> {
         await FirebaseFirestore.instance.collection('users').doc(recipient).collection('notices').doc(noticeRef.id).set(notice);
       }
       title.clear(); body.clear(); targetUids.clear();
+      await recordActivity(landlordId, 'Published a property notice');
       if (mounted) snack(context, 'Notice published.');
     } catch (e) { if (mounted) snack(context, 'Could not publish notice: ' + e.toString()); }
     finally { if (mounted) setState(() => saving = false); }
@@ -1507,6 +1520,7 @@ class ElectricityScreen extends StatefulWidget {
 class _ElectricityScreenState extends State<ElectricityScreen> {
   final meterName = TextEditingController(), meterNumber = TextEditingController(), houseNo = TextEditingController(), amount = TextEditingController();
   String billing = 'prepaid';
+  String interval = 'monthly';
   bool saving = false;
   @override
   void dispose() { meterName.dispose(); meterNumber.dispose(); houseNo.dispose(); amount.dispose(); super.dispose(); }
@@ -1532,7 +1546,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
     try {
       await FirebaseFirestore.instance.collection('electricityAllocations').add({
         'landlordId': uid, 'houseNo': houseNo.text.trim(), 'amount': value,
-        'billingType': billing, 'interval': 'monthly', 'createdAt': FieldValue.serverTimestamp(),
+        'billingType': billing, 'meterReference': meterNumber.text.trim(), 'interval': interval, 'createdAt': FieldValue.serverTimestamp(),
       });
       houseNo.clear(); amount.clear();
       if (mounted) snack(context, 'Electricity allocation saved.');
@@ -1552,6 +1566,9 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       FilledButton(onPressed: saving ? null : saveMeter, child: const Text('REGISTER METER')),
       const Divider(height: 30),
       const Text('Per-house electricity allocation', style: TextStyle(fontWeight: FontWeight.bold)),
+      DropdownButtonFormField<String>(value: interval, decoration: const InputDecoration(labelText: 'Charging interval'),
+        items: const [DropdownMenuItem(value: 'daily', child: Text('Daily')), DropdownMenuItem(value: 'weekly', child: Text('Weekly')), DropdownMenuItem(value: 'monthly', child: Text('Monthly'))],
+        onChanged: (v) => setState(() => interval = v ?? 'monthly')),
       TextField(controller: houseNo, decoration: const InputDecoration(labelText: 'House / unit number')),
       TextField(controller: amount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Amount (KSh) per interval')),
       FilledButton(onPressed: saving ? null : allocateUnit, child: const Text('SAVE UNIT ALLOCATION')),
@@ -1676,10 +1693,14 @@ class CaretakerPaymentsScreen extends StatelessWidget {
   const CaretakerPaymentsScreen({super.key});
   Future<void> confirm(BuildContext context, String id) async {
     try {
-      await FirebaseFirestore.instance.collection('paymentConfirmations').doc(id).update({
+      final confirmationRef = FirebaseFirestore.instance.collection('paymentConfirmations').doc(id);
+      final confirmation = await confirmationRef.get();
+      await confirmationRef.update({
         'status': 'confirmed_by_caretaker', 'confirmedBy': FirebaseAuth.instance.currentUser?.uid,
         'confirmedAt': FieldValue.serverTimestamp(),
       });
+      final landlordId = confirmation.data()?['landlordId']?.toString();
+      if (landlordId != null) await recordActivity(landlordId, 'Caretaker confirmed rent payment for house ' + (confirmation.data()?['houseNo'] ?? '').toString());
       if (context.mounted) snack(context, 'Payment marked as confirmed by caretaker.');
     } catch (e) { if (context.mounted) snack(context, 'Could not confirm payment: ' + e.toString()); }
   }
@@ -1714,6 +1735,21 @@ class EmptyView extends StatelessWidget {
 Widget errorView(String text) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(text, textAlign: TextAlign.center)));
 String? requiredField(String? value) => value == null || value.trim().isEmpty ? 'This field is required' : null;
 void snack(BuildContext context, String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+
+Future<void> recordActivity(String landlordId, String action) async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+  try {
+    final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    await FirebaseFirestore.instance.collection('activityLogs').add({
+      'landlordId': landlordId, 'actorId': user.uid,
+      'actorName': profile.data()?['displayName'] ?? user.displayName ?? 'Account',
+      'action': action, 'createdAt': FieldValue.serverTimestamp(),
+    });
+  } catch (_) {
+    // Activity logging must never block the primary tenant/property operation.
+  }
+}
 
 Future<void> confirmDelete(BuildContext context, String prompt, Future<void> Function() action) async {
   final yes = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
