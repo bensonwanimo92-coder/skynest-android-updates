@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 const brand = Color(0xFF1565C0);
-const testBanner = 'ca-app-pub-3940256099942544/6300978111';
+const skynestBannerAdUnitId = 'ca-app-pub-1281241380359357/4686680349';
 bool firebaseReady = false;
 String? firebaseError;
 final currency = NumberFormat.currency(locale: 'en_KE', symbol: 'KSh ', decimalDigits: 2);
@@ -145,12 +145,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    if (firebaseReady) {
-      banner = BannerAd(adUnitId: testBanner, size: AdSize.banner, request: const AdRequest(), listener: BannerAdListener(
-        onAdLoaded: (_) { if (mounted) setState(() => loaded = true); },
-        onAdFailedToLoad: (ad, _) { ad.dispose(); banner = null; },
-      ))..load();
-    }
+    // AdMob is independent of Firebase, so load ads even if Firebase is unavailable.
+    banner = BannerAd(adUnitId: skynestBannerAdUnitId, size: AdSize.banner, request: const AdRequest(), listener: BannerAdListener(
+      onAdLoaded: (_) { if (mounted) setState(() => loaded = true); },
+      onAdFailedToLoad: (ad, _) { ad.dispose(); banner = null; },
+    ))..load();
   }
   @override
   void dispose() { banner?.dispose(); super.dispose(); }
