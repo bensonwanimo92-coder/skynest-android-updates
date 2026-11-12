@@ -242,8 +242,8 @@ service cloud.firestore {
       allow read, update, delete: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
     }
     match /electricityAllocations/{id} {
-      allow create: if signedIn() && myRole() == 'landlord' && request.resource.data.landlordId == request.auth.uid;
-      allow read, update, delete: if signedIn() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
+      allow create: if activeUser() && myRole() == 'landlord' && request.resource.data.landlordId == request.auth.uid;
+      allow read, update, delete: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
     }
 
     match /activityLogs/{id} {
