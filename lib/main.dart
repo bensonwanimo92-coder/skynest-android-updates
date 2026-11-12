@@ -1101,7 +1101,7 @@ class TenantPortalScreen extends StatelessWidget {
                 return Card(child: ListTile(leading: const Icon(Icons.home_outlined),
                   title: Text('House ' + (d['houseNo'] ?? '').toString()),
                   subtitle: Text(currency.format((d['rent'] as num?)?.toDouble() ?? 0) + ' / month'),
-                  trailing: FilledButton(onPressed: () => requestHouse(context, house), child: const Text('REQUEST')));
+                  trailing: FilledButton(onPressed: () => requestHouse(context, house), child: const Text('REQUEST'))));
               }).toList());
             },
           );
