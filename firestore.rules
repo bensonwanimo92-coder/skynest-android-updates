@@ -1,36 +1,59 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
     function signedIn() {
       return request.auth != null;
     }
+
     function ownsExistingRecord() {
-      return signedIn() && resource.data.createdBy == request.auth.uid;
-    }
-    function ownsNewRecord() {
-      return signedIn() && request.resource.data.createdBy == request.auth.uid;
+      return signedIn()
+        && resource.data.createdBy == request.auth.uid;
     }
 
-    match /houses/{recordId} {
+    function ownsNewRecord() {
+      return signedIn()
+        && request.resource.data.createdBy == request.auth.uid;
+    }
+
+    // User profile documents and houses stored beneath each user.
+    match /users/{userId} {
+      allow read, write: if signedIn()
+        && request.auth.uid == userId;
+
+      match /houses/{houseId} {
+        allow read, create, update, delete: if signedIn()
+          && request.auth.uid == userId;
+      }
+    }
+
+    // Top-level houses collection used by the current Flutter app.
+    // HousesScreen queries where('createdBy', isEqualTo: currentUser.uid).
+    match /houses/{houseId} {
       allow create: if ownsNewRecord();
       allow read, delete: if ownsExistingRecord();
       allow update: if ownsExistingRecord() && ownsNewRecord();
     }
+
     match /tenants/{recordId} {
       allow create: if ownsNewRecord();
       allow read, delete: if ownsExistingRecord();
       allow update: if ownsExistingRecord() && ownsNewRecord();
     }
+
     match /payments/{recordId} {
       allow create: if ownsNewRecord();
       allow read, delete: if ownsExistingRecord();
       allow update: if ownsExistingRecord() && ownsNewRecord();
     }
+
     match /plans/{recordId} {
       allow create: if ownsNewRecord();
       allow read, delete: if ownsExistingRecord();
       allow update: if ownsExistingRecord() && ownsNewRecord();
     }
+
     match /subscriptions/{userId} {
       allow read: if signedIn() && request.auth.uid == userId;
       // Premium status is written only by a trusted administrator/server.
