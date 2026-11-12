@@ -1592,7 +1592,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
               onChanged: saving ? null : (v) => setState(() => selectedMeterId = v),
             ),
             if (selected != null) Padding(padding: const EdgeInsets.only(top: 6),
-              child: Text('Selected: \${(selected.data()['billingType'] ?? 'prepaid').toString()} • This meter may be reused for other houses.')),
+              child: Text("Selected: ${(selected.data()['billingType'] ?? 'prepaid').toString()} • This meter may be reused for other houses.")),
             DropdownButtonFormField<String>(value: interval, decoration: const InputDecoration(labelText: 'Charging / recording interval'),
               items: const [DropdownMenuItem(value: 'daily', child: Text('Daily')), DropdownMenuItem(value: 'weekly', child: Text('Weekly')), DropdownMenuItem(value: 'monthly', child: Text('Monthly'))],
               onChanged: (v) => setState(() => interval = v ?? 'monthly')),
