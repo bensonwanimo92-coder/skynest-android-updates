@@ -16,8 +16,30 @@ final dateFormat = DateFormat('dd MMM yyyy');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Render the Flutter application before starting native Firebase or AdMob work.
+  // Render Flutter immediately. Firebase is initialized only when the user
+  // requests authentication, so Firebase startup cannot block the login screen.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+  };
   runApp(const SkynestApp());
+}
+
+Future<bool>? _firebaseInitialization;
+
+Future<bool> ensureFirebaseReady() async {
+  if (firebaseReady) return true;
+  _firebaseInitialization ??= () async {
+    try {
+      await Firebase.initializeApp();
+      firebaseReady = true;
+      firebaseError = null;
+      return true;
+    } catch (error) {
+      firebaseError = error.toString();
+      return false;
+    }
+  }();
+  return _firebaseInitialization!;
 }
 
 class ThemeManager extends ChangeNotifier {
@@ -66,52 +88,11 @@ class SkynestApp extends StatelessWidget {
   );
 }
 
-class StartupGate extends StatefulWidget {
+class StartupGate extends StatelessWidget {
   const StartupGate({super.key});
-  @override
-  State<StartupGate> createState() => _StartupGateState();
-}
-
-class _StartupGateState extends State<StartupGate> {
-  bool initialized = false;
 
   @override
-  void initState() {
-    super.initState();
-    // Let the first Flutter frame render before initializing native plugins.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initializeFirebase());
-  }
-
-  Future<void> _initializeFirebase() async {
-    try {
-      await Firebase.initializeApp();
-      firebaseReady = true;
-    } catch (e) {
-      firebaseError = e.toString();
-    }
-    if (mounted) setState(() => initialized = true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!initialized) {
-      return const Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Preparing SkyNest...'),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-    return const LoginScreen();
-  }
+  Widget build(BuildContext context) => const LoginScreen();
 }
 
 class LoginScreen extends StatefulWidget {
@@ -155,7 +136,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> signIn() async {
-    if (!firebaseReady) { message('Firebase is not configured. Complete the Android Firebase setup first.'); return; }
+    if (!await ensureFirebaseReady()) { message('Firebase could not start. Check the Firebase Android configuration and try again.'); return; }
     if (!validEmail(email.text)) { message('Enter a valid email address.'); return; }
     if (password.text.isEmpty) { message('Enter your password.'); return; }
     setState(() => busy = true);
@@ -245,7 +226,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> resetPassword() async {
-    if (!firebaseReady) { message('Firebase is not configured yet.'); return; }
+    if (!await ensureFirebaseReady()) { message('Firebase could not start. Check the Firebase Android configuration and try again.'); return; }
     if (!validEmail(email.text)) { message('Enter a valid email address in the Email field first.'); return; }
     setState(() => busy = true);
     try {
@@ -330,7 +311,7 @@ class _LoginScreenState extends State<LoginScreen> {
               child: busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('LOGIN')),
             const SizedBox(height: 8),
             OutlinedButton(onPressed: busy ? null : showCreateAccount, child: const Text('CREATE ACCOUNT')),
-            if (!firebaseReady) Card(color: Theme.of(context).colorScheme.errorContainer,
+            if (firebaseError != null) Card(color: Theme.of(context).colorScheme.errorContainer,
               child: Padding(padding: const EdgeInsets.all(12),
                 child: Text('Firebase setup is required before login or registration works.\n' + (firebaseError ?? '')))),
           ],
