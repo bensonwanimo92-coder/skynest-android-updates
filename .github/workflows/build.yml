@@ -45,6 +45,41 @@ jobs:
       - name: Generate Android project files
         run: |
           flutter create --platforms=android --org com.hello22_ --project-name chuka .
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          text = manifest.read_text()
+          if "android.permission.INTERNET" not in text:
+              text = text.replace("<application", '    <uses-permission android:name="android.permission.INTERNET"/>\\n    <application', 1)
+          meta = '        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3940256099942544~3347511713"/>'
+          if "com.google.android.gms.ads.APPLICATION_ID" not in text:
+              text = text.replace("</application>", meta + "\\n    </application>")
+          manifest.write_text(text)
+          rules = """# Keep Firebase and Google Mobile Ads runtime classes.
+          -keep class com.google.firebase.** { *; }
+          -keep class com.google.android.gms.** { *; }
+          -keep class io.flutter.** { *; }
+          -dontwarn com.google.firebase.**
+          -dontwarn com.google.android.gms.**
+          """
+          Path("android/app/proguard-rules.pro").write_text(rules)
+          gradle = Path("android/app/build.gradle.kts")
+          if gradle.exists():
+              s = gradle.read_text()
+              if 'isMinifyEnabled = false' not in s:
+                  s = re.sub(r'(release\\s*\\{)', r'\\1\\n            isMinifyEnabled = false\\n            isShrinkResources = false\\n            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")', s, count=1)
+              gradle.write_text(s)
+          else:
+              gradle = Path("android/app/build.gradle")
+              if not gradle.exists():
+                  raise SystemExit("Android Gradle file missing after flutter create")
+              s = gradle.read_text()
+              if "minifyEnabled false" not in s:
+                  s = re.sub(r'(release\\s*\\{)', r'\\1\\n            minifyEnabled false\\n            shrinkResources false\\n            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"', s, count=1)
+              gradle.write_text(s)
+          print("Android manifest, AdMob application ID and ProGuard rules configured.")
+          PY
           sed -i 's/android:label="chuka"/android:label="SkyNest"/' android/app/src/main/AndroidManifest.xml
           python3 - <<'PY'
           from pathlib import Path
@@ -101,6 +136,61 @@ jobs:
             exit 0
           fi
           printf '%s' "$FIREBASE_ANDROID_CONFIG_BASE64" | base64 --decode > android/app/google-services.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          cfg = json.loads(Path("android/app/google-services.json").read_text())
+          project = cfg["project_info"]
+          expected_package = "com.hello22_.chuka"
+          client = next((c for c in cfg.get("client", [])
+                         if c.get("client_info", {}).get("android_client_info", {}).get("package_name") == expected_package), None)
+          if client is None:
+              raise SystemExit(f"Firebase google-services.json has no Android client for {expected_package}")
+          api_key = next((k["current_key"] for k in client.get("api_key", []) if k.get("current_key")), None)
+          if not api_key:
+              raise SystemExit("Firebase API key is missing from google-services.json")
+          app_id = client["client_info"]["mobilesdk_app_id"]
+          project_id = project["project_id"]
+          sender_id = project["project_number"]
+          bucket = project.get("storage_bucket")
+          dart = """// Generated during CI from the protected Firebase Android configuration.
+          import 'package:firebase_core/firebase_core.dart';
+          import 'package:flutter/foundation.dart';
+
+          class DefaultFirebaseOptions {
+            static FirebaseOptions get currentPlatform {
+              if (kIsWeb) {
+                throw UnsupportedError('SkyNest currently supports Android only.');
+              }
+              switch (defaultTargetPlatform) {
+                case TargetPlatform.android:
+                  return android;
+                default:
+                  throw UnsupportedError('SkyNest Firebase options are configured for Android only.');
+              }
+            }
+
+            static const FirebaseOptions android = FirebaseOptions(
+              apiKey: API_KEY,
+              appId: APP_ID,
+              messagingSenderId: SENDER_ID,
+              projectId: PROJECT_ID,
+              storageBucket: STORAGE_BUCKET,
+            );
+          }
+          """
+          replacements = {
+              "API_KEY": json.dumps(api_key),
+              "APP_ID": json.dumps(app_id),
+              "SENDER_ID": json.dumps(sender_id),
+              "PROJECT_ID": json.dumps(project_id),
+              "STORAGE_BUCKET": json.dumps(bucket or (project_id + ".appspot.com")),
+          }
+          for key, value in replacements.items():
+              dart = dart.replace(key, value)
+          Path("lib/firebase_options.dart").write_text(dart)
+          print("Generated lib/firebase_options.dart for the existing SkyNest Android package.")
+          PY
           python3 - <<'PY'
           from pathlib import Path
           settings = Path("android/settings.gradle.kts")
@@ -277,7 +367,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: shorebird release android --artifact apk --build-name=1.1.1 --build-number=2009
+        run: shorebird release android --artifact apk --build-name=1.1.1 --build-number=2009 -- --no-obfuscate
 
       - name: Verify built APK package and signature
         shell: bash
