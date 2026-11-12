@@ -150,6 +150,39 @@ jobs:
               p.write_text(s)
           PY
 
+      - name: Install Android 14 SDK and Build Tools
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
+          echo "Android platform 34 and Build Tools 34.0.0 installed."
+
+      - name: Audit native Android source for API 31-34 requirements
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          roots = [Path("android/app/src/main/java"), Path("android/app/src/main/kotlin")]
+          files = [p for root in roots if root.exists() for p in root.rglob("*")
+                   if p.suffix in (".kt", ".java")]
+          source = "\n".join(p.read_text(errors="replace") for p in files)
+          pending = re.findall(r"PendingIntent\\s*\\.\\s*get(?:Activity|Service|Broadcast)\\s*\\(", source)
+          if pending and "FLAG_IMMUTABLE" not in source and "FLAG_MUTABLE" not in source:
+              raise SystemExit("PendingIntent calls found without an explicit mutability flag.")
+          if "startForeground(" in source:
+              print("Foreground service code detected; verify each call supplies a notification and is invoked promptly.")
+          if "setExact(" in source or "setExactAndAllowWhileIdle(" in source:
+              if "canScheduleExactAlarms" not in source:
+                  raise SystemExit("Exact AlarmManager scheduling found without canScheduleExactAlarms() handling.")
+          print(f"Audited {len(files)} app-owned Kotlin/Java files.")
+          print(f"PendingIntent factory call sites found: {len(pending)}")
+          print("No app-owned exact-alarm or foreground-service implementation requires Android 14 changes." if
+                "startForeground(" not in source and not ("setExact(" in source or "setExactAndAllowWhileIdle(" in source)
+                else "Review the foreground-service / exact-alarm findings above.")
+          PY
+
       - name: Configure Firebase Android app (optional)
         id: firebase
         env:
@@ -384,7 +417,35 @@ jobs:
           # Resolve the actual launcher component from the installed package instead of
           # assuming Flutter's generated activity name. Keep diagnostics on every failure.
           script: |
-            adb wait-for-device && adb install -r build/app/outputs/flutter-apk/app-release.apk && component="$(adb shell cmd package resolve-activity --brief -c android.intent.category.LAUNCHER com.hello22_.chuka | tr -d '\\r' | tail -n 1)" && echo "Resolved launcher component: $component" && test "${component#*/}" != "$component" && adb shell am force-stop com.hello22_.chuka && adb shell am start -W -n "$component" && sleep 5 && test -n "$(adb shell pidof com.hello22_.chuka)" && adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -F "com.hello22_.chuka" && echo "PASS: SkyNest installed, launched, and remained running on Android 14."
+            set -Eeuo pipefail
+            APK="build/app/outputs/flutter-apk/app-release.apk"
+            PACKAGE="com.hello22_.chuka"
+            adb wait-for-device
+            adb install -r "$APK"
+            component="$(adb shell cmd package resolve-activity --brief -c android.intent.category.LAUNCHER "$PACKAGE" | tr -d '\\r' | tail -n 1)"
+            echo "Resolved launcher component: $component"
+            if [[ "$component" != */* ]]; then
+              echo "FAIL: Android could not resolve a launcher activity."
+              adb shell dumpsys package "$PACKAGE" || true
+              exit 1
+            fi
+            adb shell am force-stop "$PACKAGE"
+            adb shell am start -W -n "$component"
+            sleep 8
+            if ! adb shell pidof "$PACKAGE" >/dev/null 2>&1; then
+              echo "FAIL: app process exited after launch. Capturing crash diagnostics:"
+              adb logcat -d -t 1500 | grep -iE "FATAL EXCEPTION|AndroidRuntime|Process: com.hello22_.chuka|Firebase|Exception|Fatal signal" | tail -n 160 || true
+              adb shell dumpsys activity activities || true
+              adb shell dumpsys package "$PACKAGE" || true
+              exit 1
+            fi
+            if ! adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -F "$PACKAGE"; then
+              echo "FAIL: app process is alive but launcher activity is not resumed."
+              adb shell dumpsys activity activities || true
+              adb logcat -d -t 800 | tail -n 200 || true
+              exit 1
+            fi
+            echo "PASS: SkyNest installed, launched, and remained running on Android 14."
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
