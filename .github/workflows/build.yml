@@ -392,7 +392,7 @@ jobs:
           for auth_file in auth_files:
               lines = auth_file.read_text().splitlines()
               if not any(line.strip() == "compileSdkVersion 34" for line in lines):
-                  raise SystemExit(f"firebase_auth compile SDK was not set to 36: {auth_file}")
+                  raise SystemExit(f"firebase_auth compile SDK was not set to 34: {auth_file}")
 
           print(f"Patched {len(patched)} Android plugin Gradle files.")
           print("Verified firebase_auth compileSdkVersion 34.")
@@ -412,7 +412,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: shorebird release android --artifact apk -- --no-shrink --no-obfuscate --build-name=1.1.1 --build-number=2019
+        run: shorebird release android --artifact apk -- --no-shrink --no-obfuscate --build-name=1.1.1 --build-number=2020
 
       - name: Verify built APK package and signature
         shell: bash
@@ -453,7 +453,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: skynest-android-1.1.1-2019
+          name: skynest-android-1.1.1-2020
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
@@ -462,8 +462,8 @@ jobs:
         if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && steps.firebase.outputs.configured == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref == 'refs/heads/main' && 'v1.1.1+2019' || github.ref_name }}
-          name: SkyNest Android 1.1.1 (build 2019)
+          tag_name: ${{ github.ref == 'refs/heads/main' && 'v1.1.1+2020' || github.ref_name }}
+          name: SkyNest Android 1.1.1 (build 2020)
           target_commitish: ${{ github.sha }}
           files: build/app/outputs/flutter-apk/app-release.apk
           token: ${{ secrets.GITHUB_TOKEN }}
