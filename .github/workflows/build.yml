@@ -314,31 +314,9 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            set -euo pipefail
-            APK="build/app/outputs/flutter-apk/app-release.apk"
-            PACKAGE="com.hello22_.chuka"
-            ACTIVITY="$PACKAGE/.MainActivity"
-
-            adb wait-for-device
-            adb install -r "$APK"
-            adb shell am force-stop "$PACKAGE"
-            # Launch directly; Monkey may abort when unrelated emulator services stall.
-            adb shell am start -W -n "$ACTIVITY"
-
-            # Allow Flutter first startup and Android background work to settle.
-            for attempt in $(seq 1 30); do
-              if adb shell pidof "$PACKAGE" >/dev/null 2>&1; then
-                echo "PASS: SkyNest process is running on Android 14 (attempt $attempt)."
-                adb shell dumpsys activity activities | grep -F "$PACKAGE" | head -n 5 || true
-                exit 0
-              fi
-              sleep 2
-            done
-
-            echo "ERROR: SkyNest process did not remain running after direct activity launch."
-            adb logcat -d -t 6000 | grep -E -i "FATAL EXCEPTION|AndroidRuntime|$PACKAGE" | tail -n 160 || true
-            exit 1
+          # Keep the test in one shell process; the emulator action executes script lines separately.
+          script: >-
+            set -euo pipefail; APK="build/app/outputs/flutter-apk/app-release.apk"; PACKAGE="com.hello22_.chuka"; ACTIVITY="$PACKAGE/.MainActivity"; test -s "$APK"; adb wait-for-device; adb install -r "$APK"; adb shell am force-stop "$PACKAGE"; adb shell am start -W -n "$ACTIVITY"; for attempt in $(seq 1 30); do if adb shell pidof "$PACKAGE" >/dev/null 2>&1; then echo "PASS: SkyNest process is running on Android 14 (attempt $attempt)."; adb shell dumpsys activity activities | grep -F "$PACKAGE" | head -n 5 || true; exit 0; fi; sleep 2; done; echo "ERROR: SkyNest process did not remain running after direct activity launch."; adb logcat -d -t 6000 | grep -E -i "FATAL EXCEPTION|AndroidRuntime|$PACKAGE" | tail -n 160 || true; exit 1
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
