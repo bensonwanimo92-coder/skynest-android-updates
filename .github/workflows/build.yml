@@ -1,4 +1,4 @@
-name: SkyNest Signed APK Build (Android 15 Smoke Test)
+name: SkyNest Signed APK Build (No Emulator)
 
 on:
   push:
