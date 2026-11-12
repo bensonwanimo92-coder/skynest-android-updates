@@ -77,11 +77,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final password = TextEditingController();
   final confirmPassword = TextEditingController();
   final displayName = TextEditingController();
+  final invitationCode = TextEditingController();
+  String selectedRole = 'landlord';
   bool busy = false, obscure = true, creating = false;
 
   @override
   void dispose() {
-    email.dispose(); password.dispose(); confirmPassword.dispose(); displayName.dispose();
+    email.dispose(); password.dispose(); confirmPassword.dispose(); displayName.dispose(); invitationCode.dispose();
     super.dispose();
   }
   void message(String text) {
@@ -111,9 +113,24 @@ class _LoginScreenState extends State<LoginScreen> {
     if (password.text.isEmpty) { message('Enter your password.'); return; }
     setState(() => busy = true);
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(email: email.text.trim(), password: password.text);
-      if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const DashboardScreen()));
+      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(email: email.text.trim(), password: password.text);
+      final user = credential.user!;
+      final profile = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      final profileSnapshot = await profile.get();
+      if (!profileSnapshot.exists) {
+        // Existing SkyNest accounts pre-date role profiles; preserve them as landlords.
+        await profile.set({'displayName': user.displayName ?? user.email ?? 'Landlord',
+          'email': user.email, 'role': 'landlord', 'status': 'active',
+          'createdAt': FieldValue.serverTimestamp(), 'legacyAccount': true});
+      }
+      final latest = await profile.get();
+      if (latest.data()?['status'] == 'pending') {
+        if (!mounted) return;
+        Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const PendingApprovalScreen()));
+      } else {
+        if (!mounted) return;
+        Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const DashboardScreen()));
+      }
     } on FirebaseAuthException catch (e) { message(authMessage(e)); }
     catch (_) { message('Login could not be completed. Check your connection and try again.'); }
     finally { if (mounted) setState(() => busy = false); }
@@ -125,17 +142,56 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!validEmail(email.text)) { message('Enter a valid email address.'); return; }
     if (password.text.length < 6) { message('Use a password with at least 6 characters.'); return; }
     if (password.text != confirmPassword.text) { message('The passwords do not match.'); return; }
+    if (!['landlord', 'caretaker', 'tenant'].contains(selectedRole)) { message('Choose an account type.'); return; }
+    if (selectedRole != 'landlord' && invitationCode.text.trim().length < 6) {
+      message('Enter the invitation code provided by your landlord.'); return;
+    }
     setState(() => busy = true);
+    User? newUser;
     try {
       final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email.text.trim(), password: password.text);
-      await credential.user?.updateDisplayName(displayName.text.trim());
+      newUser = credential.user;
+      await newUser?.updateDisplayName(displayName.text.trim());
+      final profile = FirebaseFirestore.instance.collection('users').doc(newUser!.uid);
+      if (selectedRole == 'landlord') {
+        await profile.set({'displayName': displayName.text.trim(), 'email': email.text.trim(),
+          'role': 'landlord', 'status': 'active', 'createdAt': FieldValue.serverTimestamp()});
+      } else {
+        final code = invitationCode.text.trim().toUpperCase();
+        final inviteRef = FirebaseFirestore.instance.collection('invitations').doc(code);
+        await FirebaseFirestore.instance.runTransaction((transaction) async {
+          final inviteSnapshot = await transaction.get(inviteRef);
+          if (!inviteSnapshot.exists) throw StateError('Invitation code not found.');
+          final invite = inviteSnapshot.data()!;
+          final expiry = invite['expiresAt'];
+          if (invite['status'] != 'open' || invite['role'] != selectedRole ||
+              invite['landlordId'] == null || expiry is! Timestamp || !expiry.toDate().isAfter(DateTime.now())) {
+            throw StateError('This invitation is invalid, expired, already used, or for a different role.');
+          }
+          transaction.set(profile, {'displayName': displayName.text.trim(), 'email': email.text.trim(),
+            'role': selectedRole, 'status': 'pending', 'landlordId': invite['landlordId'],
+            'propertyIds': invite['propertyIds'] ?? [], 'invitationCode': code,
+            'createdAt': FieldValue.serverTimestamp()});
+          transaction.update(inviteRef, {'status': 'used', 'usedBy': newUser!.uid,
+            'usedAt': FieldValue.serverTimestamp()});
+        });
+      }
       if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const DashboardScreen()));
-      message('Account created successfully.');
-    } on FirebaseAuthException catch (e) { message(authMessage(e)); }
-    catch (_) { message('Account creation could not be completed. Check your connection and try again.'); }
-    finally { if (mounted) setState(() => busy = false); }
+      if (selectedRole == 'landlord') {
+        Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const DashboardScreen()));
+        message('Landlord account created successfully.');
+      } else {
+        Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const PendingApprovalScreen()));
+        message('Account created. Your landlord must approve your access.');
+      }
+    } on FirebaseAuthException catch (e) {
+      message(authMessage(e));
+    } catch (e) {
+      // Do not leave an unusable Firebase Auth account behind if invitation validation fails.
+      try { await newUser?.delete(); } catch (_) {}
+      message(e is StateError ? e.message.toString() : 'Account creation could not be completed. Check your connection and try again.');
+    } finally { if (mounted) setState(() => busy = false); }
   }
 
   Future<void> resetPassword() async {
@@ -151,13 +207,29 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> showCreateAccount() async {
-    password.clear(); confirmPassword.clear(); displayName.clear();
+    password.clear(); confirmPassword.clear(); displayName.clear(); invitationCode.clear(); selectedRole = 'landlord';
     await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(
       builder: (dialogContext, setDialogState) => AlertDialog(
         title: const Text('Create your SkyNest account'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(controller: displayName, textCapitalization: TextCapitalization.words,
             decoration: const InputDecoration(labelText: 'Full name', prefixIcon: Icon(Icons.person_outline))),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: selectedRole,
+            decoration: const InputDecoration(labelText: 'Account type', prefixIcon: Icon(Icons.badge_outlined)),
+            items: const [
+              DropdownMenuItem(value: 'landlord', child: Text('Landlord')),
+              DropdownMenuItem(value: 'caretaker', child: Text('Caretaker')),
+              DropdownMenuItem(value: 'tenant', child: Text('Tenant')),
+            ],
+            onChanged: (value) => setDialogState(() => selectedRole = value ?? 'landlord'),
+          ),
+          if (selectedRole != 'landlord') ...[
+            const SizedBox(height: 12),
+            TextField(controller: invitationCode, textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(labelText: 'Landlord invitation code', prefixIcon: Icon(Icons.key_outlined))),
+          ],
           const SizedBox(height: 12),
           TextField(controller: email, keyboardType: TextInputType.emailAddress,
             decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined))),
