@@ -51,10 +51,18 @@ service cloud.firestore {
         (
           resource.data.role in ['tenant', 'caretaker'] &&
           resource.data.status == 'pending' &&
-          request.resource.data.status in ['active', 'rejected', 'suspended'] &&
+          request.resource.data.status in ['active', 'rejected'] &&
           request.resource.data.role == resource.data.role &&
           request.resource.data.landlordId == resource.data.landlordId &&
           landlordFor(resource.data.landlordId)
+        ) ||
+        (
+          resource.data.role == 'caretaker' &&
+          resource.data.status == 'active' &&
+          request.resource.data.status == 'suspended' &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.landlordId == resource.data.landlordId &&
+          myRole() == 'landlord' && request.auth.uid == resource.data.landlordId
         )
       );
       allow delete: if signedIn() && request.auth.uid == userId;
