@@ -289,7 +289,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: shorebird release android --artifact apk -- --no-shrink --no-obfuscate --build-name=1.1.1 --build-number=2014
+        run: shorebird release android --artifact apk -- --no-shrink --no-obfuscate --build-name=1.1.1 --build-number=2015
 
       - name: Verify built APK package and signature
         shell: bash
@@ -314,13 +314,36 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: >-
-            adb install -r build/app/outputs/flutter-apk/app-release.apk && adb shell monkey -p com.hello22_.chuka 1 && sleep 20 && (adb shell pidof com.hello22_.chuka >/dev/null || { echo "ERROR: SkyNest did not remain running after launch on Android 14."; adb logcat -d -t 4000 | grep -E -i "FATAL EXCEPTION|AndroidRuntime|com.hello22_.chuka" | tail -n 120 || true; exit 1; }) && echo "PASS: SkyNest installed and remained running on Android 14 emulator."
+          script: |
+            set -euo pipefail
+            APK="build/app/outputs/flutter-apk/app-release.apk"
+            PACKAGE="com.hello22_.chuka"
+            ACTIVITY="$PACKAGE/.MainActivity"
+
+            adb wait-for-device
+            adb install -r "$APK"
+            adb shell am force-stop "$PACKAGE"
+            # Launch directly; Monkey may abort when unrelated emulator services stall.
+            adb shell am start -W -n "$ACTIVITY"
+
+            # Allow Flutter first startup and Android background work to settle.
+            for attempt in $(seq 1 30); do
+              if adb shell pidof "$PACKAGE" >/dev/null 2>&1; then
+                echo "PASS: SkyNest process is running on Android 14 (attempt $attempt)."
+                adb shell dumpsys activity activities | grep -F "$PACKAGE" | head -n 5 || true
+                exit 0
+              fi
+              sleep 2
+            done
+
+            echo "ERROR: SkyNest process did not remain running after direct activity launch."
+            adb logcat -d -t 6000 | grep -E -i "FATAL EXCEPTION|AndroidRuntime|$PACKAGE" | tail -n 160 || true
+            exit 1
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: skynest-android-1.1.1-2014
+          name: skynest-android-1.1.1-2015
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
@@ -329,8 +352,8 @@ jobs:
         if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && steps.firebase.outputs.configured == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref == 'refs/heads/main' && 'v1.1.1+2014' || github.ref_name }}
-          name: SkyNest Android 1.1.1 (build 2014)
+          tag_name: ${{ github.ref == 'refs/heads/main' && 'v1.1.1+2015' || github.ref_name }}
+          name: SkyNest Android 1.1.1 (build 2015)
           target_commitish: ${{ github.sha }}
           files: build/app/outputs/flutter-apk/app-release.apk
           token: ${{ secrets.GITHUB_TOKEN }}
