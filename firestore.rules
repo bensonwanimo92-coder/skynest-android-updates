@@ -2,8 +2,8 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function activeUser() { return signedIn() && profile(request.auth.uid).status == 'active'; }
     function profile(uid) { return get(/databases/$(database)/documents/users/$(uid)).data; }
+    function activeUser() { return signedIn() && profile(request.auth.uid).status == 'active'; }
     function myRole() { return profile(request.auth.uid).role; }
     function landlordFor(id) {
       return activeUser() && (
@@ -114,10 +114,10 @@ service cloud.firestore {
     }
 
     match /houses/{houseId} {
-      allow create: if signedIn() && myRole() == 'landlord' &&
+      allow create: if activeUser() && myRole() == 'landlord' &&
         request.resource.data.createdBy == request.auth.uid &&
         request.resource.data.landlordId == request.auth.uid;
-      allow read: if signedIn() && (
+      allow read: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
         (myRole() == 'caretaker' && request.auth.uid in resource.data.caretakerIds) ||
         (myRole() == 'tenant' && resource.data.landlordId == profile(request.auth.uid).landlordId && resource.data.isOccupied == false)
@@ -127,13 +127,13 @@ service cloud.firestore {
         (myRole() == 'caretaker' && request.auth.uid in resource.data.caretakerIds &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isOccupied', 'status', 'assignedTenantId']))
       );
-      allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
+      allow delete: if activeUser() && resource.data.createdBy == request.auth.uid;
     }
 
     match /tenants/{recordId} {
-      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid &&
+      allow create: if activeUser() && request.resource.data.createdBy == request.auth.uid &&
         (myRole() == 'landlord' || request.resource.data.landlordId == profile(request.auth.uid).landlordId);
-      allow read: if signedIn() && (
+      allow read: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
         (resource.data.landlordId != null && landlordFor(resource.data.landlordId))
       );
@@ -142,8 +142,8 @@ service cloud.firestore {
 
     match /payments/{recordId} {
       allow create: if activeUser() && myRole() == 'landlord' && request.resource.data.createdBy == request.auth.uid;
-      allow read: if signedIn() && resource.data.createdBy == request.auth.uid;
-      allow update: if signedIn() && resource.data.createdBy == request.auth.uid;
+      allow read: if activeUser() && resource.data.createdBy == request.auth.uid;
+      allow update: if activeUser() && resource.data.createdBy == request.auth.uid;
       allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
     }
 
@@ -178,7 +178,7 @@ service cloud.firestore {
         resource.data.createdBy == request.auth.uid ||
         landlordFor(resource.data.landlordId)
       );
-      allow update: if signedIn() && landlordFor(resource.data.landlordId) &&
+      allow update: if activeUser() && landlordFor(resource.data.landlordId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'lastUpdatedAt', 'lastUpdatedBy', 'response']);
       allow delete: if false;
     }
@@ -186,8 +186,8 @@ service cloud.firestore {
     match /groups/{groupId} {
       allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid &&
         linkedTo(request.resource.data.landlordId) && request.auth.uid in request.resource.data.memberIds;
-      allow read: if landlordFor(resource.data.landlordId) || (activeUser() && resource.data.audience == 'all' && linkedTo(resource.data.landlordId));
-      allow update: if signedIn() && linkedTo(resource.data.landlordId) && (
+      allow read: if linkedTo(resource.data.landlordId);
+      allow update: if activeUser() && linkedTo(resource.data.landlordId) && (
         (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds']) &&
           request.resource.data.memberIds.hasAll(resource.data.memberIds) &&
@@ -201,23 +201,23 @@ service cloud.firestore {
       );
       allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
       match /members/{memberId} {
-        allow read: if signedIn() && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
-        allow create: if signedIn() && request.auth.uid == memberId &&
+        allow read: if activeUser() && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+        allow create: if activeUser() && request.auth.uid == memberId &&
           request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
-        allow update, delete: if signedIn() && request.auth.uid == memberId;
+        allow update, delete: if activeUser() && request.auth.uid == memberId;
       }
       match /messages/{messageId} {
         allow read: if signedIn() && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
-        allow create: if signedIn() && request.resource.data.senderId == request.auth.uid &&
+        allow create: if activeUser() && request.resource.data.senderId == request.auth.uid &&
           request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
         allow update, delete: if false;
       }
     }
 
     match /houseRequests/{id} {
-      allow create: if signedIn() && myRole() == 'tenant' && request.resource.data.tenantId == request.auth.uid &&
+      allow create: if activeUser() && myRole() == 'tenant' && request.resource.data.tenantId == request.auth.uid &&
         request.resource.data.landlordId == profile(request.auth.uid).landlordId;
-      allow read: if signedIn() && (
+      allow read: if activeUser() && (
         resource.data.tenantId == request.auth.uid || landlordFor(resource.data.landlordId)
       );
       allow update: if signedIn() && landlordFor(resource.data.landlordId) &&
@@ -226,15 +226,15 @@ service cloud.firestore {
     }
 
     match /notices/{id} {
-      allow create: if signedIn() && landlordFor(request.resource.data.landlordId) &&
+      allow create: if activeUser() && landlordFor(request.resource.data.landlordId) &&
         request.resource.data.createdBy == request.auth.uid;
-      allow read: if signedIn() && linkedTo(resource.data.landlordId);
-      allow update, delete: if signedIn() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
+      allow read: if landlordFor(resource.data.landlordId) || (activeUser() && resource.data.audience == 'all' && linkedTo(resource.data.landlordId));
+      allow update, delete: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
     }
 
     match /meters/{id} {
       allow create: if signedIn() && myRole() == 'landlord' && request.resource.data.landlordId == request.auth.uid;
-      allow read, update, delete: if signedIn() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
+      allow read, update, delete: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
     }
     match /electricityAllocations/{id} {
       allow create: if signedIn() && myRole() == 'landlord' && request.resource.data.landlordId == request.auth.uid;
@@ -242,8 +242,8 @@ service cloud.firestore {
     }
 
     match /activityLogs/{id} {
-      allow read: if signedIn() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
-      allow create: if signedIn() && landlordFor(request.resource.data.landlordId) &&
+      allow read: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
+      allow create: if activeUser() && landlordFor(request.resource.data.landlordId) &&
         request.resource.data.actorId == request.auth.uid;
       allow update, delete: if false;
     }
