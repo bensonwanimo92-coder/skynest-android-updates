@@ -168,7 +168,7 @@ jobs:
           files = [p for root in roots if root.exists() for p in root.rglob("*")
                    if p.suffix in (".kt", ".java")]
           source = "\n".join(p.read_text(errors="replace") for p in files)
-          pending = re.findall(r"PendingIntent\\s*\\.\\s*get(?:Activity|Service|Broadcast)\\s*\\(", source)
+          pending = re.findall(r"PendingIntent\s*\.\s*get(?:Activity|Service|Broadcast)\s*\(", source)
           if pending and "FLAG_IMMUTABLE" not in source and "FLAG_MUTABLE" not in source:
               raise SystemExit("PendingIntent calls found without an explicit mutability flag.")
           if "startForeground(" in source:
