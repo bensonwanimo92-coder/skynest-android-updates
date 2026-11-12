@@ -416,7 +416,7 @@ class HousesScreen extends StatelessWidget {
         FilledButton(onPressed: () async {
           if (!key.currentState!.validate()) return;
           try {
-            await FirebaseFirestore.instance.collection('houses').add({'houseNo': number.text.trim(), 'rent': double.parse(rent.text), 'isOccupied': false, 'status': 'vacant', 'landlordId': FirebaseAuth.instance.currentUser?.uid, 'caretakerIds': <String>[], 'createdAt': FieldValue.serverTimestamp(), 'createdBy': FirebaseAuth.instance.currentUser?.uid});
+            await FirebaseFirestore.instance.collection('houses').add({'houseNo': number.text.trim(), 'rent': double.parse(rent.text), 'isOccupied': false, 'status': 'vacant', 'landlordId': FirebaseAuth.instance.currentUser?.uid, 'caretakerIds': <String>[], 'createdAt': FieldValue.serverTimestamp(), 'createdBy': FirebaseAuth.instance.currentUser?.uid, 'landlordId': FirebaseAuth.instance.currentUser?.uid});
             if (d.mounted) Navigator.pop(d);
           } catch (e) { snack(context, 'Could not save house: ' + e.toString()); }
         }, child: const Text('Save')),
@@ -468,7 +468,7 @@ class TenantsScreen extends StatelessWidget {
         FilledButton(onPressed: () async {
           if (!key.currentState!.validate()) return;
           try {
-            await FirebaseFirestore.instance.collection('tenants').add({'name': name.text.trim(), 'phone': phone.text.trim(), 'houseNo': house.text.trim(), 'rentAmount': double.parse(rent.text), 'createdAt': FieldValue.serverTimestamp(), 'createdBy': FirebaseAuth.instance.currentUser?.uid});
+            await FirebaseFirestore.instance.collection('tenants').add({'name': name.text.trim(), 'phone': phone.text.trim(), 'houseNo': house.text.trim(), 'rentAmount': double.parse(rent.text), 'createdAt': FieldValue.serverTimestamp(), 'createdBy': FirebaseAuth.instance.currentUser?.uid, 'landlordId': FirebaseAuth.instance.currentUser?.uid});
             if (d.mounted) Navigator.pop(d);
           } catch (e) { snack(context, 'Could not save tenant: ' + e.toString()); }
         }, child: const Text('Save tenant')),
@@ -1154,7 +1154,7 @@ class HouseRequestsScreen extends StatelessWidget {
         await FirebaseFirestore.instance.collection('tenants').add({
           'name': data['tenantName'] ?? 'Tenant', 'houseNo': data['houseNo'] ?? '',
           'tenantId': data['tenantId'], 'landlordId': data['landlordId'],
-          'createdBy': data['landlordId'], 'createdAt': FieldValue.serverTimestamp(),
+          'createdBy': FirebaseAuth.instance.currentUser?.uid, 'createdAt': FieldValue.serverTimestamp(),
         });
       }
       if (context.mounted) snack(context, 'Request ' + status + '.');
