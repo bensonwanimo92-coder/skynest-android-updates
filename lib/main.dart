@@ -125,11 +125,14 @@ class _LoginScreenState extends State<LoginScreen> {
           'createdAt': FieldValue.serverTimestamp(), 'legacyAccount': true});
       }
       final latest = await profile.get();
-      if (latest.data()?['status'] == 'pending') {
-        if (!mounted) return;
+      final accountStatus = latest.data()?['status']?.toString() ?? 'active';
+      if (!mounted) return;
+      if (accountStatus == 'pending') {
         Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const PendingApprovalScreen()));
+      } else if (accountStatus != 'active') {
+        await FirebaseAuth.instance.signOut();
+        message('This account is ' + accountStatus + '. Contact your landlord or administrator.');
       } else {
-        if (!mounted) return;
         Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const DashboardScreen()));
       }
     } on FirebaseAuthException catch (e) { message(authMessage(e)); }
@@ -835,14 +838,28 @@ class PendingApprovalScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Account approval')),
-    body: const Center(child: Padding(padding: EdgeInsets.all(24), child: Column(
+    body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(
       mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.hourglass_top_rounded, size: 72, color: brand),
-        SizedBox(height: 18),
-        Text('Your account is awaiting approval', textAlign: TextAlign.center,
+        const Icon(Icons.hourglass_top_rounded, size: 72, color: brand),
+        const SizedBox(height: 18),
+        const Text('Your account is awaiting approval', textAlign: TextAlign.center,
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-        SizedBox(height: 10),
-        Text('Your landlord or an authorised caretaker must approve your access.', textAlign: TextAlign.center),
+        const SizedBox(height: 10),
+        const Text('Your landlord or an authorised caretaker must approve your access.', textAlign: TextAlign.center),
+        const SizedBox(height: 20),
+        FilledButton.icon(onPressed: () async {
+          final uid = FirebaseAuth.instance.currentUser?.uid;
+          if (uid == null) return;
+          try {
+            final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+            final status = profile.data()?['status']?.toString() ?? 'pending';
+            if (status == 'active' && context.mounted) {
+              Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const DashboardScreen()));
+            } else if (context.mounted) {
+              snack(context, 'Account status: ' + status + '.');
+            }
+          } catch (e) { if (context.mounted) snack(context, 'Could not check approval: ' + e.toString()); }
+        }, icon: const Icon(Icons.refresh), label: const Text('CHECK APPROVAL')),
       ],
     ))),
     floatingActionButton: FloatingActionButton.extended(onPressed: () async {
@@ -914,7 +931,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
             final d = doc.data();
             return Card(child: ListTile(leading: const Icon(Icons.person_outline),
               title: Text(d['displayName']?.toString() ?? d['email']?.toString() ?? 'Account'),
-              subtitle: Text((d['role'] ?? 'user').toString() + ' • ' + (d['status'] ?? 'unknown').toString()),
+              subtitle: Text((d['role'] ?? 'user').toString() + ' • ' + (d['status'] ?? 'unknown').toString() + '\nID: ' + doc.id),
               trailing: d['role'] == 'caretaker' && d['status'] == 'active'
                 ? IconButton(tooltip: 'Remove caretaker access', icon: const Icon(Icons.person_remove_alt_1, color: Colors.red),
                     onPressed: () async {
