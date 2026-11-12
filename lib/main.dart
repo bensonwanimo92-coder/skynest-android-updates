@@ -1521,6 +1521,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
   final meterName = TextEditingController(), meterNumber = TextEditingController(), houseNo = TextEditingController(), amount = TextEditingController();
   String billing = 'prepaid';
   String interval = 'monthly';
+  String? selectedMeterId;
   bool saving = false;
   @override
   void dispose() { meterName.dispose(); meterNumber.dispose(); houseNo.dispose(); amount.dispose(); super.dispose(); }
@@ -1529,52 +1530,90 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
     if (uid == null || meterName.text.trim().isEmpty || meterNumber.text.trim().isEmpty) { snack(context, 'Enter meter name and meter number.'); return; }
     setState(() => saving = true);
     try {
-      await FirebaseFirestore.instance.collection('meters').add({
+      final ref = await FirebaseFirestore.instance.collection('meters').add({
         'landlordId': uid, 'name': meterName.text.trim(), 'meterNumber': meterNumber.text.trim(),
         'billingType': billing, 'createdAt': FieldValue.serverTimestamp(),
       });
+      if (mounted) setState(() => selectedMeterId = ref.id);
       meterName.clear(); meterNumber.clear();
-      if (mounted) snack(context, 'Meter registered.');
+      if (mounted) snack(context, 'Meter registered and selected. You can allocate this same meter to several houses.');
     } catch (e) { if (mounted) snack(context, 'Could not save meter: ' + e.toString()); }
     finally { if (mounted) setState(() => saving = false); }
   }
-  Future<void> allocateUnit() async {
+  Future<void> allocateUnit(Map<String, dynamic> meter) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     final value = double.tryParse(amount.text.trim());
-    if (uid == null || houseNo.text.trim().isEmpty || value == null || value < 0) { snack(context, 'Enter a house number and valid amount.'); return; }
+    final unit = houseNo.text.trim();
+    if (uid == null || selectedMeterId == null || unit.isEmpty || value == null || value < 0) {
+      snack(context, 'Select a registered meter, enter a house number and a valid amount.'); return;
+    }
     setState(() => saving = true);
     try {
       await FirebaseFirestore.instance.collection('electricityAllocations').add({
-        'landlordId': uid, 'houseNo': houseNo.text.trim(), 'amount': value,
-        'billingType': billing, 'meterReference': meterNumber.text.trim(), 'interval': interval, 'createdAt': FieldValue.serverTimestamp(),
+        'landlordId': uid, 'houseNo': unit, 'amount': value,
+        'billingType': meter['billingType'] ?? billing,
+        'meterId': selectedMeterId, 'meterReference': meter['meterNumber'] ?? '',
+        'meterName': meter['name'] ?? '', 'interval': interval,
+        'createdAt': FieldValue.serverTimestamp(),
       });
       houseNo.clear(); amount.clear();
-      if (mounted) snack(context, 'Electricity allocation saved.');
+      if (mounted) snack(context, 'House allocation saved. You can select this meter again for another house.');
     } catch (e) { if (mounted) snack(context, 'Could not save allocation: ' + e.toString()); }
     finally { if (mounted) setState(() => saving = false); }
   }
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Electricity management')),
-    body: ListView(padding: const EdgeInsets.all(16), children: [
-      const Text('Register prepaid or postpaid meters and record per-unit electricity allocations.'),
-      DropdownButtonFormField<String>(value: billing, decoration: const InputDecoration(labelText: 'Billing model'),
-        items: const [DropdownMenuItem(value: 'prepaid', child: Text('Prepaid')), DropdownMenuItem(value: 'postpaid', child: Text('Postpaid'))],
-        onChanged: (v) => setState(() => billing = v ?? 'prepaid')),
-      const SizedBox(height: 10),
-      TextField(controller: meterName, decoration: const InputDecoration(labelText: 'Meter label')),
-      TextField(controller: meterNumber, decoration: const InputDecoration(labelText: 'Meter number / reference')),
-      FilledButton(onPressed: saving ? null : saveMeter, child: const Text('REGISTER METER')),
-      const Divider(height: 30),
-      const Text('Per-house electricity allocation', style: TextStyle(fontWeight: FontWeight.bold)),
-      DropdownButtonFormField<String>(value: interval, decoration: const InputDecoration(labelText: 'Charging interval'),
-        items: const [DropdownMenuItem(value: 'daily', child: Text('Daily')), DropdownMenuItem(value: 'weekly', child: Text('Weekly')), DropdownMenuItem(value: 'monthly', child: Text('Monthly'))],
-        onChanged: (v) => setState(() => interval = v ?? 'monthly')),
-      TextField(controller: houseNo, decoration: const InputDecoration(labelText: 'House / unit number')),
-      TextField(controller: amount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Amount (KSh) per interval')),
-      FilledButton(onPressed: saving ? null : allocateUnit, child: const Text('SAVE UNIT ALLOCATION')),
-      const SizedBox(height: 12),
-      const Text('This stores meter and billing allocation records only. It does not purchase KPLC tokens or automatically pay electricity bills; live transactions need a verified provider integration and secure backend.'),
-    ]));
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return Scaffold(appBar: AppBar(title: const Text('Electricity management')),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: uid == null ? null : FirebaseFirestore.instance.collection('meters').where('landlordId', isEqualTo: uid).snapshots(),
+        builder: (context, meterSnap) {
+          final meters = meterSnap.data?.docs ?? [];
+          final validSelection = meters.any((m) => m.id == selectedMeterId);
+          final selected = validSelection ? meters.firstWhere((m) => m.id == selectedMeterId) : null;
+          return ListView(padding: const EdgeInsets.all(16), children: [
+            const Text('Register meters and keep prepaid or postpaid electricity records. One meter can be assigned to multiple houses.'),
+            DropdownButtonFormField<String>(value: billing, decoration: const InputDecoration(labelText: 'Billing model for new meter'),
+              items: const [DropdownMenuItem(value: 'prepaid', child: Text('Prepaid')), DropdownMenuItem(value: 'postpaid', child: Text('Postpaid'))],
+              onChanged: (v) => setState(() => billing = v ?? 'prepaid')),
+            const SizedBox(height: 10),
+            TextField(controller: meterName, decoration: const InputDecoration(labelText: 'Meter label')),
+            TextField(controller: meterNumber, decoration: const InputDecoration(labelText: 'Meter number / reference')),
+            FilledButton(onPressed: saving ? null : saveMeter, child: const Text('REGISTER METER')),
+            const Divider(height: 30),
+            const Text('Allocate a meter to a house', style: TextStyle(fontWeight: FontWeight.bold)),
+            if (meterSnap.hasError) errorView('Registered meters could not load.'),
+            if (!meterSnap.hasData && !meterSnap.hasError) const LinearProgressIndicator(),
+            DropdownButtonFormField<String>(
+              value: validSelection ? selectedMeterId : null,
+              decoration: const InputDecoration(labelText: 'Choose registered meter'),
+              items: meters.map((m) => DropdownMenuItem<String>(value: m.id,
+                child: Text((m.data()['name'] ?? 'Meter').toString() + ' • ' + (m.data()['meterNumber'] ?? '').toString()))).toList(),
+              onChanged: saving ? null : (v) => setState(() => selectedMeterId = v),
+            ),
+            if (selected != null) Padding(padding: const EdgeInsets.only(top: 6),
+              child: Text('Selected: \${(selected.data()['billingType'] ?? 'prepaid').toString()} • This meter may be reused for other houses.')),
+            DropdownButtonFormField<String>(value: interval, decoration: const InputDecoration(labelText: 'Charging / recording interval'),
+              items: const [DropdownMenuItem(value: 'daily', child: Text('Daily')), DropdownMenuItem(value: 'weekly', child: Text('Weekly')), DropdownMenuItem(value: 'monthly', child: Text('Monthly'))],
+              onChanged: (v) => setState(() => interval = v ?? 'monthly')),
+            TextField(controller: houseNo, decoration: const InputDecoration(labelText: 'House / unit number')),
+            TextField(controller: amount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Amount (KSh) per interval')),
+            FilledButton(onPressed: saving || selected == null ? null : () => allocateUnit(selected.data()), child: const Text('SAVE HOUSE ALLOCATION')),
+            const SizedBox(height: 12),
+            const Text('The same registered meter can be selected repeatedly and allocated to different houses. These are records only: no in-app payment, M-Pesa transaction or KPLC token purchase is made.'),
+            const Divider(height: 24),
+            const Text('Registered meters', style: TextStyle(fontWeight: FontWeight.bold)),
+            ...meters.map((m) => ListTile(
+              leading: const Icon(Icons.electric_meter_outlined),
+              title: Text((m.data()['name'] ?? 'Meter').toString()),
+              subtitle: Text((m.data()['meterNumber'] ?? '').toString() + ' • ' + (m.data()['billingType'] ?? 'prepaid').toString()),
+              trailing: TextButton(onPressed: () => setState(() => selectedMeterId = m.id), child: const Text('SELECT')),
+            )),
+          ]);
+        },
+      ),
+    );
+  }
 }
 
 class ActivityLogScreen extends StatelessWidget {
