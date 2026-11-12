@@ -23,15 +23,39 @@ Future<void> main() async {
 
 class ThemeManager extends ChangeNotifier {
   ThemeData value = Themes.blue;
-  void set(ThemeData theme) { value = theme; notifyListeners(); }
+  String selectedName = 'Classic Blue';
+  void set(ThemeData theme, String name) { value = theme; selectedName = name; notifyListeners(); }
 }
 final themeManager = ThemeManager();
 
+class ThemeOption {
+  final String name, description;
+  final ThemeData theme;
+  final Color primary, secondary;
+  final IconData icon;
+  const ThemeOption(this.name, this.description, this.theme, this.primary, this.secondary, this.icon);
+}
+
 class Themes {
-  static final blue = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: brand), useMaterial3: true);
-  static final dark = ThemeData.dark(useMaterial3: true);
-  static final sunset = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepOrange), useMaterial3: true);
-  static final forest = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.green), useMaterial3: true);
+  static final blue = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2463A6)), useMaterial3: true);
+  static final dark = ThemeData(colorScheme: const ColorScheme.dark(primary: Color(0xFFC4A66A), secondary: Color(0xFF9CA3AF), surface: Color(0xFF17191D)), useMaterial3: true);
+  static final sunset = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFC66A45)), useMaterial3: true);
+  static final forest = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF52745A)), useMaterial3: true);
+  static final ivory = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFB18A4A), brightness: Brightness.light, surface: const Color(0xFFFFFBF3)), scaffoldBackgroundColor: const Color(0xFFFFFBF3), useMaterial3: true);
+  static final ocean = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF315D83)), useMaterial3: true);
+  static final rose = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF9A6572)), useMaterial3: true);
+  static final slate = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF64748B)), useMaterial3: true);
+  static final options = <ThemeOption>[
+    ThemeOption('Ivory & Gold Estate', 'Warm ivory, champagne and gold', ivory, const Color(0xFFF5EBDD), const Color(0xFFB18A4A), Icons.villa_outlined),
+    ThemeOption('Midnight Luxury', 'Charcoal, black and silver', dark, const Color(0xFF17191D), const Color(0xFFC4A66A), Icons.directions_car_filled_outlined),
+    ThemeOption('Ocean Residence', 'Navy blue and cool coastal tones', ocean, const Color(0xFF173B5E), const Color(0xFF78A9C9), Icons.water),
+    ThemeOption('Forest Residence', 'Natural greens and soft stone', forest, const Color(0xFF294B37), const Color(0xFF9BAF8A), Icons.park_outlined),
+    ThemeOption('Sunset Villa', 'Terracotta, sand and sunset gold', sunset, const Color(0xFF9D4F35), const Color(0xFFE8B878), Icons.wb_twilight),
+    ThemeOption('Rosewood Classic', 'Muted rose and warm neutral shades', rose, const Color(0xFF76505B), const Color(0xFFD5AEB2), Icons.weekend_outlined),
+    ThemeOption('Silver Slate', 'Clean slate, graphite and silver', slate, const Color(0xFF475569), const Color(0xFFCBD5E1), Icons.apartment_outlined),
+    ThemeOption('Classic Blue', 'The familiar SkyNest blue', blue, const Color(0xFF174D83), const Color(0xFF79A9D6), Icons.home_work_outlined),
+    ThemeOption('Flashy Dark', 'A simple dark appearance', dark, const Color(0xFF101114), const Color(0xFFB7B7B7), Icons.dark_mode),
+  ];
 }
 
 class SkynestApp extends StatelessWidget {
@@ -83,27 +107,30 @@ class _LoginScreenState extends State<LoginScreen> {
   }
   @override
   Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(child: Center(child: SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 440), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Icon(Icons.apartment_rounded, size: 78, color: brand),
-          const SizedBox(height: 8),
-          const Text('SKYNEST PREMIUM', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
-          const Text('Rental management made simpler', textAlign: TextAlign.center),
-          const SizedBox(height: 30),
-          TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined), border: OutlineInputBorder())),
-          const SizedBox(height: 14),
-          TextField(controller: password, obscureText: obscure, decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)), border: const OutlineInputBorder())),
-          Align(alignment: Alignment.centerRight, child: TextButton(onPressed: resetPassword, child: const Text('Forgot password?'))),
-          FilledButton(onPressed: busy ? null : () => signIn(), child: busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('LOGIN')),
-          const SizedBox(height: 8),
-          OutlinedButton(onPressed: busy ? null : () => signIn(create: true), child: const Text('CREATE ACCOUNT')),
-          if (!firebaseReady) Card(color: Theme.of(context).colorScheme.errorContainer, child: Padding(padding: const EdgeInsets.all(12), child: Text('Firebase setup is required before login works.\n' + (firebaseError ?? '')))),
-        ],
-      )),
-    ))),
+    body: SafeArea(child: Column(children: [
+      Expanded(child: Center(child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 440), child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(Icons.apartment_rounded, size: 78, color: brand),
+            const SizedBox(height: 8),
+            const Text('SKYNEST PREMIUM', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+            const Text('Rental management made simpler', textAlign: TextAlign.center),
+            const SizedBox(height: 30),
+            TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined), border: OutlineInputBorder())),
+            const SizedBox(height: 14),
+            TextField(controller: password, obscureText: obscure, decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)), border: const OutlineInputBorder())),
+            Align(alignment: Alignment.centerRight, child: TextButton(onPressed: resetPassword, child: const Text('Forgot password?'))),
+            FilledButton(onPressed: busy ? null : () => signIn(), child: busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('LOGIN')),
+            const SizedBox(height: 8),
+            OutlinedButton(onPressed: busy ? null : () => signIn(create: true), child: const Text('CREATE ACCOUNT')),
+            if (!firebaseReady) Card(color: Theme.of(context).colorScheme.errorContainer, child: Padding(padding: const EdgeInsets.all(12), child: Text('Firebase setup is required before login works.\\n' + (firebaseError ?? '')))),
+          ],
+        )),
+      ))),
+      Padding(padding: const EdgeInsets.only(bottom: 14, top: 6), child: Text('Benson', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 2.0))),
+    ])),
   );
 }
 
@@ -501,19 +528,49 @@ class ThemesScreen extends StatelessWidget {
   const ThemesScreen({super.key});
   @override
   Widget build(BuildContext context) {
-    final themes = <(String, ThemeData, IconData)>[
-      ('Flashy Blue', Themes.blue, Icons.water_drop),
-      ('Flashy Dark', Themes.dark, Icons.dark_mode),
-      ('Sunset Orange', Themes.sunset, Icons.wb_sunny),
-      ('Forest Green', Themes.forest, Icons.forest),
-    ];
-    return Scaffold(appBar: AppBar(title: const Text('Free themes')), body: ListView(children: themes.map((x) => ListTile(
-      leading: Icon(x.$3), title: Text(x.$1), trailing: const Icon(Icons.chevron_right),
-      onTap: () { themeManager.set(x.$2); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(x.$1 + ' theme applied.'))); },
-    )).toList()));
+    final options = Themes.options;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Choose your style')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+        children: [
+          const Padding(padding: EdgeInsets.fromLTRB(4, 4, 4, 14), child: Text('A more beautiful space to manage your properties.', style: TextStyle(fontSize: 14))),
+          ...options.map((option) {
+            final selected = themeManager.selectedName == option.name;
+            return Card(
+              clipBehavior: Clip.antiAlias,
+              margin: const EdgeInsets.only(bottom: 14),
+              child: InkWell(
+                onTap: () {
+                  themeManager.set(option.theme, option.name);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(option.name + ' applied')));
+                },
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Container(
+                    height: 112,
+                    decoration: BoxDecoration(gradient: LinearGradient(colors: [option.primary, option.secondary], begin: Alignment.centerLeft, end: Alignment.bottomRight)),
+                    child: Stack(children: [
+                      Positioned(right: 18, top: 12, child: Icon(Icons.directions_car_filled_rounded, size: 55, color: Colors.white.withOpacity(0.22))),
+                      Positioned(left: 18, bottom: 8, child: Icon(Icons.villa_rounded, size: 76, color: Colors.white.withOpacity(0.88))),
+                      Positioned(right: 22, bottom: 10, child: Icon(Icons.apartment_rounded, size: 48, color: Colors.white.withOpacity(0.48))),
+                      Positioned(left: 18, top: 14, child: Icon(option.icon, color: Colors.white, size: 23)),
+                      if (selected) const Positioned(right: 14, bottom: 12, child: Icon(Icons.check_circle, color: Colors.white, size: 25)),
+                    ]),
+                  ),
+                  ListTile(
+                    title: Text(option.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text(option.description),
+                    trailing: selected ? const Chip(label: Text('Selected')) : const Icon(Icons.chevron_right),
+                  ),
+                ]),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
   }
 }
-
 class PamphletsScreen extends StatelessWidget {
   const PamphletsScreen({super.key});
   @override
