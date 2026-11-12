@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/intl.dart';
@@ -21,7 +22,9 @@ Future<void> main() async {
   // Firebase is required by the authentication and rental-management screens.
   // Keep startup resilient so a Firebase configuration issue is visible in-app.
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
     firebaseReady = true;
   } catch (e, stackTrace) {
     firebaseError = e.toString();
@@ -38,9 +41,8 @@ Future<void> main() async {
 Future<void> _initializeAds() async {
   try {
     await MobileAds.instance.initialize();
-  } catch (e, stackTrace) {
-    debugPrint('SkyNest Mobile Ads initialization failed: $e');
-    debugPrintStack(stackTrace: stackTrace);
+  } catch (e) {
+    debugPrint('SkyNest Mobile Ads initialization failed safely: $e');
   }
 }
 
@@ -572,6 +574,8 @@ class PremiumScreen extends StatelessWidget {
           Text(active ? 'PREMIUM ACTIVE' : 'Unlock Premium', textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
           const SizedBox(height: 14),
           const Text('Premium may include an ad-free experience, extended reports and priority support.'),
+          const SizedBox(height: 12),
+          const Card(child: ListTile(leading: Icon(Icons.support_agent), title: Text('Premium support'), subtitle: Text('0746941942'))),
           const SizedBox(height: 18),
           Card(child: Padding(padding: const EdgeInsets.all(14), child: Text(active ? 'Your account is marked as Premium.' : 'Premium activation requires verified payment and administrator approval. Subscription payment is not yet connected in this build.'))),
         ]));
