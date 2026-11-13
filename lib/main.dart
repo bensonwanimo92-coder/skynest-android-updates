@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'calls/skynest_call_screen.dart';
 import 'security/message_encryption.dart';
+import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -458,7 +459,7 @@ class _StartupGateState extends State<StartupGate> {
         )),
       );
     }
-    return _restoredHome ?? LoginScreen(enableRemoteImages: widget.enableRemoteImages);
+    return BiometricLockGate(child: _restoredHome ?? LoginScreen(enableRemoteImages: widget.enableRemoteImages));
   }
 }
 
@@ -1178,6 +1179,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
       ]);
     }
+
+    items.add(_MenuItem('Security & fingerprint', Icons.fingerprint_rounded, Colors.blueGrey, const SecuritySettingsScreen()));
 
     final query = searchQuery.trim().toLowerCase();
     final filteredItems = items.where((item) => item.title.toLowerCase().contains(query)).toList();
