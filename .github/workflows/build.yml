@@ -53,7 +53,7 @@ jobs:
           print("Verified INTERNET permission in AndroidManifest.xml.")
           PY
 
-      - name: Enforce Android 14 app configuration and audit manifest
+      - name: Enforce Android 15 edge-to-edge configuration and audit manifest
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -66,23 +66,23 @@ jobs:
               raise SystemExit("Expected generated Kotlin Gradle file is missing.")
           source = gradle.read_text()
           source, count = re.subn(r"(?m)^(\s*)compileSdk\s*=\s*[^\n]+",
-                                  r"\g<1>compileSdk = 34", source, count=1)
+                                  r"\g<1>compileSdk = 35", source, count=1)
           if count != 1:
-              raise SystemExit("Could not set compileSdk = 34")
+              raise SystemExit("Could not set compileSdk = 35")
           source, count = re.subn(r"(?m)^(\s*)minSdk\s*=\s*[^\n]+",
                                   r"\g<1>minSdk = 24", source, count=1)
           if count != 1:
               raise SystemExit("Could not set minSdk = 24")
           source, count = re.subn(r"(?m)^(\s*)targetSdk\s*=\s*[^\n]+",
-                                  r"\g<1>targetSdk = 34", source, count=1)
+                                  r"\g<1>targetSdk = 35", source, count=1)
           if count != 1:
-              raise SystemExit("Could not set targetSdk = 34")
+              raise SystemExit("Could not set targetSdk = 35")
           if re.search(r"(?m)^\s*buildToolsVersion\s*=", source):
               source = re.sub(r'(?m)^\s*buildToolsVersion\s*=\s*[^\n]+',
-                              '    buildToolsVersion = "34.0.0"', source, count=1)
+                              '    buildToolsVersion = "35.0.0"', source, count=1)
           else:
               source = re.sub(r"(?m)^(\s*compileSdk\s*=\s*34\s*)$",
-                              r'\1\n    buildToolsVersion = "34.0.0"', source, count=1)
+                              r'\1\n    buildToolsVersion = "35.0.0"', source, count=1)
           gradle.write_text(source)
 
           manifest = Path("android/app/src/main/AndroidManifest.xml")
@@ -126,12 +126,12 @@ jobs:
           tree.write(manifest, encoding="utf-8", xml_declaration=True)
 
           text = gradle.read_text()
-          for expected in ('compileSdk = 34', 'minSdk = 24', 'targetSdk = 34',
-                           'buildToolsVersion = "34.0.0"'):
+          for expected in ('compileSdk = 35', 'minSdk = 24', 'targetSdk = 35',
+                           'buildToolsVersion = "35.0.0"'):
               if expected not in text:
                   raise SystemExit("Gradle configuration verification failed: " + expected)
-          print("PASS: app compileSdk 34 / targetSdk 34 / minSdk 24 / Build Tools 34.0.0")
-          print("PASS: Android 14 manifest permissions and exported component attributes")
+          print("PASS: app compileSdk 35 / targetSdk 35 / minSdk 24 / Build Tools 35.0.0")
+          print("PASS: Android 15 manifest permissions and exported component attributes")
           PY
           python3 - <<'PY'
           from pathlib import Path
@@ -148,7 +148,7 @@ jobs:
           p = Path("android/app/build.gradle.kts")
           if p.exists():
               s = p.read_text()
-              s, count = re.subn(r"(?m)^\s*compileSdk\s*=\s*[^\n]+", "    compileSdk = 34", s, count=1)
+              s, count = re.subn(r"(?m)^\s*compileSdk\s*=\s*[^\n]+", "    compileSdk = 35", s, count=1)
               if count == 0:
                   raise SystemExit("Could not locate compileSdk in build.gradle.kts")
               p.write_text(s)
@@ -157,7 +157,7 @@ jobs:
               if not p.exists():
                   raise SystemExit("Flutter Android Gradle file not found")
               s = p.read_text()
-              s, count = re.subn(r"(?m)^\s*compileSdkVersion\s+[^\n]+", "    compileSdkVersion 34", s, count=1)
+              s, count = re.subn(r"(?m)^\s*compileSdkVersion\s+[^\n]+", "    compileSdkVersion 35", s, count=1)
               if count == 0:
                   s, count = re.subn(r"(?m)^\s*compileSdk\s+[^\n]+", "    compileSdk 36", s, count=1)
               if count == 0:
@@ -234,10 +234,10 @@ jobs:
             echo "sdkmanager --licenses failed with exit code $license_status."
             exit "$license_status"
           fi
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
-          echo "Android platform 34 and Build Tools 34.0.0 installed."
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+          echo "Android platform 35 and Build Tools 35.0.0 installed."
 
-      - name: Audit native Android source for API 31-34 requirements
+      - name: Audit native Android source for API 31-35 requirements
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -408,7 +408,7 @@ jobs:
           dart run flutter_launcher_icons
           echo "Generated SkyNest launcher icons for Android."
 
-      - name: Align Flutter Android plugin compile SDK to API 34
+      - name: Align Flutter Android plugin compile SDK to API 35
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -436,9 +436,9 @@ jobs:
                       stripped.startswith("compileSdk ") or
                       stripped.startswith("compileSdk=")):
                       if gradle_file.name.endswith(".gradle.kts"):
-                          output.append(indent + "compileSdk = 34")
+                          output.append(indent + "compileSdk = 35")
                       else:
-                          output.append(indent + "compileSdkVersion 34")
+                          output.append(indent + "compileSdkVersion 35")
                       changed = True
                   else:
                       output.append(line)
@@ -448,11 +448,11 @@ jobs:
 
           for auth_file in auth_files:
               lines = auth_file.read_text().splitlines()
-              if not any(line.strip() == "compileSdkVersion 34" for line in lines):
+              if not any(line.strip() == "compileSdkVersion 35" for line in lines):
                   raise SystemExit(f"firebase_auth compile SDK was not set to 34: {auth_file}")
 
           print(f"Patched {len(patched)} Android plugin Gradle files.")
-          print("Verified firebase_auth compileSdkVersion 34.")
+          print("Verified firebase_auth compileSdkVersion 35.")
           for file in patched:
               print(f"Patched: {file}")
           PY

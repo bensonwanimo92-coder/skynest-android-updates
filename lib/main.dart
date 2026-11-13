@@ -121,9 +121,7 @@ class Themes {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      scaffoldBackgroundColor: brightness == Brightness.dark
-          ? const Color(0xFF111820)
-          : Color.lerp(scheme.surface, scheme.primaryContainer, 0.13),
+      scaffoldBackgroundColor: Colors.transparent,
       cardColor: brightness == Brightness.dark
           ? const Color(0xFF202B36)
           : Color.lerp(scheme.surface, scheme.primaryContainer, 0.24),
@@ -178,6 +176,46 @@ class Themes {
   ];
 }
 
+final ValueNotifier<String> _activeScreenName = ValueNotifier<String>('SkyNest');
+final _skynestRouteObserver = _SkynestRouteObserver();
+
+class _SkynestRouteObserver extends NavigatorObserver {
+  void _setRoute(Route<dynamic>? route) {
+    final name = route?.settings.name;
+    if (name != null && name.isNotEmpty) _activeScreenName.value = name;
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    _setRoute(route);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    _setRoute(previousRoute);
+  }
+}
+
+String _screenBackdropFor(String screen) {
+  final key = screen.toLowerCase();
+  if (key.contains('tenant') || key.contains('people') || key.contains('approval')) {
+    return 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=1600&q=88';
+  }
+  if (key.contains('payment') || key.contains('rent') || key.contains('pay') || key.contains('calculator')) {
+    return 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1600&q=88';
+  }
+  if (key.contains('house') || key.contains('property') || key.contains('vacant')) {
+    return 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1600&q=88';
+  }
+  if (key.contains('complaint') || key.contains('support') || key.contains('request') ||
+      key.contains('group') || key.contains('notice') || key.contains('technology')) {
+    return 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=1600&q=88';
+  }
+  return 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1600&q=88';
+}
+
 class SkynestApp extends StatelessWidget {
   const SkynestApp({super.key});
   @override
@@ -197,6 +235,28 @@ class SkynestApp extends StatelessWidget {
         scaffoldMessengerKey: _rootScaffoldMessengerKey,
         debugShowCheckedModeBanner: false,
         theme: themeManager.value,
+        navigatorObservers: [_skynestRouteObserver],
+        builder: (context, child) => Stack(
+          fit: StackFit.expand,
+          children: [
+            ValueListenableBuilder<String>(
+              valueListenable: _activeScreenName,
+              builder: (context, screen, _) => Image.network(
+                _screenBackdropFor(screen),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => ColoredBox(
+                  color: Theme.of(context).colorScheme.surface,
+                ),
+              ),
+            ),
+            ColoredBox(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.black.withOpacity(0.68)
+                  : Colors.white.withOpacity(0.70),
+            ),
+            if (child != null) child,
+          ],
+        ),
         home: const StartupGate(),
       );
     },
@@ -379,9 +439,39 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> resetPassword() async {
-    final address = email.text.trim();
+    var address = email.text.trim();
+    if (address.isEmpty) {
+      final resetEmail = TextEditingController();
+      final entered = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Reset your password'),
+          content: TextField(
+            controller: resetEmail,
+            autofocus: true,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.send,
+            decoration: const InputDecoration(
+              labelText: 'Account email address',
+              hintText: 'you@gmail.com',
+              prefixIcon: Icon(Icons.email_outlined),
+            ),
+            onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, resetEmail.text.trim()),
+              child: const Text('SEND RESET LINK')),
+          ],
+        ),
+      );
+      resetEmail.dispose();
+      if (entered == null) return;
+      address = entered.trim();
+      email.text = address;
+    }
     if (!validEmail(address)) {
-      message('Enter a valid email address in the Email field first.');
+      message('Enter a valid Gmail or other account email address.');
       return;
     }
     if (busy) return;
@@ -393,11 +483,13 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => busy = true);
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: address);
-      message('Request accepted. If an account exists for this email, Firebase will send a reset link. Check your inbox and spam folder.');
+      message('Firebase accepted the reset request for $address. Check that inbox, including Spam and Promotions. Delivery depends on the Firebase Authentication email settings.');
     } on FirebaseAuthException catch (e) {
+      debugPrint('SkyNest password reset failed: code=${e.code}, message=${e.message}');
       message(resetPasswordMessage(e));
-    } catch (_) {
-      message('Could not contact Firebase to request a reset link. Check your connection and try again.');
+    } catch (error) {
+      debugPrint('SkyNest password reset request failed: $error');
+      message('Could not contact Firebase to request a reset link. Check your internet connection and try again.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -880,7 +972,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
-              onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => item.page)),
+              onTap: () => Navigator.push(context, MaterialPageRoute<void>(settings: RouteSettings(name: item.title), builder: (_) => item.page)),
               child: Stack(fit: StackFit.expand, children: [
                 Image.network(
                   _menuImageFor(item.title),
