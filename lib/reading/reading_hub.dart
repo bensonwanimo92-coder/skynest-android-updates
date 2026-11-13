@@ -196,6 +196,16 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
       .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
       .replaceAll(RegExp(r'^_|_$'), '');
 
+  String _pdfSafe(String value) => value
+      .replaceAll('•', '|')
+      .replaceAll('·', '-')
+      .replaceAll('–', '-')
+      .replaceAll('—', '-')
+      .replaceAll('’', "'")
+      .replaceAll('‘', "'")
+      .replaceAll('“', '"')
+      .replaceAll('”', '"');
+
   Future<Uint8List> _buildIssuePdf(_ReadingIssue issue) async {
     final document = pw.Document();
     document.addPage(pw.MultiPage(
@@ -204,7 +214,7 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
       header: (context) => pw.Container(
         alignment: pw.Alignment.centerRight,
         padding: const pw.EdgeInsets.only(bottom: 12),
-        child: pw.Text('SKYNEST READING  •  ${issue.category.toUpperCase()}',
+        child: pw.Text(_pdfSafe('SKYNEST READING  •  ${issue.category.toUpperCase()}'),
           style: pw.TextStyle(fontSize: 8, color: pdf.PdfColor.fromInt(0xFF64748B))),
       ),
       footer: (context) => pw.Container(
@@ -218,10 +228,10 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
         pw.Text('SKYNEST  /  READING COLLECTION',
           style: pw.TextStyle(fontSize: 9, letterSpacing: 2, color: PdfColor.fromInt(0xFF2463A6))),
         pw.SizedBox(height: 20),
-        pw.Text(issue.title,
+        pw.Text(_pdfSafe(issue.title),
           style: pw.TextStyle(fontSize: 30, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF172B4D))),
         pw.SizedBox(height: 12),
-        pw.Text(issue.subtitle, style: const pw.TextStyle(fontSize: 13, lineSpacing: 4)),
+        pw.Text(_pdfSafe(issue.subtitle), style: const pw.TextStyle(fontSize: 13, lineSpacing: 4)),
         pw.SizedBox(height: 24),
         pw.Container(height: 4, width: 74, color: PdfColor.fromInt(issue.color.value)),
         pw.SizedBox(height: 30),
@@ -229,14 +239,14 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
           style: const pw.TextStyle(fontSize: 10, lineSpacing: 4)),
         pw.SizedBox(height: 26),
         ...issue.sections.expand((section) => <pw.Widget>[
-          pw.Text(section.heading,
+          pw.Text(_pdfSafe(section.heading),
             style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF2463A6))),
           pw.SizedBox(height: 8),
-          pw.Text(section.body, style: const pw.TextStyle(fontSize: 10.5, lineSpacing: 5)),
+          pw.Text(_pdfSafe(section.body), style: const pw.TextStyle(fontSize: 10.5, lineSpacing: 5)),
           pw.SizedBox(height: 20),
         ]),
         pw.SizedBox(height: 12),
-        pw.Text('Reading note: This is general educational content, not legal, medical, travel or financial advice.',
+        pw.Text(_pdfSafe('Reading note: This is general educational content, not legal, medical, travel or financial advice.'),
           style: pw.TextStyle(fontSize: 8, color: PdfColor.fromInt(0xFF64748B))),
       ],
     ));
