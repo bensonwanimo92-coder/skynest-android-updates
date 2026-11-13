@@ -900,16 +900,19 @@ class DashboardScreen extends StatefulWidget {
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
+
 class _DashboardScreenState extends State<DashboardScreen> {
   BannerAd? banner;
   bool loaded = false;
   String userRole = 'landlord';
+  String searchQuery = '';
+
   @override
   void initState() {
     super.initState();
     _loadUserRole();
     initializePushNotifications();
-    // Initialize AdMob only after the dashboard is opened, never during app startup.
+    // Ads are optional and must never block the dashboard.
     _initializeBannerAd();
   }
 
@@ -917,7 +920,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       await MobileAds.instance.initialize();
     } catch (_) {
-      // Ads are optional; an AdMob failure must not prevent property management.
       return;
     }
     if (!mounted) return;
@@ -927,26 +929,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (_) { if (mounted) setState(() => loaded = true); },
-        onAdFailedToLoad: (ad, _) { ad.dispose(); banner = null; },
+        onAdFailedToLoad: (ad, _) {
+          ad.dispose();
+          banner = null;
+        },
       ),
     )..load();
   }
+
   Future<void> _loadUserRole() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || !firebaseReady) return;
     try {
       final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      if (mounted && doc.exists) setState(() => userRole = doc.data()?['role']?.toString() ?? 'landlord');
+      if (mounted && doc.exists) {
+        setState(() => userRole = doc.data()?['role']?.toString() ?? 'landlord');
+      }
     } catch (_) {}
   }
+
   @override
-  void dispose() { banner?.dispose(); super.dispose(); }
+  void dispose() {
+    banner?.dispose();
+    super.dispose();
+  }
+
+  void _open(BuildContext context, _MenuItem item) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: item.title),
+        builder: (_) => item.page,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = <_MenuItem>[];
     if (userRole == 'landlord') {
       items.addAll([
-
         _MenuItem('Houses', Icons.home_work_outlined, Colors.orange, const HousesScreen()),
         _MenuItem('Account approvals', Icons.how_to_reg_outlined, Colors.green, const TenantApprovalsScreen()),
         _MenuItem('Tenants', Icons.people_alt_outlined, Colors.green, const TenantsScreen()),
@@ -990,76 +1012,222 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
       ]);
     }
+
+    final query = searchQuery.trim().toLowerCase();
+    final filteredItems = items.where((item) => item.title.toLowerCase().contains(query)).toList();
+    final displayName = FirebaseAuth.instance.currentUser?.displayName?.trim();
+    final initial = displayName != null && displayName.isNotEmpty
+        ? displayName.characters.first.toUpperCase()
+        : 'S';
+
     return Scaffold(
-      appBar: AppBar(title: Text('SkyNest • ' + userRole[0].toUpperCase() + userRole.substring(1)), actions: [
-        IconButton(tooltip: 'Account and role', icon: const Icon(Icons.manage_accounts_outlined),
-          onPressed: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const AccountRoleScreen()))),
-        IconButton(tooltip: 'Sign out', icon: const Icon(Icons.logout), onPressed: () async {
-          if (firebaseReady) await FirebaseAuth.instance.signOut();
-          if (!context.mounted) return;
-          Navigator.pushAndRemoveUntil(context, MaterialPageRoute<void>(builder: (_) => const LoginScreen()), (_) => false);
-        }),
-      ]),
-      body: Stack(fit: StackFit.expand, children: [
-        Image.network(
-          _skynestPropertyPhotos[1],
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => ColoredBox(color: Theme.of(context).scaffoldBackgroundColor),
-        ),
-        ColoredBox(color: Theme.of(context).colorScheme.surface.withOpacity(0.88)),
-        GridView.builder(
-        padding: const EdgeInsets.all(14), itemCount: items.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 1.12, crossAxisSpacing: 12, mainAxisSpacing: 12),
-        itemBuilder: (context, i) {
-          final item = items[i];
-          final scheme = Theme.of(context).colorScheme;
-          final tint = Color.lerp(item.color, scheme.surface, 0.84)!;
-          return Card(
-            color: tint,
-            elevation: 3,
-            shadowColor: item.color.withOpacity(0.22),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => Navigator.push(context, MaterialPageRoute<void>(settings: RouteSettings(name: item.title), builder: (_) => item.page)),
-              child: Stack(fit: StackFit.expand, children: [
-                Image.network(
-                  _menuImageFor(item.title),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => ColoredBox(color: tint),
-                ),
-                DecoratedBox(decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                    colors: [Colors.black.withOpacity(0.22), Colors.black.withOpacity(0.72)],
-                  ),
-                )),
-                Positioned(right: -13, top: -18, child: Icon(item.icon, size: 92, color: Colors.white.withOpacity(0.16))),
-                Padding(
-                  padding: const EdgeInsets.all(15),
-                  child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Container(
-                      width: 54, height: 54,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.20),
-                        border: Border.all(color: Colors.white.withOpacity(0.35)),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: Icon(item.icon, size: 29, color: Colors.white),
-                    ),
-                    const Spacer(),
-                    Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white, height: 1.15)),
-                    const SizedBox(height: 5),
-                    const Icon(Icons.arrow_forward_rounded, size: 18, color: Colors.white),
-                  ]),
-                ),
-              ]),
+      appBar: AppBar(
+        title: Text('SkyNest • ' + userRole[0].toUpperCase() + userRole.substring(1)),
+        actions: [
+          IconButton(
+            tooltip: 'Notices and announcements',
+            icon: const Icon(Icons.notifications_none_rounded),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const NoticesScreen()),
             ),
-          );
-        },
-      )]),
-      bottomNavigationBar: loaded && banner != null ? SizedBox(height: banner!.size.height.toDouble(), child: AdWidget(ad: banner!)) : null,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Center(
+              child: CircleAvatar(
+                radius: 17,
+                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                child: Text(initial, style: TextStyle(
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  fontWeight: FontWeight.w800,
+                )),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Account and role',
+            icon: const Icon(Icons.manage_accounts_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const AccountRoleScreen()),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Sign out',
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              if (firebaseReady) await FirebaseAuth.instance.signOut();
+              if (!context.mounted) return;
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+                (_) => false,
+              );
+            },
+          ),
+        ],
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.network(
+            _skynestPropertyPhotos[1],
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => ColoredBox(
+              color: Theme.of(context).scaffoldBackgroundColor,
+            ),
+          ),
+          ColoredBox(
+            color: Theme.of(context).colorScheme.surface.withOpacity(0.88),
+          ),
+          Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                child: TextField(
+                  onChanged: (value) => setState(() => searchQuery = value),
+                  decoration: InputDecoration(
+                    hintText: 'Search modules...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: searchQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            icon: const Icon(Icons.close),
+                            onPressed: () => setState(() => searchQuery = ''),
+                          ),
+                    filled: true,
+                    fillColor: Theme.of(context).colorScheme.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: filteredItems.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(28),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.search_off_rounded,
+                                  size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                              const SizedBox(height: 10),
+                              const Text('No modules found'),
+                              const SizedBox(height: 4),
+                              Text('Try another search term.',
+                                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                            ],
+                          ),
+                        ),
+                      )
+                    : GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
+                        itemCount: filteredItems.length,
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 1.12,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
+                        itemBuilder: (context, index) {
+                          final item = filteredItems[index];
+                          final scheme = Theme.of(context).colorScheme;
+                          final tint = Color.lerp(item.color, scheme.surface, 0.84)!;
+                          return Card(
+                            color: tint,
+                            elevation: 3,
+                            shadowColor: item.color.withOpacity(0.22),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(23),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: InkWell(
+                              onTap: () => _open(context, item),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Image.network(
+                                    _menuImageFor(item.title),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => ColoredBox(color: tint),
+                                  ),
+                                  DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [
+                                          Colors.black.withOpacity(0.20),
+                                          Colors.black.withOpacity(0.76),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    right: -13,
+                                    top: -18,
+                                    child: Icon(item.icon, size: 92, color: Colors.white.withOpacity(0.16)),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.all(15),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          width: 54,
+                                          height: 54,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(0.20),
+                                            border: Border.all(color: Colors.white.withOpacity(0.35)),
+                                            borderRadius: BorderRadius.circular(18),
+                                          ),
+                                          child: Icon(item.icon, size: 29, color: Colors.white),
+                                        ),
+                                        const Spacer(),
+                                        Text(
+                                          item.title,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                            height: 1.15,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 5),
+                                        const Row(
+                                          children: [
+                                            Text('Open module', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                                            SizedBox(width: 5),
+                                            Icon(Icons.arrow_forward_rounded, size: 16, color: Colors.white),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      bottomNavigationBar: loaded && banner != null
+          ? SizedBox(
+              height: banner!.size.height.toDouble(),
+              child: AdWidget(ad: banner!),
+            )
+          : null,
     );
   }
 }
