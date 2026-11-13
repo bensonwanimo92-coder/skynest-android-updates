@@ -321,7 +321,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF174D83).withValues(alpha: 0.20),
+                                color: const Color(0xFF174D83).withOpacity(0.20),
                                 blurRadius: 24,
                                 offset: const Offset(0, 12),
                               ),
@@ -333,9 +333,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 height: 76,
                                 width: 76,
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.14),
+                                  color: Colors.white.withOpacity(0.14),
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+                                  border: Border.all(color: Colors.white.withOpacity(0.35)),
                                 ),
                                 child: const Icon(Icons.apartment_rounded, size: 43, color: Colors.white),
                               ),
@@ -355,7 +355,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 'PROPERTY MANAGEMENT',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.88),
+                                  color: Colors.white.withOpacity(0.88),
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 2.1,
@@ -366,7 +366,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 'Manage properties. Connect people.\nMake renting simpler.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.94),
+                                  color: Colors.white.withOpacity(0.94),
                                   height: 1.4,
                                   fontSize: 14,
                                 ),
@@ -475,7 +475,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             color: colors.errorContainer,
                             child: Padding(
                               padding: const EdgeInsets.all(12),
-                              child: Text('Firebase setup is required before login or registration works.\\n${firebaseError ?? ''}'),
+                              child: Text('Firebase setup is required before login or registration works.\n${firebaseError ?? ''}'),
                             ),
                           ),
                         ],
