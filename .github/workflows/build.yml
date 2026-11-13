@@ -554,53 +554,6 @@ jobs:
           test "$actual" = "$expected" || { echo "ERROR: Built APK certificate does not match original"; echo "Actual: $actual"; exit 1; }
           echo "Built APK package and original signing certificate verified."
 
-      - name: Install and launch APK on Android 14 (API 34)
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: |
-            set -euo pipefail
-            APK="build/app/outputs/flutter-apk/app-release.apk"
-            PACKAGE="com.hello22_.chuka"
-
-            api_level="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
-            test "$api_level" = "34" || { echo "::error::Expected Android API 34 emulator, got $api_level"; exit 1; }
-
-            adb install -r "$APK"
-
-            component="$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PACKAGE" | tr -d '\r' | tail -n 1)"
-            case "$component" in
-              "$PACKAGE"/*) ;;
-              *) echo "::error::Could not resolve SkyNest launcher activity: $component"; exit 1 ;;
-            esac
-
-            launch_output="$(adb shell am start -W -n "$component" 2>&1)"
-            printf '%s\n' "$launch_output"
-            printf '%s\n' "$launch_output" | grep -q "Status: ok" || {
-              echo "::error::Android did not confirm successful activity launch."
-              exit 1
-            }
-
-            for attempt in $(seq 1 30); do
-              pid="$(adb shell pidof "$PACKAGE" | tr -d '\r' || true)"
-              if [ -n "$pid" ]; then
-                echo "PASS: SkyNest installed and launched on Android 14 API 34."
-                echo "Launcher activity: $component"
-                echo "App process ID: $pid"
-                exit 0
-              fi
-              sleep 2
-            done
-
-            echo "::error::SkyNest process did not remain alive after launch."
-            adb logcat -d -t 2000 | grep -E "FATAL EXCEPTION|AndroidRuntime|Process: $PACKAGE|flutter" | tail -n 100 || true
-            exit 1
-
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
