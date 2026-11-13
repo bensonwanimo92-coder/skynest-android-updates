@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart' as pdf;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -198,13 +199,13 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
   Future<Uint8List> _buildIssuePdf(_ReadingIssue issue) async {
     final document = pw.Document();
     document.addPage(pw.MultiPage(
-      pageFormat: pw.PdfPageFormat.a4,
+      pageFormat: pdf.PdfPageFormat.a4,
       margin: const pw.EdgeInsets.fromLTRB(42, 48, 42, 48),
       header: (context) => pw.Container(
         alignment: pw.Alignment.centerRight,
         padding: const pw.EdgeInsets.only(bottom: 12),
         child: pw.Text('SKYNEST READING  •  ${issue.category.toUpperCase()}',
-          style: pw.TextStyle(fontSize: 8, color: PdfColor.fromInt(0xFF64748B))),
+          style: pw.TextStyle(fontSize: 8, color: pdf.PdfColor.fromInt(0xFF64748B))),
       ),
       footer: (context) => pw.Container(
         alignment: pw.Alignment.center,
