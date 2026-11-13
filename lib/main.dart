@@ -1148,7 +1148,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('SkyNest • ' + userRole[0].toUpperCase() + userRole.substring(1)),
+        title: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 320),
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SlideTransition(position: Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero).animate(animation), child: child),
+          ),
+          child: Text('SkyNest • ' + userRole[0].toUpperCase() + userRole.substring(1), key: ValueKey<String>(userRole)),
+        ),
         actions: [
           IconButton(
             tooltip: 'Notices and announcements',
@@ -1197,12 +1204,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
-            _skynestPropertyPhotos[1],
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => ColoredBox(
-              color: Theme.of(context).scaffoldBackgroundColor,
-            ),
+          _AnimatedPhotoBackdrop(
+            screen: 'Dashboard',
+            themeName: themeManager.selectedName,
+            enabled: themeManager.slideshowEnabled,
           ),
           ColoredBox(
             color: Theme.of(context).colorScheme.surface.withOpacity(0.88),
