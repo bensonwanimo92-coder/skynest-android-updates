@@ -520,7 +520,7 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
-          disable-animations: true
+          disable-animations: false
           # Resolve the actual launcher component from the installed package instead of
           # assuming Flutter's generated activity name. Keep diagnostics on every failure.
           # The emulator action executes script lines in separate shell processes.
