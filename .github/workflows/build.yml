@@ -164,6 +164,37 @@ jobs:
               p.write_text(s)
           PY
 
+      - name: Prevent WorkManager database crash during provider startup
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          path = Path("android/app/src/main/AndroidManifest.xml")
+          ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
+          ET.register_namespace("tools", "http://schemas.android.com/tools")
+          android = "{http://schemas.android.com/apk/res/android}"
+          tools = "{http://schemas.android.com/tools}"
+          tree = ET.parse(path)
+          root = tree.getroot()
+          provider = next((item for item in root.findall("./application/provider")
+                           if item.get(android + "name") == "androidx.startup.InitializationProvider"), None)
+          if provider is None:
+              raise SystemExit("AndroidX Startup InitializationProvider was not found.")
+          # Keep AndroidX Startup and its other initializers intact. Remove only
+          # WorkManager automatic initialization, the confirmed fatal startup path.
+          for item in list(provider.findall("meta-data")):
+              if item.get(android + "name") == "androidx.work.WorkManagerInitializer":
+                  provider.remove(item)
+          provider.append(ET.Element("meta-data", {
+              android + "name": "androidx.work.WorkManagerInitializer",
+              tools + "node": "remove"
+          }))
+          tree.write(path, encoding="utf-8", xml_declaration=True)
+          print("Configured manifest merger to remove only WorkManager automatic initialization.")
+          PY
+
       - name: Install Android 14 SDK and Build Tools
         run: |
           set -euo pipefail
