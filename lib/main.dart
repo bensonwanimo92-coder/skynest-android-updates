@@ -905,6 +905,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       items.addAll([
 
         _MenuItem('Houses', Icons.home_work_outlined, Colors.orange, const HousesScreen()),
+        _MenuItem('Account approvals', Icons.how_to_reg_outlined, Colors.green, const TenantApprovalsScreen()),
         _MenuItem('Tenants', Icons.people_alt_outlined, Colors.green, const TenantsScreen()),
         _MenuItem('Payments', Icons.payments_outlined, Colors.blue, const PaymentsScreen()),
         _MenuItem('Tenant payment submissions', Icons.fact_check_outlined, Colors.teal, const PaymentSubmissionsScreen()),
@@ -2687,7 +2688,7 @@ class TenantApprovalsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    return Scaffold(appBar: AppBar(title: const Text('Tenant approvals')),
+    return Scaffold(appBar: AppBar(title: const Text('Tenant & caretaker approvals')),
       body: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         future: uid == null ? null : FirebaseFirestore.instance.collection('users').doc(uid).get(),
         builder: (context, profile) {
