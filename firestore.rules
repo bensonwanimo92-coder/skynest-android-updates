@@ -290,6 +290,29 @@ service cloud.firestore {
       allow read, update, delete: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
     }
 
+    match /calendarEvents/{eventId} {
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.landlordId == request.auth.uid &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.eventDate is timestamp &&
+        request.resource.data.type in ['rentDue', 'inspection', 'meeting', 'loan', 'blackout', 'other'] &&
+        request.resource.data.note is string &&
+        request.resource.data.isRecurring is bool;
+      allow read: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid;
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid &&
+        request.resource.data.landlordId == request.auth.uid &&
+        request.resource.data.createdBy == resource.data.createdBy &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['title', 'note', 'type', 'eventDate', 'isRecurring']
+        );
+      allow delete: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid;
+    }
+
     match /activityLogs/{id} {
       allow read: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
       allow create: if activeUser() && landlordFor(request.resource.data.landlordId) &&
