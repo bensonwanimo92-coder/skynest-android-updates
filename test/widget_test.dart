@@ -1,4 +1,5 @@
 import 'package:chuka/main.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -7,6 +8,6 @@ void main() {
 
     expect(find.byType(SkynestApp), findsOneWidget);
     expect(find.byType(MaterialApp), findsOneWidget);
-    expect(find.text('SkyNest'), findsOneWidget);
+    expect(find.byType(LoginScreen), findsOneWidget);
   });
 }
