@@ -554,7 +554,15 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           BUILD_NUMBER: ${{ steps.release_version.outputs.build_number }}
-        run: shorebird release android --artifact apk -- --no-shrink --no-obfuscate --build-name=1.1.3 --build-number="$BUILD_NUMBER"
+          SKYNEST_TURN_URL: ${{ secrets.SKYNEST_TURN_URL }}
+          SKYNEST_TURN_USERNAME: ${{ secrets.SKYNEST_TURN_USERNAME }}
+          SKYNEST_TURN_CREDENTIAL: ${{ secrets.SKYNEST_TURN_CREDENTIAL }}
+        run: |
+          shorebird release android --artifact apk -- --no-shrink --no-obfuscate \
+            --build-name=1.1.3 --build-number="$BUILD_NUMBER" \
+            --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" \
+            --dart-define=SKYNEST_TURN_USERNAME="$SKYNEST_TURN_USERNAME" \
+            --dart-define=SKYNEST_TURN_CREDENTIAL="$SKYNEST_TURN_CREDENTIAL"
 
 
       - name: Verify built APK package and signature
