@@ -78,8 +78,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Opt into Android edge-to-edge so app surfaces can draw behind transparent system bars.
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  // Render Flutter immediately. Firebase is initialized only when the user
-  // requests authentication, so Firebase startup cannot block the login screen.
+  // Render Flutter immediately. StartupGate restores an existing Firebase
+  // session asynchronously so incoming-call notifications can reopen the app.
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
   };
