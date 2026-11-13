@@ -53,7 +53,7 @@ jobs:
           p = Path("android/app/build.gradle.kts")
           s = p.read_text()
           for name, value in (("compileSdk", "35"), ("minSdk", "24"), ("targetSdk", "35")):
-              s, count = re.subn(r"(?m)^(\\s*)" + name + r"\\s*=\\s*[^\\n]+",
+              s, count = re.subn(r"(?m)^(\s*)" + name + r"\s*=\s*[^\n]+",
                                  lambda m: m.group(1) + name + " = " + value, s, count=1)
               if count != 1:
                   raise SystemExit("Could not configure " + name)
@@ -62,8 +62,8 @@ jobs:
           content = manifest.read_text()
           permission = '    <uses-permission android:name="android.permission.INTERNET"/>'
           if "android.permission.INTERNET" not in content:
-              content = re.sub(r"(?m)^(\\s*)<application\\b",
-                               lambda m: permission + "\\n" + m.group(1) + "<application", content, count=1)
+              content = re.sub(r"(?m)^(\s*)<application\b",
+                               lambda m: permission + "\n" + m.group(1) + "<application", content, count=1)
           manifest.write_text(content)
           print("Android API 35 and internet permission configured.")
           PY
@@ -136,12 +136,12 @@ jobs:
           s = settings.read_text()
           marker = '    id("com.android.application")'
           if 'id("com.google.gms.google-services")' not in s:
-              s = s.replace(marker, '    id("com.google.gms.google-services") version "4.4.2" apply false\\n' + marker, 1)
+              s = s.replace(marker, '    id("com.google.gms.google-services") version "4.4.2" apply false\n' + marker, 1)
           settings.write_text(s)
           s = app.read_text()
           marker = '    id("dev.flutter.flutter-gradle-plugin")'
           if 'id("com.google.gms.google-services")' not in s:
-              s = s.replace(marker, marker + '\\n    id("com.google.gms.google-services")', 1)
+              s = s.replace(marker, marker + '\n    id("com.google.gms.google-services")', 1)
           app.write_text(s)
           PY
 
@@ -173,7 +173,7 @@ jobs:
                   else:
                       output.append(line)
               if changed:
-                  gradle_file.write_text("\\n".join(output) + "\\n")
+                  gradle_file.write_text("\n".join(output) + "\n")
                   patched += 1
           print("Patched " + str(patched) + " Android plugin Gradle files.")
           PY
