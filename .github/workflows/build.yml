@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - integration/roles-on-current-main
     tags:
       - 'v*'
   workflow_dispatch:
