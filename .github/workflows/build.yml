@@ -77,12 +77,9 @@ jobs:
                                   r"\g<1>targetSdk = 35", source, count=1)
           if count != 1:
               raise SystemExit("Could not set targetSdk = 35")
-          if re.search(r"(?m)^\s*buildToolsVersion\s*=", source):
-              source = re.sub(r'(?m)^\s*buildToolsVersion\s*=\s*[^\n]+',
-                              '    buildToolsVersion = "35.0.0"', source, count=1)
-          else:
-              source = re.sub(r"(?m)^(\s*compileSdk\s*=\s*34\s*)$",
-                              r'\1\n    buildToolsVersion = "35.0.0"', source, count=1)
+          # Android Gradle Plugin selects the installed Build Tools version
+          # automatically. Do not pin it here: compileSdk was already upgraded
+          # above, and a stale compileSdk=34 matcher previously skipped insertion.
           gradle.write_text(source)
 
           manifest = Path("android/app/src/main/AndroidManifest.xml")
@@ -126,11 +123,10 @@ jobs:
           tree.write(manifest, encoding="utf-8", xml_declaration=True)
 
           text = gradle.read_text()
-          for expected in ('compileSdk = 35', 'minSdk = 24', 'targetSdk = 35',
-                           'buildToolsVersion = "35.0.0"'):
+          for expected in ('compileSdk = 35', 'minSdk = 24', 'targetSdk = 35'):
               if expected not in text:
                   raise SystemExit("Gradle configuration verification failed: " + expected)
-          print("PASS: app compileSdk 35 / targetSdk 35 / minSdk 24 / Build Tools 35.0.0")
+          print("PASS: app compileSdk 35 / targetSdk 35 / minSdk 24; Build Tools are SDK-managed.")
           print("PASS: Android 15 manifest permissions and exported component attributes")
           PY
           python3 - <<'PY'
@@ -274,7 +270,30 @@ jobs:
             echo "::warning::Firebase config is missing. Build validation may run, but no release APK will be published until Firebase is configured."
             exit 0
           fi
-          printf '%s' "$FIREBASE_ANDROID_CONFIG_BASE64" | base64 --decode > android/app/google-services.json
+          if ! printf '%s' "$FIREBASE_ANDROID_CONFIG_BASE64" | base64 --decode > android/app/google-services.json; then
+            echo "::error::FIREBASE_ANDROID_CONFIG_BASE64 is not valid Base64."
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          config = json.loads(Path("android/app/google-services.json").read_text())
+          project_id = config.get("project_info", {}).get("project_id", "")
+          clients = config.get("client", [])
+          package_names = [
+              client.get("client_info", {}).get("android_client_info", {}).get("package_name", "")
+              for client in clients
+          ]
+          expected_package = "com.hello22_.chuka"
+          if not project_id:
+              raise SystemExit("Firebase config is missing project_info.project_id.")
+          if expected_package not in package_names:
+              raise SystemExit("Firebase config does not contain the SkyNest Android package " + expected_package)
+          # Safe diagnostics only: never print API keys, OAuth IDs, or the config.
+          print("Firebase config JSON: valid.")
+          print("Firebase project_id from repository secret: " + project_id)
+          print("Firebase Android package match: " + expected_package)
+          PY
           python3 - <<'PY'
           from pathlib import Path
           settings = Path("android/settings.gradle.kts")
