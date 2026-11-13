@@ -1,4 +1,4 @@
-name: Deploy SkyNest Firestore rules and indexes
+name: Deploy SkyNest Firestore rules, indexes and push functions
 
 on:
   push:
@@ -57,7 +57,7 @@ jobs:
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
 
-      - name: Deploy Firestore rules and indexes only
+      - name: Deploy Firestore rules, indexes and messaging functions
         env:
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
         run: |
