@@ -4255,68 +4255,94 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                   final hasUnread = (data['unreadCount'] as num?)?.toInt() ?? 0;
                   final groupColor = data['colorValue'] is int
                     ? Color(data['colorValue'] as int) : Theme.of(context).colorScheme.primary;
-                  return GestureDetector(
-                    onLongPress: () => setState(() {
-                      if (selected) { selectedGroupIds.remove(doc.id); }
-                      else { selectedGroupIds.add(doc.id); }
-                    }),
-                    onTap: () {
-                      if (selectedGroupIds.isNotEmpty) {
-                        setState(() {
-                          if (selected) { selectedGroupIds.remove(doc.id); }
-                          else { selectedGroupIds.add(doc.id); }
-                        });
-                        return;
-                      }
-                      if (!isMember) {
-                        snack(context, 'Join this group first.');
-                        return;
-                      }
-                      Navigator.push(context, MaterialPageRoute<void>(builder: (_) =>
-                        GroupChatScreen(groupId: doc.id, groupName: data['name']?.toString() ?? 'Group')));
-                    },
-                    child: Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
-                        Stack(clipBehavior: Clip.none, children: [
-                          Row(mainAxisSize: MainAxisSize.min, children: [
-                            CircleAvatar(radius: 18, backgroundColor: groupColor.withOpacity(0.16),
-                              child: Icon(Icons.person, size: 18, color: groupColor)),
-                            Transform.translate(offset: const Offset(-9, 0), child: CircleAvatar(radius: 18,
-                              backgroundColor: groupColor.withOpacity(0.26), child: Icon(Icons.person_outline, size: 18, color: groupColor))),
-                            Transform.translate(offset: const Offset(-18, 0), child: CircleAvatar(radius: 18,
-                              backgroundColor: groupColor.withOpacity(0.36), child: Icon(Icons.person_2_outlined, size: 18, color: groupColor))),
-                          ]),
-                          if (hasUnread > 0)
-                            const Positioned(right: -1, top: -3, child: CircleAvatar(radius: 5, backgroundColor: Colors.blue)),
-                        ]),
-                        const SizedBox(width: 2),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(data['name']?.toString() ?? 'Group', style: const TextStyle(fontWeight: FontWeight.w800)),
-                          const SizedBox(height: 4),
+                  final paid = (data['paidAmount'] as num?)?.toDouble();
+                  final expected = (data['expectedAmount'] as num?)?.toDouble();
+                  final rawProgress = (data['collectionProgress'] as num?)?.toDouble();
+                  final progress = (rawProgress ?? (paid != null && expected != null && expected > 0 ? paid / expected : 0.0)).clamp(0.0, 1.0);
+                  final seenBy = data['seenBy'] is List ? (data['seenBy'] as List).length : ((data['seenCount'] as num?)?.toInt() ?? 0);
+                  final broadcastOnly = data['broadcastOnly'] == true;
+                  final highDue = due is num && due > 0;
+                  final tile = Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFF1F1F1)),
+                      boxShadow: const [BoxShadow(color: Color(0x0F000000), blurRadius: 20, offset: Offset(0, 4))]),
+                    child: ClipRRect(borderRadius: BorderRadius.circular(20), child: IntrinsicHeight(child: Row(children: [
+                      Container(width: 4, color: highDue ? const Color(0xFFEF4444) : groupColor),
+                      Expanded(child: Padding(padding: const EdgeInsets.fromLTRB(12, 12, 12, 11), child: Row(children: [
+                        SizedBox(width: 72, child: Stack(clipBehavior: Clip.none, children: [
                           Row(children: [
-                            Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(color: groupColor.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
-                              child: Text(members.length.toString() + ' members', style: TextStyle(color: groupColor, fontSize: 10, fontWeight: FontWeight.w800))),
-                            if (due is num) ...[
-                              const SizedBox(width: 7),
-                              Text('Due ' + currency.format(due), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-                            ],
+                            _GroupAvatar(seed: members.isNotEmpty ? members[0].toString() : 'empty', color: groupColor),
+                            Transform.translate(offset: const Offset(-11, 0), child: _GroupAvatar(seed: members.length > 1 ? members[1].toString() : 'member', color: groupColor.withOpacity(.82))),
+                            Transform.translate(offset: const Offset(-22, 0), child: _GroupAvatar(seed: members.length > 2 ? members[2].toString() : 'group', color: groupColor.withOpacity(.64))),
                           ]),
+                          if (members.isNotEmpty) const Positioned(left: 25, bottom: 0, child: DecoratedBox(
+                            decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                            child: Padding(padding: EdgeInsets.all(1), child: CircleAvatar(radius: 4, backgroundColor: Color(0xFF22C55E))))),
+                          if (selected) const Positioned(left: 15, top: 7, child: CircleAvatar(radius: 13, backgroundColor: Colors.white,
+                            child: Icon(Icons.check_circle, color: Color(0xFF22C55E), size: 25))),
                         ])),
-                        if (selected) const Icon(Icons.check_circle, color: Colors.green)
-                        else TextButton(
-                          onPressed: () async {
-                            if (isMember) return;
-                            try {
-                              final groupRef = FirebaseFirestore.instance.collection('groups').doc(doc.id);
-                              await groupRef.update({'memberIds': FieldValue.arrayUnion([uid])});
-                              await groupRef.collection('members').doc(uid).set({'joinedAt': FieldValue.serverTimestamp(), 'role': p['role'] ?? 'tenant'});
-                              if (context.mounted) snack(context, 'Joined group.');
-                            } catch (e) { if (context.mounted) snack(context, 'Could not join group: ' + e.toString()); }
-                          },
-                          child: Text(isMember ? 'OPEN' : 'JOIN')),
+                        const SizedBox(width: 2),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Text(data['name']?.toString() ?? 'Group', maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+                          const SizedBox(height: 7),
+                          Wrap(spacing: 6, runSpacing: 4, children: [
+                            _GroupInfoChip(icon: Icons.people_alt_outlined, label: members.length.toString() + ' members'),
+                            if (due is num) _GroupInfoChip(icon: Icons.payments_outlined, label: 'Due ' + currency.format(due), danger: highDue),
+                          ]),
+                          const SizedBox(height: 9),
+                          ClipRRect(borderRadius: BorderRadius.circular(10), child: LinearProgressIndicator(value: progress, minHeight: 3,
+                            backgroundColor: const Color(0xFFE5E7EB),
+                            valueColor: AlwaysStoppedAnimation<Color>(highDue ? const Color(0xFFEF4444) : const Color(0xFF3B82F6)))),
+                        ])),
+                        const SizedBox(width: 9),
+                        Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                          Stack(clipBehavior: Clip.none, children: [
+                            Container(width: 38, height: 38, decoration: const BoxDecoration(color: Color(0xFFEFF6FF), shape: BoxShape.circle),
+                              child: Icon(broadcastOnly ? Icons.lock_outline : Icons.campaign_rounded, color: const Color(0xFF2563EB), size: 20)),
+                            if (hasUnread > 0) const Positioned(right: -1, top: -1, child: CircleAvatar(radius: 4, backgroundColor: Color(0xFF2563EB))),
+                          ]),
+                          const SizedBox(height: 6),
+                          Text(seenBy > 0 ? 'Seen ' + seenBy.toString() + '/' + members.length.toString() : members.length.toString() + ' members',
+                            style: const TextStyle(fontSize: 9, color: Color(0xFF6B7280))),
+                        ]),
+                      ]))),
+                    ]))),
+                  );
+                  return Dismissible(
+                    key: ValueKey('group-tile-' + doc.id),
+                    direction: isMember ? DismissDirection.startToEnd : DismissDirection.none,
+                    confirmDismiss: (_) async {
+                      if (isMember) {
+                        HapticFeedback.selectionClick();
+                        await Navigator.push(context, MaterialPageRoute<void>(builder: (_) =>
+                          GroupChatScreen(groupId: doc.id, groupName: data['name']?.toString() ?? 'Group')));
+                      }
+                      return false;
+                    },
+                    background: Container(alignment: Alignment.centerLeft, margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      padding: const EdgeInsets.only(left: 20),
+                      decoration: BoxDecoration(color: const Color(0xFF22C55E), borderRadius: BorderRadius.circular(20)),
+                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.campaign_rounded, color: Colors.white), SizedBox(width: 8),
+                        Text('Broadcast', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                       ])),
+                    child: GestureDetector(
+                      onLongPress: () {
+                        HapticFeedback.selectionClick();
+                        setState(() { if (selected) { selectedGroupIds.remove(doc.id); } else { selectedGroupIds.add(doc.id); } });
+                      },
+                      onTap: () {
+                        if (selectedGroupIds.isNotEmpty) {
+                          setState(() { if (selected) { selectedGroupIds.remove(doc.id); } else { selectedGroupIds.add(doc.id); } });
+                          return;
+                        }
+                        if (!isMember) { snack(context, 'Join this group first.'); return; }
+                        Navigator.push(context, MaterialPageRoute<void>(builder: (_) =>
+                          GroupChatScreen(groupId: doc.id, groupName: data['name']?.toString() ?? 'Group')));
+                      },
+                      child: tile,
                     ),
                   );
                 }).toList());
@@ -4327,6 +4353,39 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
       ]),
     );
   }
+}
+
+class _GroupAvatar extends StatelessWidget {
+  final String seed;
+  final Color color;
+  const _GroupAvatar({required this.seed, required this.color});
+  @override
+  Widget build(BuildContext context) {
+    final initials = seed == 'empty' ? '' : seed.trim().isEmpty ? '?' : seed.trim().substring(0, 1).toUpperCase();
+    return Container(width: 36, height: 36,
+      decoration: BoxDecoration(color: color.withOpacity(.14), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
+      alignment: Alignment.center,
+      child: initials.isEmpty ? Icon(Icons.groups_outlined, size: 19, color: color)
+        : Text(initials, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w800)));
+  }
+}
+
+class _GroupInfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool danger;
+  const _GroupInfoChip({required this.icon, required this.label, this.danger = false});
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+    decoration: BoxDecoration(color: danger ? const Color(0xFFFEF2F2) : const Color(0xFFF3F4F6), borderRadius: BorderRadius.circular(20)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 11, color: danger ? const Color(0xFFDC2626) : const Color(0xFF6B7280)),
+      const SizedBox(width: 3),
+      Text(label, style: TextStyle(fontSize: 10, fontWeight: danger ? FontWeight.w800 : FontWeight.w600,
+        color: danger ? const Color(0xFFDC2626) : const Color(0xFF4B5563))),
+    ]),
+  );
 }
 
 class GroupChatScreen extends StatefulWidget {
