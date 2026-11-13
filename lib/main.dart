@@ -3629,7 +3629,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
     setState(() => saving = true);
     try {
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      final random = Random.secure();
+      final random = math.Random.secure();
       final code = List.generate(8, (_) => chars[random.nextInt(chars.length)]).join();
       final propertyIds = <String>[];
       if (role == 'caretaker') {
