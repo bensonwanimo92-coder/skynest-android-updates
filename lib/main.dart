@@ -1876,6 +1876,7 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
       snack(context, 'Enter a valid M-Pesa transaction code (8–16 letters or numbers).');
       return;
     }
+    setState(() => saving = true);
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) throw StateError('Please sign in again.');
