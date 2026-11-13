@@ -464,6 +464,8 @@ jobs:
       - name: Select an unused Shorebird release version
         id: release_version
         shell: bash
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
         run: |
           set -euo pipefail
           # Read the authoritative Shorebird release registry for this app.
