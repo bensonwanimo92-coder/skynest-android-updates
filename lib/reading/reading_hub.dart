@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ReadingHubScreen extends StatefulWidget {
@@ -190,57 +191,80 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
     }
   }
 
+  String _fileName(_ReadingIssue issue) => issue.title.toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '');
+
+  Future<Uint8List> _buildIssuePdf(_ReadingIssue issue) async {
+    final document = pw.Document();
+    document.addPage(pw.MultiPage(
+      pageFormat: pw.PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.fromLTRB(42, 48, 42, 48),
+      header: (context) => pw.Container(
+        alignment: pw.Alignment.centerRight,
+        padding: const pw.EdgeInsets.only(bottom: 12),
+        child: pw.Text('SKYNEST READING  •  ${issue.category.toUpperCase()}',
+          style: pw.TextStyle(fontSize: 8, color: PdfColor.fromInt(0xFF64748B))),
+      ),
+      footer: (context) => pw.Container(
+        alignment: pw.Alignment.center,
+        padding: const pw.EdgeInsets.only(top: 12),
+        child: pw.Text('SkyNest Reading  •  ${context.pageNumber}',
+          style: pw.TextStyle(fontSize: 8, color: PdfColor.fromInt(0xFF64748B))),
+      ),
+      build: (context) => <pw.Widget>[
+        pw.SizedBox(height: 38),
+        pw.Text('SKYNEST  /  READING COLLECTION',
+          style: pw.TextStyle(fontSize: 9, letterSpacing: 2, color: PdfColor.fromInt(0xFF2463A6))),
+        pw.SizedBox(height: 20),
+        pw.Text(issue.title,
+          style: pw.TextStyle(fontSize: 30, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF172B4D))),
+        pw.SizedBox(height: 12),
+        pw.Text(issue.subtitle, style: const pw.TextStyle(fontSize: 13, lineSpacing: 4)),
+        pw.SizedBox(height: 24),
+        pw.Container(height: 4, width: 74, color: PdfColor.fromInt(issue.color.value)),
+        pw.SizedBox(height: 30),
+        pw.Text('A complimentary original reading booklet prepared for the SkyNest community.',
+          style: const pw.TextStyle(fontSize: 10, lineSpacing: 4)),
+        pw.SizedBox(height: 26),
+        ...issue.sections.expand((section) => <pw.Widget>[
+          pw.Text(section.heading,
+            style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF2463A6))),
+          pw.SizedBox(height: 8),
+          pw.Text(section.body, style: const pw.TextStyle(fontSize: 10.5, lineSpacing: 5)),
+          pw.SizedBox(height: 20),
+        ]),
+        pw.SizedBox(height: 12),
+        pw.Text('Reading note: This is general educational content, not legal, medical, travel or financial advice.',
+          style: pw.TextStyle(fontSize: 8, color: PdfColor.fromInt(0xFF64748B))),
+      ],
+    ));
+    return document.save();
+  }
+
+  Future<void> _readIssue(_ReadingIssue issue) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => Scaffold(
+        appBar: AppBar(title: Text(issue.title)),
+        body: PdfPreview(
+          build: (_) => _buildIssuePdf(issue),
+          pdfFileName: '${_fileName(issue)}.pdf',
+          allowPrinting: true,
+          allowSharing: true,
+          canChangePageFormat: false,
+          canChangeOrientation: false,
+        ),
+      ),
+    ));
+  }
+
   Future<void> _downloadIssue(_ReadingIssue issue) async {
     if (_downloading) return;
     setState(() => _downloading = true);
     try {
-      final document = pw.Document();
-      document.addPage(pw.MultiPage(
-        pageFormat: pw.PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.fromLTRB(42, 48, 42, 48),
-        header: (context) => pw.Container(
-          alignment: pw.Alignment.centerRight,
-          padding: const pw.EdgeInsets.only(bottom: 12),
-          child: pw.Text('SKYNEST READING  •  ${issue.category.toUpperCase()}',
-            style: pw.TextStyle(fontSize: 8, color: PdfColor.fromInt(0xFF64748B))),
-        ),
-        footer: (context) => pw.Container(
-          alignment: pw.Alignment.center,
-          padding: const pw.EdgeInsets.only(top: 12),
-          child: pw.Text('SkyNest Reading  •  ${context.pageNumber}',
-            style: pw.TextStyle(fontSize: 8, color: PdfColor.fromInt(0xFF64748B))),
-        ),
-        build: (context) => <pw.Widget>[
-          pw.SizedBox(height: 38),
-          pw.Text('SKYNEST  /  READING COLLECTION',
-            style: pw.TextStyle(fontSize: 9, letterSpacing: 2, color: PdfColor.fromInt(0xFF2463A6))),
-          pw.SizedBox(height: 20),
-          pw.Text(issue.title,
-            style: pw.TextStyle(fontSize: 30, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF172B4D))),
-          pw.SizedBox(height: 12),
-          pw.Text(issue.subtitle, style: const pw.TextStyle(fontSize: 13, lineSpacing: 4)),
-          pw.SizedBox(height: 24),
-          pw.Container(height: 4, width: 74, color: PdfColor.fromInt(issue.color.value)),
-          pw.SizedBox(height: 30),
-          pw.Text('A complimentary original reading booklet prepared for the SkyNest community.',
-            style: const pw.TextStyle(fontSize: 10, lineSpacing: 4)),
-          pw.SizedBox(height: 26),
-          ...issue.sections.expand((section) => <pw.Widget>[
-            pw.Text(section.heading,
-              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColor.fromInt(0xFF2463A6))),
-            pw.SizedBox(height: 8),
-            pw.Text(section.body, style: const pw.TextStyle(fontSize: 10.5, lineSpacing: 5)),
-            pw.SizedBox(height: 20),
-          ]),
-          pw.SizedBox(height: 12),
-          pw.Text('Reading note: This is general educational content, not legal, medical, travel or financial advice.',
-            style: pw.TextStyle(fontSize: 8, color: PdfColor.fromInt(0xFF64748B))),
-        ],
-      ));
-      final Uint8List bytes = await document.save();
-      final fileName = issue.title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_').replaceAll(RegExp(r'^_|_$'), '');
+      final bytes = await _buildIssuePdf(issue);
       await FileSaver.instance.saveToDownloads(
-        name: fileName,
+        name: _fileName(issue),
         bytes: bytes,
         fileExtension: 'pdf',
         mimeType: MimeType.pdf,
@@ -341,6 +365,11 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(color: issue.color)),
                 ])),
                 const SizedBox(width: 6),
+                IconButton(
+                  tooltip: 'Read PDF',
+                  onPressed: () => _readIssue(issue),
+                  icon: const Icon(Icons.menu_book_rounded),
+                ),
                 IconButton.filledTonal(
                   tooltip: 'Download PDF',
                   onPressed: _downloading ? null : () => _downloadIssue(issue),
