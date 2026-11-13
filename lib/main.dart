@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/intl.dart';
@@ -9,6 +11,44 @@ import 'package:table_calendar/table_calendar.dart';
 
 const brand = Color(0xFF1565C0);
 const skynestBannerAdUnitId = 'ca-app-pub-1281241380359357/4686680349';
+
+StreamSubscription<String>? _pushTokenRefreshSubscription;
+
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+}
+
+Future<void> _savePushToken(String uid, String token) async {
+  await FirebaseFirestore.instance.collection('users').doc(uid)
+      .collection('devices').doc(token).set({
+    'token': token,
+    'platform': 'android',
+    'updatedAt': FieldValue.serverTimestamp(),
+  }, SetOptions(merge: true));
+}
+
+Future<void> initializePushNotifications() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null || !firebaseReady) return;
+  try {
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    final messaging = FirebaseMessaging.instance;
+    final settings = await messaging.requestPermission(
+      alert: true, badge: true, sound: true,
+    );
+    if (settings.authorizationStatus == AuthorizationStatus.denied) return;
+    final token = await messaging.getToken();
+    if (token != null && token.isNotEmpty) await _savePushToken(user.uid, token);
+    await _pushTokenRefreshSubscription?.cancel();
+    _pushTokenRefreshSubscription = messaging.onTokenRefresh.listen((freshToken) {
+      _savePushToken(user.uid, freshToken);
+    });
+  } catch (error) {
+    debugPrint('Push notification setup failed: $error');
+  }
+}
+
 bool firebaseReady = false;
 String? firebaseError;
 final currency = NumberFormat.currency(locale: 'en_KE', symbol: 'KSh ', decimalDigits: 2);
@@ -610,6 +650,18 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
+
+const List<String> _skynestPropertyPhotos = [
+  'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1000&q=85',
+  'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1000&q=85',
+  'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=1000&q=85',
+  'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?w=1000&q=85',
+  'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?w=1000&q=85',
+  'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=1000&q=85',
+  'https://images.unsplash.com/photo-1600585154526-990dced4db0d?w=1000&q=85',
+  'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=1000&q=85',
+];
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
   @override
@@ -623,6 +675,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _loadUserRole();
+    initializePushNotifications();
     // Initialize AdMob only after the dashboard is opened, never during app startup.
     _initializeBannerAd();
   }
@@ -719,27 +772,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
           final tint = Color.lerp(item.color, scheme.surface, 0.84)!;
           return Card(
             color: tint,
-            elevation: 2.5,
-            shadowColor: item.color.withOpacity(0.16),
+            elevation: 3,
+            shadowColor: item.color.withOpacity(0.22),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => item.page)),
-              child: Stack(children: [
-                Positioned(right: -13, top: -18, child: Icon(item.icon, size: 92, color: item.color.withOpacity(0.10))),
+              child: Stack(fit: StackFit.expand, children: [
+                Image.network(
+                  _skynestPropertyPhotos[i % _skynestPropertyPhotos.length],
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => ColoredBox(color: tint),
+                ),
+                DecoratedBox(decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                    colors: [Colors.black.withOpacity(0.22), Colors.black.withOpacity(0.72)],
+                  ),
+                )),
+                Positioned(right: -13, top: -18, child: Icon(item.icon, size: 92, color: Colors.white.withOpacity(0.16))),
                 Padding(
                   padding: const EdgeInsets.all(15),
                   child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Container(
                       width: 54, height: 54,
-                      decoration: BoxDecoration(color: item.color.withOpacity(0.15), borderRadius: BorderRadius.circular(18)),
-                      child: Icon(item.icon, size: 29, color: item.color),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.20),
+                        border: Border.all(color: Colors.white.withOpacity(0.35)),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(item.icon, size: 29, color: Colors.white),
                     ),
                     const Spacer(),
                     Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onSurface, height: 1.15)),
+                      style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white, height: 1.15)),
                     const SizedBox(height: 5),
-                    Icon(Icons.arrow_forward_rounded, size: 18, color: item.color),
+                    const Icon(Icons.arrow_forward_rounded, size: 18, color: Colors.white),
                   ]),
                 ),
               ]),
@@ -790,7 +858,9 @@ class HousesScreen extends StatelessWidget {
         if (s.hasError) return errorView('Houses could not load: ' + s.error.toString());
         if (!s.hasData) return const Center(child: CircularProgressIndicator());
         if (s.data!.docs.isEmpty) return const EmptyView('No houses added yet.');
-        return ListView(children: s.data!.docs.map((doc) {
+        return ListView(children: s.data!.docs.asMap().entries.map((entry) {
+          final index = entry.key;
+          final doc = entry.value;
           final d = doc.data();
           final rentValue = (d['rent'] as num?)?.toDouble() ?? 0;
           final occupancy = d['isOccupied'] == true ? 'Occupied' : 'Vacant';
@@ -805,18 +875,16 @@ class HousesScreen extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 5),
               child: ListTile(
-                leading: Container(
-                  width: 52, height: 52,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: occupied
-                          ? const [Color(0xFF2D8A72), Color(0xFF9ACDBB)]
-                          : const [Color(0xFF3979B9), Color(0xFF9CC7EA)],
-                      begin: Alignment.topLeft, end: Alignment.bottomRight,
+                leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(15),
+                  child: Image.network(
+                    _skynestPropertyPhotos[index % _skynestPropertyPhotos.length],
+                    width: 62, height: 62, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 62, height: 62, color: occupied ? const Color(0xFF2D8A72) : const Color(0xFF3979B9),
+                      child: const Icon(Icons.apartment_rounded, color: Colors.white, size: 28),
                     ),
-                    borderRadius: BorderRadius.circular(16),
                   ),
-                  child: const Icon(Icons.apartment_rounded, color: Colors.white, size: 28),
                 ),
                 title: Text('House ' + (d['houseNo']?.toString() ?? ''),
                   style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -1722,33 +1790,153 @@ class GroupChatScreen extends StatefulWidget {
 }
 class _GroupChatScreenState extends State<GroupChatScreen> {
   final message = TextEditingController();
+  bool sending = false;
   @override
   void dispose() { message.dispose(); super.dispose(); }
+
   Future<void> send() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || message.text.trim().isEmpty) return;
-    final text = message.text.trim(); message.clear();
-    try { await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('messages').add({
-      'senderId': uid, 'text': text, 'createdAt': FieldValue.serverTimestamp(),
-    }); } catch (e) { if (mounted) snack(context, 'Message not sent: ' + e.toString()); }
+    final user = FirebaseAuth.instance.currentUser;
+    final text = message.text.trim();
+    if (user == null || text.isEmpty || sending) return;
+    setState(() => sending = true);
+    message.clear();
+    try {
+      final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final senderName = (profile.data()?['displayName'] ?? user.displayName ?? 'Member').toString();
+      await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('messages').add({
+        'senderId': user.uid,
+        'senderName': senderName,
+        'text': text,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      if (mounted) snack(context, 'Message not sent: ' + e.toString());
+      message.text = text;
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
   }
+
+  Future<void> deleteMessage(DocumentSnapshot<Map<String, dynamic>> doc) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || doc.data()?['senderId'] != uid) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete message?'),
+        content: const Text('This removes your message for everyone in this group.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await doc.reference.delete();
+    } catch (e) {
+      if (mounted) snack(context, 'Could not delete message: ' + e.toString());
+    }
+  }
+
+  Future<void> leaveGroup() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Leave this group?'),
+        content: const Text('You will stop receiving new messages from this group. You can join again later if it remains available.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Stay')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Leave group')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final group = FirebaseFirestore.instance.collection('groups').doc(widget.groupId);
+      await group.update({'memberIds': FieldValue.arrayRemove([uid])});
+      await group.collection('members').doc(uid).delete();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) snack(context, 'Could not leave group: ' + e.toString());
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(widget.groupName)),
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(widget.groupName),
+      actions: [
+        IconButton(
+          tooltip: 'Leave group',
+          onPressed: leaveGroup,
+          icon: const Icon(Icons.logout_rounded),
+        ),
+      ],
+    ),
     body: Column(children: [
       Expanded(child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('messages').orderBy('createdAt').snapshots(),
+        stream: FirebaseFirestore.instance.collection('groups').doc(widget.groupId)
+            .collection('messages').orderBy('createdAt').snapshots(),
         builder: (context, snap) {
-          if (snap.hasError) return errorView('Messages could not load. Group membership may be required.');
+          if (snap.hasError) return errorView('Messages could not load. Check group membership and Firestore permissions.');
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          return ListView(children: snap.data!.docs.map((doc) => ListTile(
-            title: Text(doc.data()['text']?.toString() ?? ''),
-            subtitle: Text(doc.data()['senderId'] == FirebaseAuth.instance.currentUser?.uid ? 'You' : 'Group member'),
-          )).toList());
+          final uid = FirebaseAuth.instance.currentUser?.uid;
+          if (snap.data!.docs.isEmpty) return const EmptyView('No messages yet. Say hello to the group.');
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: snap.data!.docs.length,
+            itemBuilder: (context, index) {
+              final doc = snap.data!.docs[index];
+              final data = doc.data();
+              final mine = data['senderId'] == uid;
+              return Align(
+                alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+                  child: Card(
+                    color: mine ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerHighest,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(13, 9, 7, 8),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          Flexible(child: Text(mine ? 'You' : (data['senderName']?.toString() ?? 'Group member'),
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.primary))),
+                          if (mine) PopupMenuButton<String>(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 44, minHeight: 36),
+                            iconSize: 18,
+                            onSelected: (value) { if (value == 'delete') deleteMessage(doc); },
+                            itemBuilder: (_) => const [PopupMenuItem(value: 'delete', child: Text('Delete message'))],
+                          ),
+                        ]),
+                        Text(data['text']?.toString() ?? ''),
+                        if (data['createdAt'] is Timestamp)
+                          Align(alignment: Alignment.centerRight, child: Text(
+                            DateFormat('HH:mm').format((data['createdAt'] as Timestamp).toDate()),
+                            style: Theme.of(context).textTheme.labelSmall,
+                          )),
+                      ]),
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
         },
       )),
       SafeArea(child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [
-        Expanded(child: TextField(controller: message, decoration: const InputDecoration(hintText: 'Write a message'))),
-        IconButton(onPressed: send, icon: const Icon(Icons.send)),
+        Expanded(child: TextField(
+          controller: message,
+          minLines: 1, maxLines: 4,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(hintText: 'Write a message'),
+          onSubmitted: (_) => send(),
+        )),
+        const SizedBox(width: 8),
+        IconButton.filled(onPressed: sending ? null : send, icon: const Icon(Icons.send)),
       ]))),
     ]),
   );
