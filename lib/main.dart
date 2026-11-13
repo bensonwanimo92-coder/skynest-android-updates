@@ -915,6 +915,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
         _MenuItem('Electricity', Icons.electric_bolt, Colors.amber, const ElectricityScreen()),
         _MenuItem('Activity log', Icons.fact_check_outlined, Colors.blueGrey, const ActivityLogScreen()),
+        _MenuItem('Reports', Icons.analytics_outlined, Colors.deepPurple, const ReportsScreen()),
         _MenuItem('Calculator', Icons.calculate_outlined, Colors.purple, const CalculatorScreen()),
         _MenuItem('Calendar', Icons.calendar_month, Colors.cyan, const CalendarScreen()),
         _MenuItem('Plans', Icons.assignment_outlined, Colors.indigo, const PlansScreen()),
@@ -2903,6 +2904,148 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       ),
     );
   }
+}
+
+class ReportsScreen extends StatefulWidget {
+  const ReportsScreen({super.key});
+  @override
+  State<ReportsScreen> createState() => _ReportsScreenState();
+}
+class _ReportsScreenState extends State<ReportsScreen> {
+  late Future<List<QuerySnapshot<Map<String, dynamic>>>> reportData;
+  DateTime selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+  void _load() {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    reportData = Future.wait([
+      FirebaseFirestore.instance.collection('payments').where('createdBy', isEqualTo: uid).get(),
+      FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: uid).get(),
+      FirebaseFirestore.instance.collection('tenants').where('landlordId', isEqualTo: uid).get(),
+    ]);
+  }
+  String _monthLabel(DateTime date) => DateFormat('MMMM yyyy').format(date);
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Property reports'), actions: [
+      IconButton(tooltip: 'Refresh reports', icon: const Icon(Icons.refresh),
+        onPressed: () => setState(_load)),
+    ]),
+    body: FutureBuilder<List<QuerySnapshot<Map<String, dynamic>>>>(
+      future: reportData,
+      builder: (context, snap) {
+        if (snap.hasError) return errorView('Reports could not load: ' + snap.error.toString());
+        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+        final payments = snap.data![0].docs;
+        final houses = snap.data![1].docs;
+        final tenants = snap.data![2].docs;
+        final start = selectedMonth;
+        final end = DateTime(start.year, start.month + 1);
+        final previousStart = DateTime(start.year, start.month - 1);
+        final currentPayments = payments.where((doc) {
+          final date = doc.data()['createdAt'];
+          return date is Timestamp && !date.toDate().isBefore(start) && date.toDate().isBefore(end);
+        }).toList();
+        final previousPayments = payments.where((doc) {
+          final date = doc.data()['createdAt'];
+          return date is Timestamp && !date.toDate().isBefore(previousStart) && date.toDate().isBefore(start);
+        }).toList();
+        double total(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) =>
+          docs.fold<double>(0, (sum, doc) => sum + ((doc.data()['amount'] as num?)?.toDouble() ?? 0));
+        final collected = total(currentPayments);
+        final previous = total(previousPayments);
+        final change = previous <= 0 ? null : ((collected - previous) / previous) * 100;
+        final occupied = houses.where((doc) => doc.data()['isOccupied'] == true).length;
+        final occupancy = houses.isEmpty ? 0.0 : occupied / houses.length;
+        final houseTotals = <String, double>{};
+        final tenantTotals = <String, double>{};
+        for (final doc in currentPayments) {
+          final data = doc.data();
+          final amount = (data['amount'] as num?)?.toDouble() ?? 0;
+          final house = data['houseNo']?.toString() ?? 'Unknown';
+          final tenant = data['tenantName']?.toString() ?? 'Unknown';
+          houseTotals[house] = (houseTotals[house] ?? 0) + amount;
+          tenantTotals[tenant] = (tenantTotals[tenant] ?? 0) + amount;
+        }
+        final topHouse = houseTotals.entries.isEmpty ? null : houseTotals.entries.reduce((a, b) => a.value >= b.value ? a : b);
+        final topTenant = tenantTotals.entries.isEmpty ? null : tenantTotals.entries.reduce((a, b) => a.value >= b.value ? a : b);
+        final maxBar = [collected, previous].reduce((a, b) => a > b ? a : b);
+        return ListView(padding: const EdgeInsets.all(16), children: [
+          Card(child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
+            IconButton(onPressed: () => setState(() => selectedMonth = DateTime(selectedMonth.year, selectedMonth.month - 1)),
+              icon: const Icon(Icons.chevron_left)),
+            Expanded(child: Center(child: Text(_monthLabel(selectedMonth),
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)))),
+            IconButton(onPressed: selectedMonth.month == DateTime.now().month && selectedMonth.year == DateTime.now().year
+              ? null : () => setState(() => selectedMonth = DateTime(selectedMonth.year, selectedMonth.month + 1)),
+              icon: const Icon(Icons.chevron_right)),
+          ]))),
+          Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Row(children: [Icon(Icons.auto_awesome, color: Colors.amber), SizedBox(width: 7), Text('Monthly collection')]),
+            const SizedBox(height: 8),
+            Text(currency.format(collected), style: const TextStyle(fontSize: 29, fontWeight: FontWeight.w900)),
+            if (change != null) Row(children: [
+              Icon(change >= 0 ? Icons.trending_up : Icons.trending_down, color: change >= 0 ? Colors.green : Colors.red),
+              Text((change >= 0 ? '+' : '') + change.toStringAsFixed(1) + '% vs previous month',
+                style: TextStyle(color: change >= 0 ? Colors.green : Colors.red, fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 14),
+            Row(children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Selected month', style: TextStyle(fontSize: 11)),
+                const SizedBox(height: 5),
+                LinearProgressIndicator(value: maxBar == 0 ? 0 : collected / maxBar, minHeight: 9),
+              ])),
+              const SizedBox(width: 14),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Previous month', style: TextStyle(fontSize: 11)),
+                const SizedBox(height: 5),
+                LinearProgressIndicator(value: maxBar == 0 ? 0 : previous / maxBar, minHeight: 9, color: Colors.blueGrey),
+              ])),
+            ]),
+          ]))),
+          Row(children: [
+            Expanded(child: _ReportMetric(title: 'Properties', value: houses.length.toString(), icon: Icons.home_work_outlined)),
+            const SizedBox(width: 9),
+            Expanded(child: _ReportMetric(title: 'Tenants', value: tenants.length.toString(), icon: Icons.people_alt_outlined)),
+            const SizedBox(width: 9),
+            Expanded(child: _ReportMetric(title: 'Occupied', value: (occupancy * 100).toStringAsFixed(0) + '%', icon: Icons.apartment_outlined)),
+          ]),
+          const SizedBox(height: 12),
+          if (topHouse != null) Card(child: ListTile(
+            leading: const Icon(Icons.emoji_events_outlined, color: Colors.amber),
+            title: const Text('Top earning house'),
+            subtitle: Text('House ' + topHouse.key),
+            trailing: Text(currency.format(topHouse.value), style: const TextStyle(fontWeight: FontWeight.bold)),
+          )),
+          if (topTenant != null) Card(child: ListTile(
+            leading: const Icon(Icons.workspace_premium_outlined, color: Colors.deepPurple),
+            title: const Text('Best payment contribution'),
+            subtitle: Text(topTenant.key),
+            trailing: Text(currency.format(topTenant.value), style: const TextStyle(fontWeight: FontWeight.bold)),
+          )),
+          const SizedBox(height: 8),
+          Text('Figures are calculated from saved payment records for the selected month. Pending submissions are not treated as verified collections.',
+            style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        ]);
+      },
+    ),
+  );
+}
+class _ReportMetric extends StatelessWidget {
+  final String title, value;
+  final IconData icon;
+  const _ReportMetric({required this.title, required this.value, required this.icon});
+  @override
+  Widget build(BuildContext context) => Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [
+    Icon(icon, color: Theme.of(context).colorScheme.primary),
+    const SizedBox(height: 6),
+    Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+    Text(title, style: const TextStyle(fontSize: 10)),
+  ])));
 }
 
 class ActivityLogScreen extends StatelessWidget {
