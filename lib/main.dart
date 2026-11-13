@@ -11,6 +11,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
 import 'package:table_calendar/table_calendar.dart';
 
@@ -80,6 +81,7 @@ Future<void> main() async {
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
   };
+  unawaited(themeManager.load());
   runApp(const SkynestApp());
 }
 
@@ -107,7 +109,47 @@ Future<bool> ensureFirebaseReady() async {
 class ThemeManager extends ChangeNotifier {
   ThemeData value = Themes.blue;
   String selectedName = 'Classic Blue';
-  void set(ThemeData theme, String name) { value = theme; selectedName = name; notifyListeners(); }
+  int? customColorValue;
+
+  Future<void> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedName = prefs.getString('skynest_theme_name');
+      final savedColor = prefs.getInt('skynest_custom_theme_color');
+      if (savedName == 'Custom' && savedColor != null) {
+        customColorValue = savedColor;
+        value = Themes.custom(Color(savedColor));
+        selectedName = 'Custom';
+      } else {
+        final matches = Themes.options.where((item) => item.name == savedName).toList();
+        if (matches.isNotEmpty) {
+          value = matches.first.theme;
+          selectedName = matches.first.name;
+        }
+      }
+      notifyListeners();
+    } catch (error) {
+      debugPrint('Theme preference load failed: $error');
+    }
+  }
+
+  Future<void> set(ThemeData theme, String name, {Color? customColor}) async {
+    value = theme;
+    selectedName = name;
+    customColorValue = customColor?.value;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('skynest_theme_name', name);
+      if (customColor != null) {
+        await prefs.setInt('skynest_custom_theme_color', customColor.value);
+      } else {
+        await prefs.remove('skynest_custom_theme_color');
+      }
+    } catch (error) {
+      debugPrint('Theme preference save failed: $error');
+    }
+  }
 }
 final themeManager = ThemeManager();
 
@@ -116,7 +158,8 @@ class ThemeOption {
   final ThemeData theme;
   final Color primary, secondary;
   final IconData icon;
-  const ThemeOption(this.name, this.description, this.theme, this.primary, this.secondary, this.icon);
+  final bool isPremium;
+  const ThemeOption(this.name, this.description, this.theme, this.primary, this.secondary, this.icon, {this.isPremium = false});
 }
 
 class Themes {
@@ -143,22 +186,13 @@ class Themes {
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: scheme.primary, width: 1.8)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
       ),
-      floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: scheme.primary,
-        foregroundColor: scheme.onPrimary,
-        elevation: 3,
-      ),
-      snackBarTheme: SnackBarThemeData(
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-      listTileTheme: ListTileThemeData(
-        iconColor: scheme.primary,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(backgroundColor: scheme.primary, foregroundColor: scheme.onPrimary, elevation: 3),
+      snackBarTheme: SnackBarThemeData(behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+      listTileTheme: ListTileThemeData(iconColor: scheme.primary, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5)),
     );
   }
 
+  static ThemeData custom(Color color) => _make(color);
   static final blue = _make(const Color(0xFF2463A6));
   static final dark = _make(const Color(0xFFB99A62), brightness: Brightness.dark);
   static final sunset = _make(const Color(0xFFC66A45));
@@ -167,11 +201,18 @@ class Themes {
   static final ocean = _make(const Color(0xFF315D83));
   static final rose = _make(const Color(0xFF9A6572));
   static final slate = _make(const Color(0xFF64748B));
+  static final shamba = _make(const Color(0xFF2E7D32), surface: const Color(0xFFE8F5E9));
+  static final makuti = _make(const Color(0xFF795548), surface: const Color(0xFFEFEBE9));
+  static final gold = _make(const Color(0xFFB8860B), surface: const Color(0xFFFFF8E1));
+
   static final options = <ThemeOption>[
     ThemeOption('Ivory & Gold Estate', 'Warm ivory, champagne and gold', ivory, const Color(0xFFF5EBDD), const Color(0xFFB18A4A), Icons.villa_outlined),
     ThemeOption('Midnight Luxury', 'Charcoal, black and silver', dark, const Color(0xFF17191D), const Color(0xFFC4A66A), Icons.directions_car_filled_outlined),
     ThemeOption('Ocean Residence', 'Navy blue and cool coastal tones', ocean, const Color(0xFF173B5E), const Color(0xFF78A9C9), Icons.water),
     ThemeOption('Forest Residence', 'Natural greens and soft stone', forest, const Color(0xFF294B37), const Color(0xFF9BAF8A), Icons.park_outlined),
+    ThemeOption('Shamba Green', 'Fresh leafy green with a soft garden background', shamba, const Color(0xFF2E7D32), const Color(0xFF9CCC65), Icons.eco_outlined),
+    ThemeOption('Makuti Brown', 'Earthy timber, woven makuti and warm sand', makuti, const Color(0xFF795548), const Color(0xFFD7A86E), Icons.roofing_outlined),
+    ThemeOption('Gold Landlord', 'A premium-inspired champagne and gold finish', gold, const Color(0xFFB8860B), const Color(0xFFFFD54F), Icons.workspace_premium_outlined, isPremium: true),
     ThemeOption('Sunset Villa', 'Terracotta, sand and sunset gold', sunset, const Color(0xFF9D4F35), const Color(0xFFE8B878), Icons.wb_twilight),
     ThemeOption('Rosewood Classic', 'Muted rose and warm neutral shades', rose, const Color(0xFF76505B), const Color(0xFFD5AEB2), Icons.weekend_outlined),
     ThemeOption('Silver Slate', 'Clean slate, graphite and silver', slate, const Color(0xFF475569), const Color(0xFFCBD5E1), Icons.apartment_outlined),
@@ -2919,53 +2960,142 @@ class AchievementsScreen extends StatelessWidget {
     );
   }
 }
-class ThemesScreen extends StatelessWidget {
+class ThemesScreen extends StatefulWidget {
   const ThemesScreen({super.key});
+  @override
+  State<ThemesScreen> createState() => _ThemesScreenState();
+}
+
+class _ThemesScreenState extends State<ThemesScreen> {
+  static const List<Color> customColors = [
+    Color(0xFF673AB7), Color(0xFF00897B), Color(0xFFEF6C00),
+    Color(0xFFAD1457), Color(0xFF3949AB), Color(0xFF558B2F),
+    Color(0xFF6D4C41), Color(0xFF546E7A),
+  ];
+
+  Future<void> _apply(ThemeOption option) async {
+    await themeManager.set(option.theme, option.name);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(option.name + ' applied and saved.')));
+  }
+
+  Future<void> _applyCustom(Color color) async {
+    await themeManager.set(Themes.custom(color), 'Custom', customColor: color);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Custom colour applied and saved.')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final options = Themes.options;
+    final selectedColor = themeManager.customColorValue == null ? null : Color(themeManager.customColorValue!);
     return Scaffold(
-      appBar: AppBar(title: const Text('Choose your style')),
+      appBar: AppBar(
+        title: const Text('Choose your style'),
+        actions: [
+          IconButton(
+            tooltip: 'Share SkyNest themes',
+            icon: const Icon(Icons.share_outlined),
+            onPressed: () => Clipboard.setData(const ClipboardData(text: 'Explore the beautiful themes in SkyNest Rental Management.')),
+          ),
+        ],
+      ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 28),
         children: [
-          const Padding(padding: EdgeInsets.fromLTRB(4, 4, 4, 14), child: Text('A more beautiful space to manage your properties.', style: TextStyle(fontSize: 14))),
-          ...options.map((option) {
-            final selected = themeManager.selectedName == option.name;
-            return Card(
-              clipBehavior: Clip.antiAlias,
-              margin: const EdgeInsets.only(bottom: 14),
-              child: InkWell(
-                onTap: () {
-                  themeManager.set(option.theme, option.name);
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(option.name + ' applied')));
-                },
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Container(
-                    height: 126,
-                    decoration: BoxDecoration(gradient: LinearGradient(colors: [option.primary, option.secondary], begin: Alignment.centerLeft, end: Alignment.bottomRight)),
-                    child: Stack(children: [
-                      Positioned(right: 18, top: 12, child: Icon(option.icon, size: 58, color: Colors.white.withOpacity(0.22))),
-                      Positioned(left: 18, bottom: 8, child: Icon(Icons.villa_rounded, size: 76, color: Colors.white.withOpacity(0.88))),
-                      Positioned(right: 22, bottom: 10, child: Icon(Icons.apartment_rounded, size: 48, color: Colors.white.withOpacity(0.48))),
-                      Positioned(left: 18, top: 14, child: Icon(option.icon, color: Colors.white, size: 23)),
-                      if (selected) const Positioned(right: 14, bottom: 12, child: Icon(Icons.check_circle, color: Colors.white, size: 25)),
-                    ]),
-                  ),
-                  ListTile(
-                    title: Text(option.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(option.description),
-                    trailing: selected ? const Chip(label: Text('Selected')) : const Icon(Icons.chevron_right),
-                  ),
-                ]),
+          Text('Make SkyNest feel like your space.', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 5),
+          Text('Choose a complete colour palette. Your selection is saved on this device and restored next time you open the app.', style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 14),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(children: [
+                Icon(Icons.dark_mode_outlined, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 10),
+                const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Dark appearance', style: TextStyle(fontWeight: FontWeight.w700)),
+                  Text('Switch to the Midnight Luxury palette', style: TextStyle(fontSize: 12)),
+                ])),
+                Switch(
+                  value: themeManager.value.brightness == Brightness.dark,
+                  onChanged: (enabled) {
+                    final option = Themes.options.firstWhere((item) => item.name == (enabled ? 'Midnight Luxury' : 'Classic Blue'));
+                    _apply(option);
+                  },
+                ),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 8),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 11, mainAxisSpacing: 11, childAspectRatio: 1.12),
+            itemCount: options.length,
+            itemBuilder: (context, index) {
+              final option = options[index];
+              final selected = themeManager.selectedName == option.name;
+              return Card(
+                clipBehavior: Clip.antiAlias,
+                elevation: selected ? 4 : 1,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(17),
+                  side: BorderSide(color: selected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.outlineVariant, width: selected ? 2.3 : 1),
+                ),
+                child: InkWell(
+                  onTap: () => _apply(option),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(gradient: LinearGradient(colors: [option.primary, option.secondary], begin: Alignment.topLeft, end: Alignment.bottomRight)),
+                        child: Stack(children: [
+                          Positioned(right: 12, top: 10, child: Icon(option.icon, size: 40, color: Colors.white.withOpacity(0.28))),
+                          Positioned(left: 12, bottom: 8, child: Icon(Icons.apartment_rounded, size: 56, color: Colors.white.withOpacity(0.88))),
+                          if (selected) const Positioned(right: 9, bottom: 9, child: Icon(Icons.check_circle, color: Colors.white, size: 23)),
+                          if (option.isPremium) const Positioned(left: 9, top: 9, child: Icon(Icons.workspace_premium, color: Colors.white, size: 19)),
+                        ]),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(option.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                        const SizedBox(height: 3),
+                        Text(option.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 10)),
+                        if (option.isPremium) const Padding(padding: EdgeInsets.only(top: 4), child: Text('PREMIUM STYLE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Color(0xFFB8860B)))),
+                      ]),
+                    ),
+                  ]),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          Text('Custom colour', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text('Pick a colour to build a matching SkyNest palette.', style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 10),
+          Wrap(spacing: 12, runSpacing: 12, children: customColors.map((color) {
+            final selected = selectedColor?.value == color.value;
+            return InkWell(
+              onTap: () => _applyCustom(color),
+              borderRadius: BorderRadius.circular(30),
+              child: Container(
+                width: 43, height: 43,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle, border: Border.all(color: selected ? Theme.of(context).colorScheme.onSurface : Colors.transparent, width: 3)),
+                child: selected ? const Icon(Icons.check, color: Colors.white) : null,
               ),
             );
-          }),
+          }).toList()),
+          if (selectedColor != null) Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text('Current custom colour: #' + selectedColor.value.toRadixString(16).padLeft(8, '0').toUpperCase(), style: Theme.of(context).textTheme.bodySmall),
+          ),
         ],
       ),
     );
   }
 }
+
 class PamphletsScreen extends StatefulWidget {
   const PamphletsScreen({super.key});
   @override
