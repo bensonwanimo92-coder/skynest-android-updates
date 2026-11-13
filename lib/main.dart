@@ -2945,13 +2945,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
         final start = selectedMonth;
         final end = DateTime(start.year, start.month + 1);
         final previousStart = DateTime(start.year, start.month - 1);
+        bool isVerifiedPayment(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+          final status = (doc.data()['status']?.toString() ?? '').toLowerCase();
+          return status.contains('paid') || status.contains('received') || status.contains('verified');
+        }
         final currentPayments = payments.where((doc) {
           final date = doc.data()['createdAt'];
-          return date is Timestamp && !date.toDate().isBefore(start) && date.toDate().isBefore(end);
+          return isVerifiedPayment(doc) && date is Timestamp &&
+            !date.toDate().isBefore(start) && date.toDate().isBefore(end);
         }).toList();
         final previousPayments = payments.where((doc) {
           final date = doc.data()['createdAt'];
-          return date is Timestamp && !date.toDate().isBefore(previousStart) && date.toDate().isBefore(start);
+          return isVerifiedPayment(doc) && date is Timestamp &&
+            !date.toDate().isBefore(previousStart) && date.toDate().isBefore(start);
         }).toList();
         double total(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) =>
           docs.fold<double>(0, (sum, doc) => sum + ((doc.data()['amount'] as num?)?.toDouble() ?? 0));
