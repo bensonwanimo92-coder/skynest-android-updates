@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -945,6 +947,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     return Scaffold(
       appBar: AppBar(title: Text('SkyNest • ' + userRole[0].toUpperCase() + userRole.substring(1)), actions: [
+        IconButton(tooltip: 'Account and role', icon: const Icon(Icons.manage_accounts_outlined),
+          onPressed: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const AccountRoleScreen()))),
         IconButton(tooltip: 'Sign out', icon: const Icon(Icons.logout), onPressed: () async {
           if (firebaseReady) await FirebaseAuth.instance.signOut();
           if (!context.mounted) return;
@@ -1014,6 +1018,214 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
+class AccountRoleScreen extends StatefulWidget {
+  const AccountRoleScreen({super.key});
+  @override
+  State<AccountRoleScreen> createState() => _AccountRoleScreenState();
+}
+
+class _AccountRoleScreenState extends State<AccountRoleScreen> {
+  final invitationCode = TextEditingController();
+  String role = '';
+  String status = '';
+  bool loading = true;
+  bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    invitationCode.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (mounted) setState(() => loading = false);
+      return;
+    }
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final data = snapshot.data() ?? <String, dynamic>{};
+      if (mounted) setState(() {
+        role = data['role']?.toString() ?? '';
+        status = data['status']?.toString() ?? '';
+        loading = false;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => loading = false);
+        snack(context, 'Could not load account details: ' + error.toString());
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> _sendRoleChange(String targetRole) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw StateError('Please sign in again before changing your role.');
+    final token = await user.getIdToken(true);
+    if (token == null || token.isEmpty) throw StateError('Could not refresh your secure sign-in token.');
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final request = await client.postUrl(Uri.parse(
+        'https://us-central1-hello-chuka.cloudfunctions.net/changeAccountRole',
+      ));
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + token);
+      request.headers.contentType = ContentType.json;
+      final data = <String, dynamic>{'targetRole': targetRole};
+      if (targetRole == 'tenant') data['invitationCode'] = invitationCode.text.trim().toUpperCase();
+      request.write(jsonEncode({'data': data}));
+      final response = await request.close().timeout(const Duration(seconds: 35));
+      final responseText = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 20));
+      Map<String, dynamic> decoded;
+      try {
+        decoded = jsonDecode(responseText) as Map<String, dynamic>;
+      } catch (_) {
+        throw StateError('The role service returned an unreadable response. Please try again later.');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300 || decoded.containsKey('error')) {
+        final error = decoded['error'];
+        final message = error is Map
+            ? error['message']?.toString()
+            : null;
+        throw StateError(message ?? 'Role change failed (HTTP ' + response.statusCode.toString() + ').');
+      }
+      final result = decoded['result'];
+      if (result is! Map) throw StateError('The role service did not confirm the change.');
+      return Map<String, dynamic>.from(result);
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> _changeRole(String targetRole) async {
+    if (saving) return;
+    if (targetRole == 'tenant' && invitationCode.text.trim().length < 6) {
+      snack(context, 'Enter the Tenant invitation code supplied by your new landlord.');
+      return;
+    }
+    final targetName = targetRole == 'tenant' ? 'Tenant' : 'Landlord';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Switch to ' + targetName + '?'),
+        content: Text(targetRole == 'tenant'
+          ? 'Your account will keep the same email and password. You must use a valid Tenant invitation code, and the new landlord must approve your account. Existing properties or active linked tenants/caretakers must be transferred or cleared first. Existing history will not be deleted.'
+          : 'Your account will become a Landlord account. You cannot switch while you have an assigned house or a pending house request. Your existing account and sign-in details will be kept.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('CANCEL')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('CONFIRM SWITCH')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => saving = true);
+    try {
+      final result = await _sendRoleChange(targetRole);
+      if (!mounted) return;
+      final newRole = result['role']?.toString() ?? targetRole;
+      final newStatus = result['status']?.toString() ?? '';
+      snack(context, 'Your account role is now ' + newRole + '.');
+      if (newRole == 'tenant' && newStatus == 'pending') {
+        Navigator.pushAndRemoveUntil(context,
+          MaterialPageRoute<void>(builder: (_) => const PendingApprovalScreen()), (_) => false);
+      } else {
+        Navigator.pushAndRemoveUntil(context,
+          MaterialPageRoute<void>(builder: (_) => const DashboardScreen()), (_) => false);
+      }
+    } catch (error) {
+      if (mounted) {
+        final message = error.toString().replaceFirst('Bad state: ', '');
+        snack(context, message);
+      }
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Account & role')),
+      body: loading
+        ? const Center(child: CircularProgressIndicator())
+        : ListView(padding: const EdgeInsets.all(18), children: [
+            Card(child: ListTile(
+              leading: const Icon(Icons.account_circle_outlined, size: 38),
+              title: Text(role.isEmpty ? 'Account role unavailable' : role[0].toUpperCase() + role.substring(1),
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text('Account status: ' + (status.isEmpty ? 'unknown' : status)),
+            )),
+            if (role == 'landlord') ...[
+              Card(child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Switch to Tenant', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text('If you created your account as a Landlord by mistake, you can use the same account to join another property as a Tenant. Ask that landlord for a Tenant invitation code.'),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: invitationCode,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(
+                      labelText: 'Tenant invitation code',
+                      prefixIcon: Icon(Icons.key_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(width: double.infinity, child: FilledButton.icon(
+                    onPressed: saving ? null : () => _changeRole('tenant'),
+                    icon: const Icon(Icons.swap_horiz),
+                    label: Text(saving ? 'PLEASE WAIT...' : 'SWITCH TO TENANT'),
+                  )),
+                ]),
+              )),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Text('Safety check: SkyNest will block this switch if you still own properties or have active tenants/caretakers linked to your account. Transfer those responsibilities first.'),
+              ),
+            ] else if (role == 'tenant') ...[
+              Card(child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Switch to Landlord', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text('You can return to a Landlord account if you have no assigned house and no pending house request. Your previous account history is retained.'),
+                  const SizedBox(height: 14),
+                  SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                    onPressed: saving ? null : () => _changeRole('landlord'),
+                    icon: const Icon(Icons.swap_horiz),
+                    label: Text(saving ? 'PLEASE WAIT...' : 'SWITCH TO LANDLORD'),
+                  )),
+                ]),
+              )),
+            ] else if (role == 'caretaker') ...[
+              const Card(child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Caretaker access is assigned by a Landlord. Ask the Landlord to remove or change your assignment before changing account type.'),
+              )),
+            ] else ...[
+              const Card(child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Your account role could not be identified. Please sign out and sign in again, or contact support.'),
+              )),
+            ],
+            if (saving) const Padding(
+              padding: EdgeInsets.only(top: 16),
+              child: LinearProgressIndicator(),
+            ),
+          ]),
+    );
+  }
+}
+
 class _MenuItem {
   final String title; final IconData icon; final Color color; final Widget page;
   const _MenuItem(this.title, this.icon, this.color, this.page);

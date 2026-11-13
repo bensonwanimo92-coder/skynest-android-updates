@@ -70,3 +70,161 @@ exports.notifyGroupMessage = onDocumentCreated(
     }
   }
 );
+
+
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { FieldValue } = require("firebase-admin/firestore");
+
+exports.changeAccountRole = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in before changing your account role.");
+  }
+
+  const uid = request.auth.uid;
+  const targetRole = request.data && request.data.targetRole;
+  const invitationCode = String((request.data && request.data.invitationCode) || "")
+    .trim().toUpperCase();
+
+  if (!["landlord", "tenant"].includes(targetRole)) {
+    throw new HttpsError("invalid-argument", "Choose either Landlord or Tenant.");
+  }
+
+  const db = getFirestore();
+  const userRef = db.collection("users").doc(uid);
+
+  return db.runTransaction(async (transaction) => {
+    const userSnapshot = await transaction.get(userRef);
+    if (!userSnapshot.exists) {
+      throw new HttpsError("not-found", "Your SkyNest account profile was not found.");
+    }
+
+    const user = userSnapshot.data();
+    const currentRole = user.role;
+    if (currentRole === targetRole) {
+      throw new HttpsError("failed-precondition", "Your account already has this role.");
+    }
+    if (currentRole === "caretaker") {
+      throw new HttpsError("failed-precondition",
+        "Caretaker access is managed by your Landlord. Ask them to remove your assignment first.");
+    }
+
+    if (targetRole === "tenant" && currentRole === "landlord") {
+      if (user.status !== "active") {
+        throw new HttpsError("failed-precondition", "Only an active Landlord account can switch to Tenant.");
+      }
+      if (invitationCode.length < 6) {
+        throw new HttpsError("invalid-argument", "Enter the Tenant invitation code supplied by your new landlord.");
+      }
+
+      const ownedByCreator = await transaction.get(
+        db.collection("houses").where("createdBy", "==", uid)
+      );
+      const ownedByLandlord = await transaction.get(
+        db.collection("houses").where("landlordId", "==", uid)
+      );
+      const linkedUsers = await transaction.get(
+        db.collection("users").where("landlordId", "==", uid)
+      );
+      const openInvitations = await transaction.get(
+        db.collection("invitations").where("landlordId", "==", uid).where("status", "==", "open")
+      );
+
+      const activeLinkedUsers = linkedUsers.docs.filter((doc) => {
+        const linked = doc.data();
+        return ["tenant", "caretaker"].includes(linked.role) &&
+          ["active", "pending"].includes(linked.status);
+      });
+
+      if (!ownedByCreator.empty || !ownedByLandlord.empty) {
+        throw new HttpsError("failed-precondition",
+          "You still own property records. Transfer or remove those properties before switching to Tenant.");
+      }
+      if (activeLinkedUsers.length) {
+        throw new HttpsError("failed-precondition",
+          "Your account still has active or pending tenants/caretakers linked to it. Resolve those relationships before switching.");
+      }
+
+      const invitationRef = db.collection("invitations").doc(invitationCode);
+      const invitationSnapshot = await transaction.get(invitationRef);
+      if (!invitationSnapshot.exists) {
+        throw new HttpsError("not-found", "That Tenant invitation code was not found.");
+      }
+      const invitation = invitationSnapshot.data();
+      const expiry = invitation.expiresAt;
+      if (invitation.role !== "tenant" || invitation.status !== "open" ||
+          !invitation.landlordId || invitation.landlordId === uid ||
+          !expiry || typeof expiry.toDate !== "function" || !expiry.toDate().getTime() ||
+          expiry.toDate().getTime() <= Date.now()) {
+        throw new HttpsError("failed-precondition",
+          "That invitation is expired, already used, or is not a valid Tenant invitation.");
+      }
+
+      const newLandlordRef = db.collection("users").doc(invitation.landlordId);
+      const newLandlordSnapshot = await transaction.get(newLandlordRef);
+      const newLandlord = newLandlordSnapshot.data();
+      if (!newLandlordSnapshot.exists || !newLandlord ||
+          newLandlord.role !== "landlord" || newLandlord.status !== "active") {
+        throw new HttpsError("failed-precondition", "The account that issued this invitation is not an active Landlord.");
+      }
+
+      transaction.update(userRef, {
+        role: "tenant",
+        status: "pending",
+        landlordId: invitation.landlordId,
+        propertyIds: Array.isArray(invitation.propertyIds) ? invitation.propertyIds : [],
+        invitationCode,
+        previousRole: "landlord",
+        roleChangedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        houseId: FieldValue.delete(),
+        houseNo: FieldValue.delete(),
+      });
+      transaction.update(invitationRef, {
+        status: "used",
+        usedBy: uid,
+        usedAt: FieldValue.serverTimestamp(),
+      });
+      for (const openInvite of openInvitations.docs) {
+        transaction.update(openInvite.ref, {
+          status: "revoked",
+          revokedAt: FieldValue.serverTimestamp(),
+          revokedReason: "landlord_role_changed",
+        });
+      }
+      return { role: "tenant", status: "pending" };
+    }
+
+    if (targetRole === "landlord" && currentRole === "tenant") {
+      const assignedHouses = await transaction.get(
+        db.collection("houses").where("assignedTenantId", "==", uid)
+      );
+      const pendingRequests = await transaction.get(
+        db.collection("houseRequests").where("tenantId", "==", uid).where("status", "==", "pending")
+      );
+      if ((user.houseId && String(user.houseId).trim()) ||
+          !assignedHouses.empty || !pendingRequests.empty) {
+        throw new HttpsError("failed-precondition",
+          "You still have an assigned house or a pending house request. End or resolve that tenancy first.");
+      }
+
+      transaction.update(userRef, {
+        role: "landlord",
+        status: "active",
+        previousRole: "tenant",
+        roleChangedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        landlordId: FieldValue.delete(),
+        propertyIds: FieldValue.delete(),
+        invitationCode: FieldValue.delete(),
+        houseId: FieldValue.delete(),
+        houseNo: FieldValue.delete(),
+        approvedAt: FieldValue.delete(),
+        approvedBy: FieldValue.delete(),
+      });
+      return { role: "landlord", status: "active" };
+    }
+
+    throw new HttpsError("failed-precondition",
+      "This account type cannot be changed through self-service. Contact your property administrator.");
+  });
+});
