@@ -2603,13 +2603,13 @@ class _PlansScreenState extends State<PlansScreen> {
     final date = deadline is Timestamp ? deadline.toDate() : null;
     final b = data['budget'], s = data['spent'];
     final lines = <String>[
-      'SkyNest plan: \${data['title'] ?? 'Property project'}',
-      'Type: \${_type(data['planType']?.toString() ?? '')}',
-      if (b is num) 'Budget: \${currency.format(b)}',
-      if (s is num) 'Spent: \${currency.format(s)}',
-      if (b is num && s is num) 'Remaining: \${currency.format(b - s)}',
-      if (date != null) 'Deadline: \${dateFormat.format(date)}',
-      if ((data['note']?.toString() ?? '').isNotEmpty) 'Notes: \${data['note']}',
+      'SkyNest plan: ${data['title'] ?? 'Property project'}',
+      'Type: ${_type(data['planType']?.toString() ?? '')}',
+      if (b is num) 'Budget: ${currency.format(b)}',
+      if (s is num) 'Spent: ${currency.format(s)}',
+      if (b is num && s is num) 'Remaining: ${currency.format(b - s)}',
+      if (date != null) 'Deadline: ${dateFormat.format(date)}',
+      if ((data['note']?.toString() ?? '').isNotEmpty) 'Notes: ${data['note']}',
     ];
     await Clipboard.setData(ClipboardData(text: lines.join('\n')));
     if (mounted) snack(context, 'Plan details copied. Paste them into a message to share.');
@@ -2627,7 +2627,7 @@ class _PlansScreenState extends State<PlansScreen> {
           final r = double.tryParse(rate.text.trim());
           if (r == null || r < 0) { snack(d, 'Enter a non-negative interest rate.'); return; }
           Navigator.pop(d);
-          snack(context, 'Simple one-year estimate: \${currency.format(remaining * (1 + r / 100))}. Not a lender quote or monthly repayment schedule.');
+          snack(context, 'Simple one-year estimate: ${currency.format(remaining * (1 + r / 100))}. Not a lender quote or monthly repayment schedule.');
         }, child: const Text('Calculate')),
       ],
     ));
@@ -2652,7 +2652,7 @@ class _PlansScreenState extends State<PlansScreen> {
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance.collection('plans').where('createdBy', isEqualTo: user.uid).snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.hasError) return errorView('Plans could not load: \${snapshot.error}');
+          if (snapshot.hasError) return errorView('Plans could not load: ${snapshot.error}');
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           final docs = snapshot.data!.docs.toList()..sort((a, b) {
             final ad = a.data()['deadline'], bd = b.data()['deadline'];
@@ -2676,7 +2676,7 @@ class _PlansScreenState extends State<PlansScreen> {
                 ]),
                 const SizedBox(height: 8),
                 LinearProgressIndicator(value: totalBudget <= 0 ? 0 : (totalSpent / totalBudget).clamp(0.0, 1.0)),
-                Align(alignment: Alignment.centerRight, child: Text('Remaining: \${currency.format(totalBudget - totalSpent)}')),
+                Align(alignment: Alignment.centerRight, child: Text('Remaining: ${currency.format(totalBudget - totalSpent)}')),
               ],
             ))),
             if (projects.isNotEmpty) const Padding(padding: EdgeInsets.fromLTRB(4, 14, 4, 6),
@@ -2721,7 +2721,7 @@ class _PlansScreenState extends State<PlansScreen> {
                     _moneyRow('Spent', spent),
                     _moneyRow('Remaining', remaining, color: remaining < 0 ? Colors.red : Colors.green),
                     if (days != null) Padding(padding: const EdgeInsets.only(top: 8),
-                      child: Text(days < 0 ? '\${-days} days overdue' : '$days days left',
+                      child: Text(days < 0 ? '${-days} days overdue' : '$days days left',
                         style: TextStyle(color: days < 0 ? Colors.red : null))),
                     if (materials.isNotEmpty) ...[
                       const Align(alignment: Alignment.centerLeft, child: Padding(padding: EdgeInsets.only(top: 10),
