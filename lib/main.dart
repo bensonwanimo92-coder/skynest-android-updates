@@ -1232,6 +1232,54 @@ class _MenuItem {
   const _MenuItem(this.title, this.icon, this.color, this.page);
 }
 
+class _StaggeredPressCard extends StatefulWidget {
+  final int index;
+  final Widget child;
+  final VoidCallback? onTap;
+  const _StaggeredPressCard({required this.index, required this.child, this.onTap});
+  @override
+  State<_StaggeredPressCard> createState() => _StaggeredPressCardState();
+}
+class _StaggeredPressCardState extends State<_StaggeredPressCard> {
+  bool visible = false;
+  bool pressed = false;
+  Timer? entryTimer;
+  @override
+  void initState() {
+    super.initState();
+    entryTimer = Timer(Duration(milliseconds: widget.index * 50), () {
+      if (mounted) setState(() => visible = true);
+    });
+  }
+  @override
+  void dispose() { entryTimer?.cancel(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) => AnimatedOpacity(
+    opacity: visible ? 1 : 0,
+    duration: const Duration(milliseconds: 300),
+    child: AnimatedSlide(
+      offset: visible ? Offset.zero : const Offset(0, 0.07),
+      duration: const Duration(milliseconds: 360),
+      curve: Curves.easeOutCubic,
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => pressed = true),
+        onTapCancel: () => setState(() => pressed = false),
+        onTapUp: (_) => setState(() => pressed = false),
+        onTap: () {
+          HapticFeedback.lightImpact();
+          widget.onTap?.call();
+        },
+        child: AnimatedScale(
+          scale: pressed ? 0.97 : 1,
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          child: widget.child,
+        ),
+      ),
+    ),
+  );
+}
+
 class HousesScreen extends StatelessWidget {
   const HousesScreen({super.key});
   Future<void> addHouse(BuildContext context) async {
@@ -1248,7 +1296,12 @@ class HousesScreen extends StatelessWidget {
         FilledButton(onPressed: () async {
           if (!key.currentState!.validate()) return;
           try {
-            await FirebaseFirestore.instance.collection('houses').add({'houseNo': number.text.trim(), 'rent': double.parse(rent.text), 'isOccupied': false, 'status': 'vacant', 'landlordId': FirebaseAuth.instance.currentUser?.uid, 'caretakerIds': <String>[], 'createdAt': FieldValue.serverTimestamp(), 'createdBy': FirebaseAuth.instance.currentUser?.uid});
+            await FirebaseFirestore.instance.collection('houses').add({
+              'houseNo': number.text.trim(), 'rent': double.parse(rent.text),
+              'isOccupied': false, 'status': 'vacant', 'landlordId': FirebaseAuth.instance.currentUser?.uid,
+              'caretakerIds': <String>[], 'createdAt': FieldValue.serverTimestamp(),
+              'createdBy': FirebaseAuth.instance.currentUser?.uid,
+            });
             if (d.mounted) Navigator.pop(d);
           } catch (e) { snack(context, 'Could not save house: ' + e.toString()); }
         }, child: const Text('Save')),
@@ -1271,55 +1324,87 @@ class HousesScreen extends StatelessWidget {
           final doc = entry.value;
           final d = doc.data();
           final rentValue = (d['rent'] as num?)?.toDouble() ?? 0;
-          final occupancy = d['isOccupied'] == true ? 'Occupied' : 'Vacant';
-          final colors = Theme.of(context).colorScheme;
           final occupied = d['isOccupied'] == true;
-          return Card(
-            margin: const EdgeInsets.fromLTRB(14, 6, 14, 10),
-            color: Color.lerp(colors.surface, occupied ? const Color(0xFFD9EEE7) : const Color(0xFFDCEBFA), 0.62),
-            elevation: 2,
-            shadowColor: colors.primary.withOpacity(0.08),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 5),
-              child: ListTile(
-                leading: ClipRRect(
-                  borderRadius: BorderRadius.circular(15),
-                  child: Image.network(
-                    _skynestPropertyPhotos[index % _skynestPropertyPhotos.length],
-                    width: 62, height: 62, fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      width: 62, height: 62, color: occupied ? const Color(0xFF2D8A72) : const Color(0xFF3979B9),
-                      child: const Icon(Icons.apartment_rounded, color: Colors.white, size: 28),
+          final colors = Theme.of(context).colorScheme;
+          final occupancy = occupied ? 1.0 : 0.0;
+          return _StaggeredPressCard(
+            index: index,
+            onTap: () => showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+              title: Text('House ' + (d['houseNo']?.toString() ?? '')),
+              content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(currency.format(rentValue) + ' monthly rent'),
+                const SizedBox(height: 8),
+                Text(occupied ? 'Currently occupied' : 'Currently vacant'),
+                const SizedBox(height: 8),
+                LinearProgressIndicator(value: occupancy, minHeight: 7),
+                const SizedBox(height: 4),
+                Text(occupied ? '1 of 1 unit occupied' : '0 of 1 units occupied'),
+              ]),
+              actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('CLOSE'))],
+            )),
+            child: Card(
+              margin: const EdgeInsets.fromLTRB(14, 7, 14, 10),
+              clipBehavior: Clip.antiAlias,
+              elevation: 3,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SizedBox(
+                  height: 142,
+                  width: double.infinity,
+                  child: Stack(fit: StackFit.expand, children: [
+                    Image.network(
+                      _skynestPropertyPhotos[index % _skynestPropertyPhotos.length],
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, progress) => progress == null ? child : Container(
+                        color: colors.surfaceContainerHighest,
+                        alignment: Alignment.center,
+                        child: const SizedBox(width: 90, child: LinearProgressIndicator(minHeight: 3)),
+                      ),
+                      errorBuilder: (_, __, ___) => ColoredBox(color: colors.surfaceContainerHighest,
+                        child: const Icon(Icons.apartment_rounded, size: 54)),
                     ),
-                  ),
+                    const DecoratedBox(decoration: BoxDecoration(
+                      gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Color(0xCC000000)]),
+                    )),
+                    Positioned(left: 15, right: 8, bottom: 10, child: Row(children: [
+                      Expanded(child: Text('House ' + (d['houseNo']?.toString() ?? ''),
+                        style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800))),
+                      IconButton(
+                        tooltip: 'Delete house',
+                        color: Colors.white,
+                        onPressed: () => confirmDelete(context, 'Delete this house?', () => doc.reference.delete()),
+                        icon: const Icon(Icons.more_horiz_rounded),
+                      ),
+                    ])),
+                  ]),
                 ),
-                title: Text('House ' + (d['houseNo']?.toString() ?? ''),
-                  style: const TextStyle(fontWeight: FontWeight.w800)),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 5),
-                  child: Text(currency.format(rentValue) + ' / month',
-                    style: TextStyle(color: colors.onSurfaceVariant, fontWeight: FontWeight.w500)),
-                ),
-                isThreeLine: false,
-                trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: occupied ? const Color(0xFF287D66).withOpacity(0.13) : const Color(0xFF2463A6).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(30),
+                Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 15), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Text(currency.format(rentValue) + ' / month',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: occupied ? const Color(0x222D8A72) : const Color(0x222463A6),
+                        borderRadius: BorderRadius.circular(20)),
+                      child: Text(occupied ? 'Occupied' : 'Vacant',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
+                          color: occupied ? const Color(0xFF287D66) : const Color(0xFF2463A6))),
                     ),
-                    child: Text(occupancy, style: TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w800,
-                      color: occupied ? const Color(0xFF287D66) : const Color(0xFF2463A6))),
-                  ),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.more_horiz_rounded),
-                    onPressed: () => confirmDelete(context, 'Delete this house?', () => doc.reference.delete()),
-                  ),
-                ]),
-              ),
+                  ]),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(value: occupancy, minHeight: 7,
+                        color: occupancy == 1 ? Colors.green : Colors.orange,
+                        backgroundColor: colors.surfaceContainerHighest))),
+                    const SizedBox(width: 10),
+                    Text(occupied ? '1/1 occupied' : '0/1 occupied',
+                      style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant, fontWeight: FontWeight.w600)),
+                  ]),
+                ])),
+              ]),
             ),
           );
         }).toList());
@@ -1382,6 +1467,26 @@ class TenantsScreen extends StatelessWidget {
 
 class PaymentsScreen extends StatelessWidget {
   const PaymentsScreen({super.key});
+  Future<bool> _confirmReceived(BuildContext context, QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Confirm payment received?'),
+      content: Text('Only confirm if you have actually received KES ' +
+        currency.format((doc.data()['amount'] as num?)?.toDouble() ?? 0) + '. This updates the payment record.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('CANCEL')),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('CONFIRM RECEIPT')),
+      ],
+    ));
+    if (confirmed != true) return false;
+    try {
+      await doc.reference.update({'status': 'Paid', 'confirmedAt': FieldValue.serverTimestamp(), 'confirmedBy': FirebaseAuth.instance.currentUser?.uid});
+      HapticFeedback.mediumImpact();
+      if (context.mounted) snack(context, 'Payment marked as received.');
+    } catch (e) {
+      if (context.mounted) snack(context, 'Could not confirm payment: ' + e.toString());
+    }
+    return false;
+  }
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Payment records')),
@@ -1394,12 +1499,65 @@ class PaymentsScreen extends StatelessWidget {
         return ListView(children: s.data!.docs.map((doc) {
           final d = doc.data();
           final value = (d['amount'] as num?)?.toDouble() ?? 0;
-          return ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.receipt_long)),
-            title: Text(d['tenantName']?.toString() ?? 'Tenant'),
-            subtitle: Text((d['houseNo']?.toString() ?? 'House not set') + ' • ' + (d['method']?.toString() ?? 'Manual') + '\n' + (d['status']?.toString() ?? 'Pending verification')),
-            isThreeLine: true,
-            trailing: Text(currency.format(value), style: const TextStyle(fontWeight: FontWeight.bold)),
+          final status = (d['status']?.toString() ?? 'Pending').toLowerCase();
+          final paid = status.contains('paid') || status.contains('received');
+          final partial = status.contains('partial');
+          final overdue = status.contains('overdue');
+          final railColor = paid ? Colors.green : overdue ? Colors.red : partial ? Colors.orange : Colors.grey;
+          final method = (d['method']?.toString() ?? 'Manual').toLowerCase();
+          final methodIcon = method.contains('mpesa') ? Icons.phone_android
+            : method.contains('bank') ? Icons.account_balance : Icons.payments_outlined;
+          final created = d['createdAt'];
+          final createdLabel = created is Timestamp ? DateFormat('dd MMM yyyy').format(created.toDate()) : 'Date pending';
+          final due = d['dueDate'];
+          final dueLabel = due is Timestamp ? 'Due ' + DateFormat('dd MMM yyyy').format(due.toDate()) : createdLabel;
+          return Dismissible(
+            key: ValueKey('payment-' + doc.id),
+            direction: paid ? DismissDirection.none : DismissDirection.startToEnd,
+            confirmDismiss: (_) => _confirmReceived(context, doc),
+            background: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.only(left: 22),
+              decoration: BoxDecoration(color: Colors.green.shade700, borderRadius: BorderRadius.circular(18)),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.check_circle, color: Colors.white), SizedBox(width: 8),
+                Text('Confirm received', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ]),
+            ),
+            child: Card(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              clipBehavior: Clip.antiAlias,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              child: IntrinsicHeight(child: Row(children: [
+                Container(width: 4, color: railColor),
+                Expanded(child: Padding(padding: const EdgeInsets.fromLTRB(13, 13, 15, 13), child: Row(children: [
+                  CircleAvatar(backgroundColor: railColor.withOpacity(0.12),
+                    child: Icon(Icons.person_outline, color: railColor)),
+                  const SizedBox(width: 11),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(d['tenantName']?.toString() ?? 'Tenant', maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Text((d['houseNo']?.toString() ?? 'House not set') + ' • ' + status,
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11, color: railColor, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      Icon(methodIcon, size: 14, color: method.contains('mpesa') ? Colors.green : method.contains('bank') ? Colors.blue : Colors.grey),
+                      const SizedBox(width: 4),
+                      Expanded(child: Text(dueLabel, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant))),
+                    ]),
+                  ])),
+                  const SizedBox(width: 8),
+                  Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Text(currency.format(value), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 4),
+                    Text(createdLabel, style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  ]),
+                ]))),
+              ])),
+            ),
           );
         }).toList());
       },
