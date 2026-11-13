@@ -2771,35 +2771,152 @@ class _PlansScreenState extends State<PlansScreen> {
 
 class AchievementsScreen extends StatelessWidget {
   const AchievementsScreen({super.key});
+
+  DateTime? _dateOf(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return null;
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Achievements')),
-    body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
-      builder: (context, h) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('tenants').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
-        builder: (context, t) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance.collection('payments').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
-          builder: (context, p) {
-            if (h.hasError || t.hasError || p.hasError) return errorView('Could not load achievement counts.');
-            if (!h.hasData || !t.hasData || !p.hasData) return const Center(child: CircularProgressIndicator());
-            final stats = <(String, int, IconData)>[
-              ('Houses registered', h.data!.size, Icons.home_work),
-              ('Tenants registered', t.data!.size, Icons.people),
-              ('Payment records', p.data!.size, Icons.receipt_long),
-            ];
-            return ListView(padding: const EdgeInsets.all(16), children: [
-              const Text('Your property management progress', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              ...stats.map((x) => Card(child: ListTile(leading: Icon(x.$3, color: brand, size: 32), title: Text(x.$1), trailing: Text(x.$2.toString(), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))))),
-            ]);
-          },
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return Scaffold(appBar: AppBar(title: const Text('Achievements')),
+      body: const EmptyView('Sign in to view achievements.'));
+    final uid = user.uid;
+    return Scaffold(appBar: AppBar(title: const Text('Achievements')),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: uid).snapshots(),
+        builder: (context, houses) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance.collection('tenants').where('landlordId', isEqualTo: uid).snapshots(),
+          builder: (context, tenants) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance.collection('payments').where('createdBy', isEqualTo: uid).snapshots(),
+            builder: (context, payments) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance.collection('plans').where('createdBy', isEqualTo: uid).snapshots(),
+              builder: (context, plans) {
+                if (houses.hasError || tenants.hasError || payments.hasError || plans.hasError) {
+                  return errorView('Achievement data could not load. Check your connection and try again.');
+                }
+                if (!houses.hasData || !tenants.hasData || !payments.hasData || !plans.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final houseDocs = houses.data!.docs;
+                final tenantDocs = tenants.data!.docs;
+                final paymentDocs = payments.data!.docs;
+                final planDocs = plans.data!.docs;
+                final occupiedDocs = houseDocs.where((d) => d.data()['isOccupied'] == true ||
+                  d.data()['status']?.toString().toLowerCase() == 'occupied').toList();
+                final receivedPayments = paymentDocs.where((d) {
+                  final status = (d.data()['status']?.toString() ?? '').toLowerCase();
+                  return status.contains('paid') || status.contains('received');
+                }).toList();
+                final now = DateTime.now();
+                final monthPayments = receivedPayments.where((d) {
+                  final date = _dateOf(d.data()['createdAt']);
+                  return date != null && date.year == now.year && date.month == now.month;
+                }).toList();
+                final expectedRent = occupiedDocs.fold<double>(0,
+                  (sum, d) => sum + ((d.data()['rent'] as num?)?.toDouble() ?? 0));
+                final collected = monthPayments.fold<double>(0,
+                  (sum, d) => sum + ((d.data()['amount'] as num?)?.toDouble() ?? 0));
+                final balances = tenantDocs.map((d) {
+                  final data = d.data();
+                  final value = data['balance'] ?? data['outstandingBalance'];
+                  return value is num ? value.toDouble() : null;
+                }).whereType<double>().toList();
+                final completedPlans = planDocs.where((d) =>
+                  d.data()['isCompleted'] == true || d.data()['done'] == true).length;
+                final achievements = <Map<String, dynamic>>[
+                  {'title': 'First Rent', 'description': 'Record your first confirmed rent payment.',
+                    'points': 10, 'icon': Icons.payments_outlined, 'color': Colors.green,
+                    'unlocked': receivedPayments.isNotEmpty,
+                    'detail': receivedPayments.isNotEmpty ? 'Unlocked' : 'Waiting for a confirmed payment'},
+                  {'title': 'Super Landlord', 'description': 'Have five occupied houses.',
+                    'points': 50, 'icon': Icons.star_rounded, 'color': Colors.amber,
+                    'unlocked': occupiedDocs.length >= 5,
+                    'detail': occupiedDocs.length.toString() + ' of 5 occupied houses'},
+                  {'title': 'No Arrears', 'description': 'All tenants with recorded balances have no outstanding arrears.',
+                    'points': 30, 'icon': Icons.check_circle_outline, 'color': Colors.blue,
+                    'unlocked': balances.isNotEmpty && balances.every((v) => v <= 0),
+                    'detail': balances.isEmpty ? 'Add tenant balance information to qualify' :
+                      balances.where((v) => v > 0).length.toString() + ' tenant balance(s) above zero'},
+                  {'title': 'Builder', 'description': 'Complete a property plan.',
+                    'points': 100, 'icon': Icons.construction, 'color': Colors.orange,
+                    'unlocked': completedPlans > 0,
+                    'detail': completedPlans.toString() + ' completed plan(s)'},
+                  {'title': '100% Collection', 'description': 'Collect at least the recorded rent total for occupied houses this month.',
+                    'points': 40, 'icon': Icons.emoji_events_outlined, 'color': Colors.purple,
+                    'unlocked': expectedRent > 0 && collected >= expectedRent,
+                    'detail': expectedRent <= 0 ? 'Add rent amounts to occupied houses' :
+                      currency.format(collected) + ' of ' + currency.format(expectedRent) + ' recorded'},
+                ];
+                final unlocked = achievements.where((a) => a['unlocked'] == true).toList();
+                final points = unlocked.fold<int>(0, (sum, a) => sum + (a['points'] as int));
+                final level = points < 20 ? 'Beginner' : points < 100 ? 'Pro' : 'Tycoon';
+                return ListView(padding: const EdgeInsets.all(16), children: [
+                  Card(child: Padding(padding: const EdgeInsets.all(18), child: Row(children: [
+                    const CircleAvatar(radius: 27, child: Icon(Icons.emoji_events, size: 30)),
+                    const SizedBox(width: 14),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('Your progress', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                      const SizedBox(height: 4),
+                      Text(points.toString() + ' points • ' + level,
+                        style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w700)),
+                      Text(unlocked.length.toString() + ' of ' + achievements.length.toString() + ' badges unlocked',
+                        style: Theme.of(context).textTheme.bodySmall),
+                    ])),
+                  ]))),
+                  const SizedBox(height: 10),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Text('Your badges', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                    Text(unlocked.length.toString() + '/' + achievements.length.toString()),
+                  ]),
+                  const SizedBox(height: 8),
+                  ...achievements.map((a) {
+                    final isUnlocked = a['unlocked'] == true;
+                    final color = a['color'] as Color;
+                    return Card(margin: const EdgeInsets.only(bottom: 9),
+                      child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                        leading: CircleAvatar(backgroundColor: isUnlocked ? color.withOpacity(0.16) : Colors.grey.withOpacity(0.12),
+                          child: Icon(a['icon'] as IconData, color: isUnlocked ? color : Colors.grey)),
+                        title: Text(a['title'] as String, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(a['description'] as String),
+                          const SizedBox(height: 3),
+                          Text(a['detail'] as String, style: TextStyle(fontSize: 11,
+                            color: isUnlocked ? Colors.green.shade700 : Theme.of(context).colorScheme.onSurfaceVariant)),
+                        ]),
+                        isThreeLine: true,
+                        trailing: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(isUnlocked ? Icons.lock_open_rounded : Icons.lock_outline,
+                            color: isUnlocked ? color : Colors.grey, size: 19),
+                          const SizedBox(height: 3),
+                          Text(a['points'].toString() + ' pts',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ]),
+                      ));
+                  }),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: unlocked.isEmpty ? null : () async {
+                      final summary = 'My SkyNest achievements: ' + points.toString() + ' points • ' + level + '\n' +
+                        unlocked.map((a) => '• ' + a['title'].toString() + ' (+' + a['points'].toString() + ' pts)').join('\n');
+                      await Clipboard.setData(ClipboardData(text: summary));
+                      if (context.mounted) snack(context, 'Achievement summary copied. You can paste and share it.');
+                    },
+                    icon: const Icon(Icons.share_outlined), label: const Text('Copy achievement summary')),
+                  const SizedBox(height: 8),
+                  Text('Badges update from saved houses, tenant balances, payment records and completed plans. Monthly collection compares confirmed payments recorded this month with the current rent total of occupied houses.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                ]);
+              },
+            ),
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
-
 class ThemesScreen extends StatelessWidget {
   const ThemesScreen({super.key});
   @override
