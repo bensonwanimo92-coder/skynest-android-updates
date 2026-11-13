@@ -381,10 +381,10 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
                   onPressed: () => _readIssue(issue),
                   icon: const Icon(Icons.menu_book_rounded),
                 ),
-                IconButton.filledTonal(
-                  tooltip: 'Download PDF',
+                FilledButton.tonalIcon(
                   onPressed: _downloading ? null : () => _downloadIssue(issue),
-                  icon: const Icon(Icons.download_rounded),
+                  icon: const Icon(Icons.download_rounded, size: 18),
+                  label: const Text('Download'),
                 ),
               ]),
             ),
