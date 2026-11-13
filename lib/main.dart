@@ -12,6 +12,8 @@ import 'package:table_calendar/table_calendar.dart';
 const brand = Color(0xFF1565C0);
 const skynestBannerAdUnitId = 'ca-app-pub-1281241380359357/4686680349';
 
+final GlobalKey<ScaffoldMessengerState> _rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+bool _pushForegroundListenerRegistered = false;
 StreamSubscription<String>? _pushTokenRefreshSubscription;
 
 @pragma('vm:entry-point')
@@ -40,6 +42,16 @@ Future<void> initializePushNotifications() async {
     if (settings.authorizationStatus == AuthorizationStatus.denied) return;
     final token = await messaging.getToken();
     if (token != null && token.isNotEmpty) await _savePushToken(user.uid, token);
+    if (!_pushForegroundListenerRegistered) {
+      FirebaseMessaging.onMessage.listen((message) {
+        final title = message.notification?.title ?? 'SkyNest';
+        final body = message.notification?.body ?? 'You have a new notification.';
+        _rootScaffoldMessengerKey.currentState?.showSnackBar(
+          SnackBar(content: Text('$title: $body')),
+        );
+      });
+      _pushForegroundListenerRegistered = true;
+    }
     await _pushTokenRefreshSubscription?.cancel();
     _pushTokenRefreshSubscription = messaging.onTokenRefresh.listen((freshToken) {
       _savePushToken(user.uid, freshToken);
@@ -168,7 +180,7 @@ class SkynestApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: themeManager,
-    builder: (_, __) => MaterialApp(title: 'SkyNest', debugShowCheckedModeBanner: false, theme: themeManager.value, home: const StartupGate()),
+    builder: (_, __) => MaterialApp(title: 'SkyNest', scaffoldMessengerKey: _rootScaffoldMessengerKey, debugShowCheckedModeBanner: false, theme: themeManager.value, home: const StartupGate()),
   );
 }
 
