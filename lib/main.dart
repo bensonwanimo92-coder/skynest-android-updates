@@ -227,7 +227,15 @@ final _skynestRouteObserver = _SkynestRouteObserver();
 class _SkynestRouteObserver extends NavigatorObserver {
   void _setRoute(Route<dynamic>? route) {
     final name = route?.settings.name;
-    if (name != null && name.isNotEmpty) _activeScreenName.value = name;
+    if (name == null || name.isEmpty) return;
+
+    // Navigator restoration can notify observers while the widget tree is
+    // still being built. Defer notifier updates until the frame is complete.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_activeScreenName.value != name) {
+        _activeScreenName.value = name;
+      }
+    });
   }
 
   @override
@@ -262,7 +270,12 @@ String _screenBackdropFor(String screen) {
 }
 
 class SkynestApp extends StatelessWidget {
-  const SkynestApp({super.key});
+  const SkynestApp({super.key, this.enableRemoteBackdrops = true});
+
+  /// Allows deterministic widget tests and offline startup without changing
+  /// the production default of photographic screen backdrops.
+  final bool enableRemoteBackdrops;
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: themeManager,
@@ -284,16 +297,19 @@ class SkynestApp extends StatelessWidget {
         builder: (context, child) => Stack(
           fit: StackFit.expand,
           children: [
-            ValueListenableBuilder<String>(
-              valueListenable: _activeScreenName,
-              builder: (context, screen, _) => Image.network(
-                _screenBackdropFor(screen),
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => ColoredBox(
-                  color: Theme.of(context).colorScheme.surface,
+            if (enableRemoteBackdrops)
+              ValueListenableBuilder<String>(
+                valueListenable: _activeScreenName,
+                builder: (context, screen, _) => Image.network(
+                  _screenBackdropFor(screen),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => ColoredBox(
+                    color: Theme.of(context).colorScheme.surface,
+                  ),
                 ),
-              ),
-            ),
+              )
+            else
+              ColoredBox(color: Theme.of(context).colorScheme.surface),
             ColoredBox(
               color: Theme.of(context).brightness == Brightness.dark
                   ? Colors.black.withOpacity(0.68)
