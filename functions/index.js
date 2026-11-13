@@ -9,7 +9,7 @@ exports.notifyGroupMessage = onDocumentCreated(
   "groups/{groupId}/messages/{messageId}",
   async (event) => {
     const message = event.data && event.data.data();
-    if (!message || !message.senderId || !message.text) return;
+    if (!message || !message.senderId || message.encryptionVersion !== 1) return;
 
     const db = getFirestore();
     const groupRef = db.collection("groups").doc(event.params.groupId);
@@ -38,15 +38,15 @@ exports.notifyGroupMessage = onDocumentCreated(
     const senderSnap = await db.collection("users").doc(message.senderId).get();
     const senderName = message.senderName || senderSnap.get("displayName") || "A group member";
     const groupName = group.name || "SkyNest group";
-    const body = String(message.text).length > 140
-      ? String(message.text).slice(0, 137) + "..."
-      : String(message.text);
+    // Never place chat plaintext in push notifications. Message content is
+    // encrypted on-device; notifications reveal only that a secure message arrived.
+    const body = "sent an encrypted message.";
 
     for (let offset = 0; offset < tokenOwners.length; offset += 500) {
       const batch = tokenOwners.slice(offset, offset + 500);
       const response = await getMessaging().sendEachForMulticast({
         tokens: batch.map((entry) => entry.token),
-        notification: { title: groupName, body: senderName + ": " + body },
+        notification: { title: groupName, body: senderName + " " + body },
         data: {
           type: "group_message",
           groupId: event.params.groupId,
