@@ -164,7 +164,7 @@ jobs:
               p.write_text(s)
           PY
 
-      - name: Prevent WorkManager database crash during provider startup
+      - name: Exclude WorkManager automatic startup initializer
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -172,27 +172,52 @@ jobs:
           import xml.etree.ElementTree as ET
 
           path = Path("android/app/src/main/AndroidManifest.xml")
-          ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
-          ET.register_namespace("tools", "http://schemas.android.com/tools")
-          android = "{http://schemas.android.com/apk/res/android}"
-          tools = "{http://schemas.android.com/tools}"
+          android_uri = "http://schemas.android.com/apk/res/android"
+          tools_uri = "http://schemas.android.com/tools"
+          ET.register_namespace("android", android_uri)
+          ET.register_namespace("tools", tools_uri)
+          android = "{" + android_uri + "}"
+          tools = "{" + tools_uri + "}"
           tree = ET.parse(path)
           root = tree.getroot()
-          provider = next((item for item in root.findall("./application/provider")
+          app = root.find("application")
+          if app is None:
+              raise SystemExit("Application element missing from app manifest.")
+
+          # The provider is normally contributed by androidx.startup in a
+          # dependency manifest, so it may not exist in the app manifest yet.
+          provider = next((item for item in app.findall("provider")
                            if item.get(android + "name") == "androidx.startup.InitializationProvider"), None)
           if provider is None:
-              raise SystemExit("AndroidX Startup InitializationProvider was not found.")
-          # Keep AndroidX Startup and its other initializers intact. Remove only
-          # WorkManager automatic initialization, the confirmed fatal startup path.
+              provider = ET.SubElement(app, "provider", {
+                  android + "name": "androidx.startup.InitializationProvider",
+                  android + "authorities": "${applicationId}.androidx-startup",
+                  android + "exported": "false",
+                  tools + "node": "merge"
+              })
+
+          # A tools:node=remove marker is a manifest-merger instruction; do not
+          # delete Startup itself or any other initializer metadata.
           for item in list(provider.findall("meta-data")):
               if item.get(android + "name") == "androidx.work.WorkManagerInitializer":
                   provider.remove(item)
-          provider.append(ET.Element("meta-data", {
+          ET.SubElement(provider, "meta-data", {
               android + "name": "androidx.work.WorkManagerInitializer",
               tools + "node": "remove"
-          }))
+          })
           tree.write(path, encoding="utf-8", xml_declaration=True)
-          print("Configured manifest merger to remove only WorkManager automatic initialization.")
+
+          # Verify the directive exists in the app manifest before Gradle merge.
+          check = ET.parse(path).getroot()
+          p = next((item for item in check.findall("./application/provider")
+                    if item.get(android + "name") == "androidx.startup.InitializationProvider"), None)
+          if p is None or not any(
+              m.get(android + "name") == "androidx.work.WorkManagerInitializer"
+              and m.get(tools + "node") == "remove"
+              for m in p.findall("meta-data")
+          ):
+              raise SystemExit("WorkManager initializer removal directive verification failed.")
+          print("PASS: WorkManager automatic initializer removal directive configured.")
           PY
 
       - name: Install Android 14 SDK and Build Tools
