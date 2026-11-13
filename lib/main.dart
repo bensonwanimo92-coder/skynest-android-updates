@@ -2170,11 +2170,11 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       await FirebaseFirestore.instance.collection('invitations').doc(code).set({
         'role': role, 'landlordId': uid, 'createdBy': uid, 'propertyIds': propertyIds,
         'status': 'open', 'createdAt': FieldValue.serverTimestamp(),
-        'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
+        'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(hours: 24))),
       });
       await recordActivity(uid, 'Created a ' + role + ' invitation');
       if (mounted) setState(() => latestCode = code);
-      if (mounted) snack(context, 'Invitation created. It expires in 7 days.');
+      if (mounted) snack(context, 'Invitation created. It expires in 24 hours.');
     } catch (e) { if (mounted) snack(context, 'Could not create invitation: ' + e.toString()); }
     finally { if (mounted) setState(() => saving = false); }
   }
@@ -2182,7 +2182,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Caretakers & invitations')),
     body: ListView(padding: const EdgeInsets.all(18), children: [
-      const Text('Invite a tenant or caretaker to join your property account. Codes are single-use and expire after seven days.'),
+      const Text('Invite a tenant or caretaker to join your property account. Codes are single-use and expire after 24 hours.'),
       const SizedBox(height: 18),
       DropdownButtonFormField<String>(value: role, decoration: const InputDecoration(labelText: 'Invite role'),
         items: const [DropdownMenuItem(value: 'tenant', child: Text('Tenant')), DropdownMenuItem(value: 'caretaker', child: Text('Caretaker'))],
@@ -2194,6 +2194,8 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
         const Text('Share this code with the invited person'),
         SelectableText(latestCode!, style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: 4)),
         const Text('Long-press the code to copy it.'),
+        const SizedBox(height: 5),
+        const Text('This invitation expires after 24 hours.', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w700)),
       ]))),
       const Divider(height: 32),
       const Text('Linked accounts', style: TextStyle(fontWeight: FontWeight.bold)),
