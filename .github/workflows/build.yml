@@ -469,14 +469,14 @@ jobs:
           # Read the authoritative Shorebird release registry for this app.
           # Never infer availability from GitHub tags or workflow run numbers.
           release_list="$(shorebird releases list)"
-          printf '%s\\n' "$release_list"
+          printf '%s\n' "$release_list"
           build_number=2026
           while RELEASE_LIST="$release_list" CANDIDATE="$build_number" python3 - <<'PY'
           import os
           import re
           candidate = os.environ["CANDIDATE"]
           releases = os.environ["RELEASE_LIST"]
-          pattern = re.compile(r"(?<![0-9.])1\\.1\\.3\\+" + re.escape(candidate) + r"(?![0-9])")
+          pattern = re.compile(r"(?<![0-9.])1\.1\.3\+" + re.escape(candidate) + r"(?![0-9])")
           raise SystemExit(0 if pattern.search(releases) else 1)
           PY
           do
