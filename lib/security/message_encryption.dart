@@ -31,6 +31,18 @@ class SkyNestMessageEncryption {
         base64Decode(publicEncoded),
         type: KeyPairType.x25519,
       );
+      final identityRef = FirebaseFirestore.instance
+          .collection('users').doc(uid).collection('security').doc('identity');
+      final registered = await identityRef.get();
+      final registeredKey = registered.data()?['publicKey']?.toString();
+      if (!registered.exists || registeredKey != publicEncoded ||
+          registered.data()?['algorithm'] != 'X25519' ||
+          registered.data()?['keyVersion'] != 1) {
+        throw StateError(
+          'This device encryption key does not match the registered account identity. '
+          'Secure device recovery or identity verification is required.',
+        );
+      }
       return SimpleKeyPairData(
         base64Decode(privateEncoded),
         publicKey: publicKey,
@@ -182,6 +194,21 @@ class SkyNestMessageEncryption {
     final senderPublicEncoded = message['senderPublicKey']?.toString();
     if (senderPublicEncoded == null || senderPublicEncoded.isEmpty) {
       throw StateError('The sender encryption key is missing.');
+    }
+    // Never trust a sender key supplied only by the message document. Compare
+    // it with the sender's authenticated public identity registered in Firestore
+    // before deriving any shared secret; this blocks simple key substitution.
+    final senderIdentity = await FirebaseFirestore.instance
+        .collection('users').doc(senderId)
+        .collection('security').doc('identity').get();
+    final registeredSenderKey = senderIdentity.data()?['publicKey']?.toString();
+    if (!senderIdentity.exists || registeredSenderKey != senderPublicEncoded ||
+        senderIdentity.data()?['algorithm'] != 'X25519' ||
+        senderIdentity.data()?['keyVersion'] != 1) {
+      throw StateError(
+        'The sender encryption identity could not be verified. '
+        'The message was not decrypted.',
+      );
     }
     final senderPublicKey = SimplePublicKey(
       base64Decode(senderPublicEncoded),
