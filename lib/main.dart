@@ -3531,24 +3531,90 @@ class _ReportMetric extends StatelessWidget {
   ])));
 }
 
-class ActivityLogScreen extends StatelessWidget {
+class ActivityLogScreen extends StatefulWidget {
   const ActivityLogScreen({super.key});
+  @override
+  State<ActivityLogScreen> createState() => _ActivityLogScreenState();
+}
+
+class _ActivityLogScreenState extends State<ActivityLogScreen> {
+  String _query = '';
+  String _actorFilter = 'all';
+  bool _suspiciousOnly = false;
+
+  bool _isSuspicious(Map<String, dynamic> data) {
+    if (data['isSuspicious'] == true) return true;
+    final action = (data['action'] ?? '').toString().toLowerCase();
+    return ['deleted', 'removed', 'rejected', 'suspended', 'revoked', 'failed'].any(action.contains);
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    return Scaffold(appBar: AppBar(title: const Text('Caretaker activity log')),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('activityLogs').where('landlordId', isEqualTo: uid).snapshots(),
-        builder: (context, snap) {
-          if (snap.hasError) return errorView('Activity log could not load.');
-          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          if (snap.data!.docs.isEmpty) return const EmptyView('No recorded caretaker activity yet.');
-          return ListView(children: snap.data!.docs.map((doc) => ListTile(
-            leading: const Icon(Icons.history), title: Text(doc.data()['action']?.toString() ?? 'Activity'),
-            subtitle: Text(doc.data()['actorName']?.toString() ?? 'Account'),
-          )).toList());
-        },
-      ),
+    if (uid == null) return const Scaffold(body: EmptyView('Sign in to view activity.'));
+    return Scaffold(
+      appBar: AppBar(title: const Text('Activity log'), actions: [
+        IconButton(tooltip: _suspiciousOnly ? 'Show all activity' : 'Show flagged activity',
+          onPressed: () => setState(() => _suspiciousOnly = !_suspiciousOnly),
+          icon: Icon(_suspiciousOnly ? Icons.shield : Icons.shield_outlined)),
+      ]),
+      body: Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: TextField(decoration: const InputDecoration(prefixIcon: Icon(Icons.search),
+            hintText: 'Search action, actor or location', border: OutlineInputBorder()),
+            onChanged: (value) => setState(() => _query = value.trim().toLowerCase()))),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(children: [const Text('Actor: '), const SizedBox(width: 8), Expanded(
+            child: DropdownButton<String>(isExpanded: true, value: _actorFilter, items: const [
+              DropdownMenuItem(value: 'all', child: Text('Everyone')),
+              DropdownMenuItem(value: 'landlord', child: Text('Landlord')),
+              DropdownMenuItem(value: 'caretaker', child: Text('Caretaker')),
+              DropdownMenuItem(value: 'tenant', child: Text('Tenant')),
+              DropdownMenuItem(value: 'system', child: Text('System')),
+              DropdownMenuItem(value: 'unknown', child: Text('Unclassified')),
+            ], onChanged: (value) => setState(() => _actorFilter = value ?? 'all')))])),
+        Expanded(child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance.collection('activityLogs').where('landlordId', isEqualTo: uid).snapshots(),
+          builder: (context, snap) {
+            if (snap.hasError) return errorView('Activity log could not load.');
+            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+            final docs = snap.data!.docs.toList()..sort((a, b) {
+              final at = a.data()['createdAt']; final bt = b.data()['createdAt'];
+              final ad = at is Timestamp ? at.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
+              final bd = bt is Timestamp ? bt.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
+              return bd.compareTo(ad);
+            });
+            final filtered = docs.where((doc) {
+              final data = doc.data();
+              final role = (data['actorRole'] ?? 'unknown').toString().toLowerCase();
+              final haystack = [data['action'], data['actorName'], data['actorId'], data['location']]
+                .map((value) => (value ?? '').toString().toLowerCase()).join(' ');
+              return (_actorFilter == 'all' || role == _actorFilter) &&
+                (!_suspiciousOnly || _isSuspicious(data)) && (_query.isEmpty || haystack.contains(_query));
+            }).toList();
+            if (docs.isEmpty) return const EmptyView('No recorded activity yet.');
+            if (filtered.isEmpty) return const EmptyView('No activity matches these filters.');
+            return ListView.builder(padding: const EdgeInsets.only(bottom: 16), itemCount: filtered.length,
+              itemBuilder: (context, index) {
+                final data = filtered[index].data(); final flagged = _isSuspicious(data);
+                final createdAt = data['createdAt'];
+                final dateLabel = createdAt is Timestamp ? DateFormat('dd MMM yyyy, hh:mm a').format(createdAt.toDate()) : 'Time unavailable';
+                final actor = (data['actorName'] ?? 'Account').toString();
+                final role = (data['actorRole'] ?? 'Unclassified').toString();
+                final location = (data['location'] ?? '').toString();
+                return Card(margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  child: ListTile(leading: CircleAvatar(
+                    backgroundColor: flagged ? Colors.red.withOpacity(0.12) : Theme.of(context).colorScheme.primaryContainer,
+                    child: Icon(flagged ? Icons.warning_amber_rounded : Icons.history,
+                      color: flagged ? Colors.red : Theme.of(context).colorScheme.primary)),
+                    title: Text((data['action'] ?? 'Activity').toString()),
+                    subtitle: Padding(padding: const EdgeInsets.only(top: 5),
+                      child: Text('$actor • $role\n$dateLabel${location.isEmpty ? '' : ' • $location'}')),
+                    isThreeLine: true,
+                    trailing: flagged ? const Tooltip(message: 'Potentially sensitive activity', child: Icon(Icons.flag, color: Colors.red)) : null));
+              });
+          })),
+      ]),
     );
   }
 }
@@ -3599,7 +3665,9 @@ class TenantApprovalsScreen extends StatelessWidget {
       if (landlordId != null) {
         await FirebaseFirestore.instance.collection('activityLogs').add({
           'landlordId': landlordId, 'actorId': uid, 'actorName': profile?.data()?['displayName'] ?? 'Manager',
+          'actorRole': profile?.data()?['role'] ?? 'unknown',
           'action': 'Account ' + status + ': ' + (data['displayName'] ?? data['email'] ?? id).toString(),
+          'isSuspicious': status == 'rejected',
           'createdAt': FieldValue.serverTimestamp(),
         });
       }
@@ -3695,10 +3763,15 @@ Future<void> recordActivity(String landlordId, String action) async {
   if (user == null) return;
   try {
     final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    final profileData = profile.data() ?? <String, dynamic>{};
+    final normalizedAction = action.toLowerCase();
+    final suspicious = ['deleted', 'removed', 'rejected', 'suspended', 'revoked', 'failed'].any(normalizedAction.contains);
     await FirebaseFirestore.instance.collection('activityLogs').add({
       'landlordId': landlordId, 'actorId': user.uid,
-      'actorName': profile.data()?['displayName'] ?? user.displayName ?? 'Account',
-      'action': action, 'createdAt': FieldValue.serverTimestamp(),
+      'actorName': profileData['displayName'] ?? user.displayName ?? 'Account',
+      'actorRole': profileData['role'] ?? 'unknown',
+      'action': action, 'isSuspicious': suspicious,
+      'createdAt': FieldValue.serverTimestamp(),
     });
   } catch (_) {
     // Activity logging must never block the primary tenant/property operation.
