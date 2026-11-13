@@ -296,7 +296,9 @@ service cloud.firestore {
       allow update: if activeUser() && myRole() == 'landlord' &&
         resource.data.landlordId == request.auth.uid &&
         request.resource.data.landlordId == request.auth.uid &&
-        request.resource.data.createdBy == resource.data.createdBy;
+        request.resource.data.createdBy == resource.data.createdBy &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isPrinted', 'printedAt']) &&
+        request.resource.data.isPrinted is bool;
     }
 
     match /meters/{id} {
