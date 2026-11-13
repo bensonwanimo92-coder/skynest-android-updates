@@ -3057,6 +3057,7 @@ class _PamphletsScreenState extends State<PamphletsScreen> {
         ...result, 'landlordId': user.uid, 'createdBy': user.uid,
         'createdAt': FieldValue.serverTimestamp(), 'isPrinted': false,
       });
+      await recordActivity(user.uid, 'Created pamphlet: ' + result['title'].toString());
       if (mounted) snack(context, 'Pamphlet saved.');
     } catch (e) {
       if (mounted) snack(context, 'Could not save pamphlet: ' + e.toString());
@@ -3141,6 +3142,10 @@ class _PamphletsScreenState extends State<PamphletsScreen> {
     if (confirmed != true) return;
     try {
       await doc.reference.delete();
+      final landlordId = doc.data()['landlordId']?.toString();
+      if (landlordId != null && landlordId.isNotEmpty) {
+        await recordActivity(landlordId, 'Deleted pamphlet: ' + (doc.data()['title']?.toString() ?? 'Untitled'));
+      }
       if (mounted) setState(() => selectedIds.remove(doc.id));
     } catch (e) {
       if (mounted) snack(context, 'Could not delete pamphlet: ' + e.toString());
@@ -4922,42 +4927,4 @@ Future<void> confirmDelete(BuildContext context, String prompt, Future<void> Fun
       const Padding(padding: EdgeInsets.all(8), child: Text('Estimates are for planning only. Confirm actual fees, loan terms and exchange rates with the relevant provider.', style: TextStyle(color: Colors.grey))),
     ]),
   );
-}
-
-Widget errorView(String text) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(text, textAlign: TextAlign.center)));
-String? requiredField(String? value) => value == null || value.trim().isEmpty ? 'This field is required' : null;
-void snack(BuildContext context, String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
-
-Future<void> recordActivity(String landlordId, String action) async {
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return;
-  try {
-    final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-    final profileData = profile.data() ?? <String, dynamic>{};
-    final normalizedAction = action.toLowerCase();
-    final suspicious = ['deleted', 'removed', 'rejected', 'suspended', 'revoked', 'failed'].any(normalizedAction.contains);
-    await FirebaseFirestore.instance.collection('activityLogs').add({
-      'landlordId': landlordId, 'actorId': user.uid,
-      'actorName': profileData['displayName'] ?? user.displayName ?? 'Account',
-      'actorRole': profileData['role'] ?? 'unknown',
-      'action': action, 'isSuspicious': suspicious,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-  } catch (_) {
-    // Activity logging must never block the primary tenant/property operation.
-  }
-}
-
-Future<void> confirmDelete(BuildContext context, String prompt, Future<void> Function() action) async {
-  final yes = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
-    title: const Text('Please confirm'), content: Text(prompt),
-    actions: [
-      TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-      FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Confirm')),
-    ],
-  ));
-  if (yes == true) {
-    try { await action(); if (context.mounted) snack(context, 'Record removed.'); }
-    catch (e) { if (context.mounted) snack(context, 'Could not remove record: ' + e.toString()); }
-  }
 }
