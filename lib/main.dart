@@ -110,12 +110,25 @@ class ThemeManager extends ChangeNotifier {
   ThemeData value = Themes.blue;
   String selectedName = 'Classic Blue';
   int? customColorValue;
+  bool slideshowEnabled = true;
+
+  Future<void> setSlideshowEnabled(bool enabled) async {
+    slideshowEnabled = enabled;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('skynest_photo_slideshow', enabled);
+    } catch (error) {
+      debugPrint('Slideshow preference save failed: $error');
+    }
+  }
 
   Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedName = prefs.getString('skynest_theme_name');
       final savedColor = prefs.getInt('skynest_custom_theme_color');
+      slideshowEnabled = prefs.getBool('skynest_photo_slideshow') ?? true;
       if (savedName == 'Custom' && savedColor != null) {
         customColorValue = savedColor;
         value = Themes.custom(Color(savedColor));
@@ -269,6 +282,86 @@ String _screenBackdropFor(String screen) {
   return 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1600&q=88';
 }
 
+List<String> _backdropImagesFor(String screen, String themeName) {
+  final key = (screen + ' ' + themeName).toLowerCase();
+  if (key.contains('tenant') || key.contains('people') || key.contains('approval')) {
+    return const [
+      'https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=1600&q=88',
+      'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&q=88',
+      'https://images.unsplash.com/photo-1521791136064-7986c2920216?w=1600&q=88',
+    ];
+  }
+  if (key.contains('payment') || key.contains('rent') || key.contains('calculator')) {
+    return const [
+      'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1600&q=88',
+      'https://images.unsplash.com/photo-1554224154-22dec7ec8818?w=1600&q=88',
+      'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1600&q=88',
+    ];
+  }
+  if (key.contains('house') || key.contains('property') || key.contains('vacant') || key.contains('theme')) {
+    return const [
+      'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1600&q=88',
+      'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?w=1600&q=88',
+      'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=1600&q=88',
+    ];
+  }
+  return const [
+    'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1600&q=88',
+    'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?w=1600&q=88',
+    'https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?w=1600&q=88',
+  ];
+}
+
+class _AnimatedPhotoBackdrop extends StatefulWidget {
+  final String screen;
+  final String themeName;
+  final bool enabled;
+  const _AnimatedPhotoBackdrop({required this.screen, required this.themeName, required this.enabled});
+  @override
+  State<_AnimatedPhotoBackdrop> createState() => _AnimatedPhotoBackdropState();
+}
+
+class _AnimatedPhotoBackdropState extends State<_AnimatedPhotoBackdrop> {
+  Timer? _timer;
+  int _index = 0;
+  @override
+  void initState() { super.initState(); _start(); }
+  @override
+  void didUpdateWidget(covariant _AnimatedPhotoBackdrop oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.screen != widget.screen || oldWidget.themeName != widget.themeName || oldWidget.enabled != widget.enabled) {
+      _index = 0;
+      _timer?.cancel();
+      _start();
+    }
+  }
+  void _start() {
+    if (!widget.enabled) return;
+    _timer = Timer.periodic(const Duration(seconds: 9), (_) {
+      if (mounted) setState(() => _index = (_index + 1) % _backdropImagesFor(widget.screen, widget.themeName).length);
+    });
+  }
+  @override
+  void dispose() { _timer?.cancel(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) {
+    final images = _backdropImagesFor(widget.screen, widget.themeName);
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 1100),
+      switchInCurve: Curves.easeInOutCubic,
+      switchOutCurve: Curves.easeInOutCubic,
+      child: Image.network(
+        images[_index % images.length],
+        key: ValueKey<String>(images[_index % images.length]),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (_, __, ___) => ColoredBox(color: Theme.of(context).colorScheme.surface),
+      ),
+    );
+  }
+}
+
 class SkynestApp extends StatelessWidget {
   const SkynestApp({super.key, this.enableRemoteBackdrops = true});
 
@@ -300,12 +393,10 @@ class SkynestApp extends StatelessWidget {
             if (enableRemoteBackdrops)
               ValueListenableBuilder<String>(
                 valueListenable: _activeScreenName,
-                builder: (context, screen, _) => Image.network(
-                  _screenBackdropFor(screen),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => ColoredBox(
-                    color: Theme.of(context).colorScheme.surface,
-                  ),
+                builder: (context, screen, _) => _AnimatedPhotoBackdrop(
+                  screen: screen,
+                  enabled: themeManager.slideshowEnabled,
+                  themeName: themeManager.selectedName,
                 ),
               )
             else
@@ -980,9 +1071,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _open(BuildContext context, _MenuItem item) {
     Navigator.push(
       context,
-      MaterialPageRoute<void>(
+      PageRouteBuilder<void>(
         settings: RouteSettings(name: item.title),
-        builder: (_) => item.page,
+        transitionDuration: const Duration(milliseconds: 420),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
+        pageBuilder: (_, __, ___) => item.page,
+        transitionsBuilder: (_, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutBack, reverseCurve: Curves.easeInCubic);
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(begin: const Offset(0.035, 0.025), end: Offset.zero).animate(curved),
+              child: ScaleTransition(scale: Tween<double>(begin: 0.985, end: 1).animate(curved), child: child),
+            ),
+          );
+        },
       ),
     );
   }
@@ -3195,7 +3298,16 @@ class _ThemesScreenState extends State<ThemesScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 28),
         children: [
-          Text('Make SkyNest feel like your space.', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0.0, end: 1.0),
+            duration: const Duration(milliseconds: 650),
+            curve: Curves.easeOutBack,
+            builder: (context, value, child) => Opacity(
+              opacity: value.clamp(0.0, 1.0),
+              child: Transform.translate(offset: Offset(0, (1 - value) * 14), child: child),
+            ),
+            child: Text('Make SkyNest feel like your space.', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          ),
           const SizedBox(height: 5),
           Text('Choose a complete colour palette. Your selection is saved on this device and restored next time you open the app.', style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 14),
@@ -3220,6 +3332,16 @@ class _ThemesScreenState extends State<ThemesScreen> {
             ),
           ),
           const SizedBox(height: 8),
+          Card(
+            child: SwitchListTile.adaptive(
+              secondary: const Icon(Icons.photo_library_outlined),
+              title: const Text('Live photo slideshow', style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text('Rotate real property and lifestyle photos behind app screens'),
+              value: themeManager.slideshowEnabled,
+              onChanged: themeManager.setSlideshowEnabled,
+            ),
+          ),
+          const SizedBox(height: 8),
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -3228,9 +3350,18 @@ class _ThemesScreenState extends State<ThemesScreen> {
             itemBuilder: (context, index) {
               final option = options[index];
               final selected = themeManager.selectedName == option.name;
-              return Card(
+              var hovered = false;
+              return StatefulBuilder(
+                builder: (context, setTileState) => MouseRegion(
+                  onEnter: (_) => setTileState(() => hovered = true),
+                  onExit: (_) => setTileState(() => hovered = false),
+                  child: AnimatedScale(
+                    scale: hovered ? 1.035 : 1.0,
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutBack,
+                    child: Card(
                 clipBehavior: Clip.antiAlias,
-                elevation: selected ? 4 : 1,
+                elevation: selected || hovered ? 5 : 1,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(17),
                   side: BorderSide(color: selected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.outlineVariant, width: selected ? 2.3 : 1),
@@ -3259,6 +3390,9 @@ class _ThemesScreenState extends State<ThemesScreen> {
                       ]),
                     ),
                   ]),
+                ),
+                    ),
+                  ),
                 ),
               );
             },
