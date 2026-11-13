@@ -357,6 +357,7 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
           ),
           const SizedBox(height: 12),
           ...issues.map((issue) => Card(
+            key: ValueKey<String>(issue.id),
             margin: const EdgeInsets.only(bottom: 10),
             child: Padding(
               padding: const EdgeInsets.all(12),
