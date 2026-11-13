@@ -58,14 +58,55 @@ class ThemeOption {
 }
 
 class Themes {
-  static final blue = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2463A6)), useMaterial3: true);
-  static final dark = ThemeData(colorScheme: const ColorScheme.dark(primary: Color(0xFFC4A66A), secondary: Color(0xFF9CA3AF), surface: Color(0xFF17191D)), useMaterial3: true);
-  static final sunset = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFC66A45)), useMaterial3: true);
-  static final forest = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF52745A)), useMaterial3: true);
-  static final ivory = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFB18A4A), brightness: Brightness.light, surface: const Color(0xFFFFFBF3)), scaffoldBackgroundColor: const Color(0xFFFFFBF3), useMaterial3: true);
-  static final ocean = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF315D83)), useMaterial3: true);
-  static final rose = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF9A6572)), useMaterial3: true);
-  static final slate = ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF64748B)), useMaterial3: true);
+  static ThemeData _make(Color seed, {Brightness brightness = Brightness.light, Color? surface}) {
+    final scheme = ColorScheme.fromSeed(seedColor: seed, brightness: brightness, surface: surface);
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: brightness == Brightness.dark
+          ? const Color(0xFF111820)
+          : Color.lerp(scheme.surface, scheme.primaryContainer, 0.13),
+      cardColor: brightness == Brightness.dark
+          ? const Color(0xFF202B36)
+          : Color.lerp(scheme.surface, scheme.primaryContainer, 0.24),
+      appBarTheme: AppBarTheme(
+        backgroundColor: brightness == Brightness.dark ? const Color(0xFF18232E) : scheme.surface,
+        foregroundColor: scheme.onSurface,
+        elevation: 0,
+        scrolledUnderElevation: 1,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: brightness == Brightness.dark ? const Color(0xFF202B36) : scheme.surfaceContainerHighest.withOpacity(0.55),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: scheme.outlineVariant)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: scheme.outlineVariant)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: scheme.primary, width: 1.8)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: scheme.primary,
+        foregroundColor: scheme.onPrimary,
+        elevation: 3,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      listTileTheme: ListTileThemeData(
+        iconColor: scheme.primary,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      ),
+    );
+  }
+
+  static final blue = _make(const Color(0xFF2463A6));
+  static final dark = _make(const Color(0xFFB99A62), brightness: Brightness.dark);
+  static final sunset = _make(const Color(0xFFC66A45));
+  static final forest = _make(const Color(0xFF52745A));
+  static final ivory = _make(const Color(0xFFB18A4A), surface: const Color(0xFFFFFBF3));
+  static final ocean = _make(const Color(0xFF315D83));
+  static final rose = _make(const Color(0xFF9A6572));
+  static final slate = _make(const Color(0xFF64748B));
   static final options = <ThemeOption>[
     ThemeOption('Ivory & Gold Estate', 'Warm ivory, champagne and gold', ivory, const Color(0xFFF5EBDD), const Color(0xFFB18A4A), Icons.villa_outlined),
     ThemeOption('Midnight Luxury', 'Charcoal, black and silver', dark, const Color(0xFF17191D), const Color(0xFFC4A66A), Icons.directions_car_filled_outlined),
@@ -634,13 +675,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 1.12, crossAxisSpacing: 12, mainAxisSpacing: 12),
         itemBuilder: (context, i) {
           final item = items[i];
-          return Card(clipBehavior: Clip.antiAlias, child: InkWell(
-            onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => item.page)),
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(item.icon, size: 42, color: item.color), const SizedBox(height: 10),
-              Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-            ]),
-          ));
+          final scheme = Theme.of(context).colorScheme;
+          final tint = Color.lerp(item.color, scheme.surface, 0.84)!;
+          return Card(
+            color: tint,
+            elevation: 2.5,
+            shadowColor: item.color.withOpacity(0.16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => item.page)),
+              child: Stack(children: [
+                Positioned(right: -13, top: -18, child: Icon(item.icon, size: 92, color: item.color.withOpacity(0.10))),
+                Padding(
+                  padding: const EdgeInsets.all(15),
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Container(
+                      width: 54, height: 54,
+                      decoration: BoxDecoration(color: item.color.withOpacity(0.15), borderRadius: BorderRadius.circular(18)),
+                      child: Icon(item.icon, size: 29, color: item.color),
+                    ),
+                    const Spacer(),
+                    Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onSurface, height: 1.15)),
+                    const SizedBox(height: 5),
+                    Icon(Icons.arrow_forward_rounded, size: 18, color: item.color),
+                  ]),
+                ),
+              ]),
+            ),
+          );
         },
       ),
       bottomNavigationBar: loaded && banner != null ? SizedBox(height: banner!.size.height.toDouble(), child: AdWidget(ad: banner!)) : null,
@@ -690,12 +754,58 @@ class HousesScreen extends StatelessWidget {
           final d = doc.data();
           final rentValue = (d['rent'] as num?)?.toDouble() ?? 0;
           final occupancy = d['isOccupied'] == true ? 'Occupied' : 'Vacant';
-          return Card(child: ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.home_outlined)),
-            title: Text('House ' + (d['houseNo']?.toString() ?? '')),
-            subtitle: Text(currency.format(rentValue) + ' / month • ' + occupancy),
-            trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => confirmDelete(context, 'Delete this house?', () => doc.reference.delete())),
-          ));
+          final colors = Theme.of(context).colorScheme;
+          final occupied = d['isOccupied'] == true;
+          return Card(
+            margin: const EdgeInsets.fromLTRB(14, 6, 14, 10),
+            color: Color.lerp(colors.surface, occupied ? const Color(0xFFD9EEE7) : const Color(0xFFDCEBFA), 0.62),
+            elevation: 2,
+            shadowColor: colors.primary.withOpacity(0.08),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: ListTile(
+                leading: Container(
+                  width: 52, height: 52,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: occupied
+                          ? const [Color(0xFF2D8A72), Color(0xFF9ACDBB)]
+                          : const [Color(0xFF3979B9), Color(0xFF9CC7EA)],
+                      begin: Alignment.topLeft, end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(Icons.apartment_rounded, color: Colors.white, size: 28),
+                ),
+                title: Text('House ' + (d['houseNo']?.toString() ?? ''),
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Text(currency.format(rentValue) + ' / month',
+                    style: TextStyle(color: colors.onSurfaceVariant, fontWeight: FontWeight.w500)),
+                ),
+                isThreeLine: false,
+                trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: occupied ? const Color(0xFF287D66).withOpacity(0.13) : const Color(0xFF2463A6).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    child: Text(occupancy, style: TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w800,
+                      color: occupied ? const Color(0xFF287D66) : const Color(0xFF2463A6))),
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.more_horiz_rounded),
+                    onPressed: () => confirmDelete(context, 'Delete this house?', () => doc.reference.delete()),
+                  ),
+                ]),
+              ),
+            ),
+          );
         }).toList());
       },
     ),
@@ -1118,10 +1228,10 @@ class ThemesScreen extends StatelessWidget {
                 },
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Container(
-                    height: 112,
+                    height: 126,
                     decoration: BoxDecoration(gradient: LinearGradient(colors: [option.primary, option.secondary], begin: Alignment.centerLeft, end: Alignment.bottomRight)),
                     child: Stack(children: [
-                      Positioned(right: 18, top: 12, child: Icon(Icons.directions_car_filled_rounded, size: 55, color: Colors.white.withOpacity(0.22))),
+                      Positioned(right: 18, top: 12, child: Icon(option.icon, size: 58, color: Colors.white.withOpacity(0.22))),
                       Positioned(left: 18, bottom: 8, child: Icon(Icons.villa_rounded, size: 76, color: Colors.white.withOpacity(0.88))),
                       Positioned(right: 22, bottom: 10, child: Icon(Icons.apartment_rounded, size: 48, color: Colors.white.withOpacity(0.48))),
                       Positioned(left: 18, top: 14, child: Icon(option.icon, color: Colors.white, size: 23)),
