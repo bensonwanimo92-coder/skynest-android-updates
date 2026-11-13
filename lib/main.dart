@@ -94,6 +94,7 @@ Future<bool> ensureFirebaseReady() async {
     try {
       await Firebase.initializeApp();
       firebaseReady = true;
+      skyNestFirebaseReady.value = true;
       firebaseError = null;
       return true;
     } catch (error) {
@@ -367,6 +368,7 @@ class SkynestApp extends StatelessWidget {
       return MaterialApp(
         title: 'SkyNest',
         scaffoldMessengerKey: _rootScaffoldMessengerKey,
+        navigatorKey: skyNestNavigatorKey,
         debugShowCheckedModeBanner: false,
         theme: themeManager.value,
         navigatorObservers: [_skynestRouteObserver],
