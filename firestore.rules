@@ -183,22 +183,6 @@ service cloud.firestore {
         getAfter(submissionPath).data.method == 'MPESA';
     }
 
-    match /mpesaTransactionCodes/{code} {
-      allow create: if activeUser() && myRole() == 'tenant' &&
-        code.matches('^[A-Z0-9]{8,16}
-      allow create: if activeUser() && myRole() == 'tenant' &&
-        request.resource.data.tenantId == request.auth.uid &&
-        request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
-        request.resource.data.amount is number && request.resource.data.amount > 0;
-      allow read: if activeUser() && (
-        resource.data.tenantId == request.auth.uid ||
-        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid)
-      );
-      allow update: if activeUser() && myRole() == 'landlord' &&
-        resource.data.landlordId == request.auth.uid &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'ledgerPaymentId', 'reviewedAt']);
-      allow delete: if false;
-    }
 
     match /paymentConfirmations/{id} {
       allow read: if activeUser() && myRole() == 'caretaker' && resource.data.caretakerId == request.auth.uid;
