@@ -75,6 +75,58 @@ exports.notifyGroupMessage = onDocumentCreated(
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { FieldValue } = require("firebase-admin/firestore");
 
+exports.notifyIncomingCall = onDocumentUpdated("calls/{callId}", async (event) => {
+  const before = event.data && event.data.before.data();
+  const after = event.data && event.data.after.data();
+  if (!before || !after || before.status === "ringing" || after.status !== "ringing") return;
+  if (!after.calleeId || !after.callerId) return;
+
+  const db = getFirestore();
+  const devicesSnapshot = await db.collection("users").doc(after.calleeId)
+    .collection("devices").get();
+  const devices = devicesSnapshot.docs.map((doc) => ({
+    token: doc.get("token"),
+    ref: doc.ref,
+  })).filter((device) => typeof device.token === "string" && device.token.length > 0);
+  if (!devices.length) return;
+
+  const callType = after.type === "video" ? "video" : "voice";
+  const senderName = String(after.callerName || "A SkyNest member");
+  const response = await getMessaging().sendEachForMulticast({
+    tokens: devices.map((device) => device.token),
+    notification: {
+      title: callType === "video" ? "Incoming SkyNest video call" : "Incoming SkyNest voice call",
+      body: senderName + " is calling you.",
+    },
+    data: {
+      type: "incoming_call",
+      callId: event.params.callId,
+      callerName: senderName,
+      callType,
+    },
+    android: {
+      priority: "high",
+      ttl: 60 * 1000,
+      notification: {
+        channelId: "skynest_calls",
+        sound: "default",
+        priority: "max",
+        visibility: "public",
+      },
+    },
+  });
+
+  const stale = [];
+  response.responses.forEach((result, index) => {
+    if (!result.success && result.error &&
+        ["messaging/registration-token-not-registered",
+         "messaging/invalid-registration-token"].includes(result.error.code)) {
+      stale.push(devices[index].ref.delete());
+    }
+  });
+  if (stale.length) await Promise.all(stale);
+});
+
 exports.notifyAccountDecision = onDocumentUpdated("users/{userId}", async (event) => {
   const before = event.data && event.data.before.data();
   const after = event.data && event.data.after.data();
