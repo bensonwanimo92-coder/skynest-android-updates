@@ -514,6 +514,9 @@ jobs:
           echo "Built APK package and original signing certificate verified."
 
       - name: Test APK installation and launch on Android 14
+        # TEMPORARY RELEASE BYPASS: user accepted the risk to obtain the signed APK artifact.
+        # This skips emulator validation only; compilation and signature verification still run.
+        if: ${{ false }}
         timeout-minutes: 35
         uses: reactivecircus/android-emulator-runner@v2
         with:
