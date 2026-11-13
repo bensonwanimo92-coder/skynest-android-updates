@@ -1674,6 +1674,38 @@ class PaymentSubmissionsScreen extends StatelessWidget {
       if (context.mounted) snack(context, 'A payment confirmation task was sent to the caretaker.');
     } catch (e) { if (context.mounted) snack(context, 'Could not assign confirmation: ' + e.toString()); }
   }
+  Future<bool> _reviewBySwipe(BuildContext context, String id, Map<String, dynamic> data, DismissDirection direction) async {
+    final approve = direction == DismissDirection.startToEnd;
+    final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+      title: Text(approve ? 'Verify this payment?' : 'Reject this submission?'),
+      content: Text(approve
+        ? 'Confirm only after you have verified receipt of ' + currency.format((data['amount'] as num?)?.toDouble() ?? 0) + '. The amount will be added to the payment ledger.'
+        : 'This will mark the tenant payment submission as rejected.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('CANCEL')),
+        FilledButton(
+          style: approve ? null : FilledButton.styleFrom(backgroundColor: Colors.red),
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: Text(approve ? 'VERIFY & RECORD' : 'REJECT'),
+        ),
+      ],
+    ));
+    if (confirmed != true) return false;
+    if (approve) {
+      await markReceived(context, id, data);
+    } else {
+      try {
+        await FirebaseFirestore.instance.collection('paymentSubmissions').doc(id).update({
+          'status': 'rejected', 'reviewedAt': FieldValue.serverTimestamp(),
+        });
+        if (context.mounted) snack(context, 'Payment submission rejected.');
+      } catch (e) {
+        if (context.mounted) snack(context, 'Could not reject submission: ' + e.toString());
+      }
+    }
+    HapticFeedback.mediumImpact();
+    return false;
+  }
   Future<void> markReceived(BuildContext context, String id, Map<String, dynamic> data) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -1700,27 +1732,68 @@ class PaymentSubmissionsScreen extends StatelessWidget {
           if (snap.hasError) return errorView('Payment submissions could not load.');
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
           if (snap.data!.docs.isEmpty) return const EmptyView('No tenant payment submissions.');
-          return ListView(children: snap.data!.docs.map((doc) {
+          return ListView(children: snap.data!.docs.asMap().entries.map((entry) {
+            final queueIndex = entry.key + 1;
+            final doc = entry.value;
             final d = doc.data();
             final status = d['status']?.toString() ?? 'pending';
-            return Card(child: ListTile(
-              title: Text(d['tenantName']?.toString() ?? 'Tenant'),
-              subtitle: Text('House ' + (d['houseNo'] ?? '').toString() + ' • ' +
-                currency.format((d['amount'] as num?)?.toDouble() ?? 0) + ' • ' + status),
-              isThreeLine: true,
-              trailing: status == 'received' || status == 'rejected' ? null : PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'assign') assignCaretaker(context, doc.id, d);
-                  if (value == 'received') markReceived(context, doc.id, d);
-                  if (value == 'reject') doc.reference.update({'status': 'rejected', 'reviewedAt': FieldValue.serverTimestamp()});
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'assign', child: Text('Send to caretaker')),
-                  PopupMenuItem(value: 'received', child: Text('Verify & record received')),
-                  PopupMenuItem(value: 'reject', child: Text('Reject submission')),
-                ],
+            final created = d['createdAt'];
+            final age = created is Timestamp ? DateTime.now().difference(created.toDate()) : null;
+            final ageLabel = age == null ? 'Just submitted' : age.inMinutes < 1 ? 'Just now'
+              : age.inHours < 1 ? '${age.inMinutes}m ago'
+              : age.inDays < 1 ? '${age.inHours}h ago' : '${age.inDays}d ago';
+            final canSwipe = status == 'pending';
+            return Dismissible(
+              key: ValueKey('submission-' + doc.id),
+              direction: canSwipe ? DismissDirection.horizontal : DismissDirection.none,
+              confirmDismiss: (direction) => _reviewBySwipe(context, doc.id, d, direction),
+              background: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.only(left: 20),
+                decoration: BoxDecoration(color: Colors.green.shade700, borderRadius: BorderRadius.circular(16)),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.check_circle, color: Colors.white), SizedBox(width: 7),
+                  Text('Verify', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ]),
               ),
-            ));
+              secondaryBackground: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 20),
+                decoration: BoxDecoration(color: Colors.red.shade700, borderRadius: BorderRadius.circular(16)),
+                child: const Row(mainAxisAlignment: MainAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+                  Text('Reject', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), SizedBox(width: 7),
+                  Icon(Icons.close_rounded, color: Colors.white),
+                ]),
+              ),
+              child: Card(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: status == 'received' ? Colors.green.withOpacity(0.12) : status == 'rejected' ? Colors.red.withOpacity(0.12) : Colors.orange.withOpacity(0.12),
+                    child: Icon(status == 'received' ? Icons.verified : status == 'rejected' ? Icons.cancel_outlined : Icons.receipt_long,
+                      color: status == 'received' ? Colors.green : status == 'rejected' ? Colors.red : Colors.orange),
+                  ),
+                  title: Text(d['tenantName']?.toString() ?? 'Tenant'),
+                  subtitle: Text('Queue #$queueIndex • House ' + (d['houseNo'] ?? '').toString() + ' • ' +
+                    currency.format((d['amount'] as num?)?.toDouble() ?? 0) + ' • ' + status + '\n' + ageLabel),
+                  isThreeLine: true,
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'assign') assignCaretaker(context, doc.id, d);
+                      if (value == 'received') markReceived(context, doc.id, d);
+                      if (value == 'reject') doc.reference.update({'status': 'rejected', 'reviewedAt': FieldValue.serverTimestamp()});
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'assign', child: Text('Send to caretaker')),
+                      PopupMenuItem(value: 'received', child: Text('Verify & record received')),
+                      PopupMenuItem(value: 'reject', child: Text('Reject submission')),
+                    ],
+                  ),
+                ),
+              ),
+            );
           }).toList());
         },
       ),
