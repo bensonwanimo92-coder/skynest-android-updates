@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'calls/skynest_call_screen.dart';
+import 'reading/reading_hub.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -1097,6 +1098,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Plans', Icons.assignment_outlined, Colors.indigo, const PlansScreen()),
         _MenuItem('Achievements', Icons.emoji_events_outlined, Colors.amber, const AchievementsScreen()),
         _MenuItem('Pamphlets', Icons.menu_book_outlined, Colors.brown, const PamphletsScreen()),
+        _MenuItem('Reading & media hub', Icons.auto_stories_rounded, Colors.teal, const ReadingHubScreen()),
         _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
         _MenuItem('Premium', Icons.workspace_premium, Colors.deepOrange, const PremiumScreen()),
       ]);
@@ -1110,6 +1112,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('House requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
         _MenuItem('Tenant portal', Icons.person_outline, Colors.cyan, const TenantPortalScreen()),
+        _MenuItem('Reading & media hub', Icons.auto_stories_rounded, Colors.teal, const ReadingHubScreen()),
         _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
       ]);
     } else {
@@ -1120,6 +1123,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('House change requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
         _MenuItem('Pay rent', Icons.phone_android, Colors.green, const TenantPayScreen()),
+        _MenuItem('Reading & media hub', Icons.auto_stories_rounded, Colors.teal, const ReadingHubScreen()),
         _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
       ]);
     }
