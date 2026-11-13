@@ -1,4 +1,4 @@
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -74,6 +74,52 @@ exports.notifyGroupMessage = onDocumentCreated(
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { FieldValue } = require("firebase-admin/firestore");
+
+exports.notifyAccountDecision = onDocumentUpdated("users/{userId}", async (event) => {
+  const before = event.data && event.data.before.data();
+  const after = event.data && event.data.after.data();
+  if (!before || !after || before.status !== "pending" ||
+      !["active", "rejected"].includes(after.status) ||
+      before.status === after.status) return;
+
+  const db = getFirestore();
+  const deviceSnapshot = await db.collection("users").doc(event.params.userId)
+    .collection("devices").get();
+  const devices = deviceSnapshot.docs.map((doc) => ({
+    token: doc.get("token"),
+    ref: doc.ref,
+  })).filter((device) => typeof device.token === "string" && device.token.length > 0);
+  if (!devices.length) return;
+
+  const approved = after.status === "active";
+  const response = await getMessaging().sendEachForMulticast({
+    tokens: devices.map((device) => device.token),
+    notification: {
+      title: approved ? "SkyNest account approved" : "SkyNest application update",
+      body: approved
+        ? "Your account has been approved. You can now sign in and continue."
+        : "Your account application was not approved. Contact the property manager for details.",
+    },
+    data: {
+      type: "account_decision",
+      status: after.status,
+    },
+    android: {
+      priority: "high",
+      notification: { channelId: "skynest_messages" },
+    },
+  });
+
+  const stale = [];
+  response.responses.forEach((result, index) => {
+    if (!result.success && result.error &&
+        ["messaging/registration-token-not-registered",
+         "messaging/invalid-registration-token"].includes(result.error.code)) {
+      stale.push(devices[index].ref.delete());
+    }
+  });
+  if (stale.length) await Promise.all(stale);
+});
 
 exports.changeAccountRole = onCall(async (request) => {
   if (!request.auth) {
