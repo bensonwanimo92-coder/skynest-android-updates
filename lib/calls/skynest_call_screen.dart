@@ -152,6 +152,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
   bool _ending = false;
   bool _released = false;
   bool _renderersInitialized = false;
+  Timer? _ringTimeout;
   final List<RTCIceCandidate> _pendingCandidates = <RTCIceCandidate>[];
   String _status = 'Connecting…';
   String _peerName = 'SkyNest member';
@@ -268,6 +269,19 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
           'offer': {'sdp': offer.sdp, 'type': offer.type},
           'status': 'ringing',
         });
+        _ringTimeout?.cancel();
+        _ringTimeout = Timer(const Duration(seconds: 45), () async {
+          if (!mounted || _ending) return;
+          try {
+            await callRef.update({
+              'status': 'missed',
+              'endedAt': FieldValue.serverTimestamp(),
+              'endedBy': FirebaseAuth.instance.currentUser?.uid,
+            });
+          } catch (error) {
+            debugPrint('Could not mark unanswered call: $error');
+          }
+        });
       } else {
         final offerData = data['offer'];
         if (offerData is! Map) throw StateError('The caller offer is missing.');
@@ -288,6 +302,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
         final call = snapshot.data();
         if (call == null) return;
         if (widget.isCaller && call['answer'] is Map) {
+          _ringTimeout?.cancel();
           final answer = call['answer'] as Map;
           final current = await _peer?.getRemoteDescription();
           if (current == null) {
@@ -360,6 +375,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
   Future<void> _releaseMedia() async {
     if (_released) return;
     _released = true;
+    _ringTimeout?.cancel();
     await _callSub?.cancel();
     await _candidateSub?.cancel();
     for (final track in _localStream?.getTracks() ?? <MediaStreamTrack>[]) {
