@@ -4258,7 +4258,7 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                   final paid = (data['paidAmount'] as num?)?.toDouble();
                   final expected = (data['expectedAmount'] as num?)?.toDouble();
                   final rawProgress = (data['collectionProgress'] as num?)?.toDouble();
-                  final progress = (rawProgress ?? (paid != null && expected != null && expected > 0 ? paid / expected : 0.0)).clamp(0.0, 1.0);
+                  final progress = (rawProgress ?? (paid != null && expected != null && expected > 0 ? paid / expected : 0.0)).clamp(0.0, 1.0).toDouble();
                   final seenBy = data['seenBy'] is List ? (data['seenBy'] as List).length : ((data['seenCount'] as num?)?.toInt() ?? 0);
                   final broadcastOnly = data['broadcastOnly'] == true;
                   final highDue = due is num && due > 0;
@@ -4304,8 +4304,23 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                             if (hasUnread > 0) const Positioned(right: -1, top: -1, child: CircleAvatar(radius: 4, backgroundColor: Color(0xFF2563EB))),
                           ]),
                           const SizedBox(height: 6),
-                          Text(seenBy > 0 ? 'Seen ' + seenBy.toString() + '/' + members.length.toString() : members.length.toString() + ' members',
-                            style: const TextStyle(fontSize: 9, color: Color(0xFF6B7280))),
+                          if (!isMember)
+                            TextButton(
+                              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                minimumSize: const Size(0, 28), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                              onPressed: () async {
+                                try {
+                                  final groupRef = FirebaseFirestore.instance.collection('groups').doc(doc.id);
+                                  await groupRef.update({'memberIds': FieldValue.arrayUnion([uid])});
+                                  await groupRef.collection('members').doc(uid).set({'joinedAt': FieldValue.serverTimestamp(), 'role': p['role'] ?? 'tenant'});
+                                  if (context.mounted) snack(context, 'Joined group.');
+                                } catch (e) { if (context.mounted) snack(context, 'Could not join group: ' + e.toString()); }
+                              },
+                              child: const Text('JOIN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+                            )
+                          else
+                            Text(seenBy > 0 ? 'Seen ' + seenBy.toString() + '/' + members.length.toString() : members.length.toString() + ' members',
+                              style: const TextStyle(fontSize: 9, color: Color(0xFF6B7280))),
                         ]),
                       ]))),
                     ]))),
