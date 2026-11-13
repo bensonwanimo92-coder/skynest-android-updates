@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
+final GlobalKey<NavigatorState> skyNestNavigatorKey = GlobalKey<NavigatorState>();
+
 /// Incoming-call watcher mounted above the app's routed screens. It remains
 /// alive while a user moves between dashboard tabs and chat routes.
 class IncomingCallHost extends StatefulWidget {
@@ -55,10 +57,13 @@ class _IncomingCallHostState extends State<IncomingCallHost> {
 
   Future<void> _presentIncoming(String callId, Map<String, dynamic> data) async {
     if (!mounted) return;
+    final navigator = skyNestNavigatorKey.currentState;
+    if (navigator == null) return;
     final callerName = (data['callerName'] ?? 'SkyNest member').toString();
     final isVideo = data['type'] == 'video';
-    final accepted = await showDialog<bool>(
-      context: context,
+    final accepted = await navigator.push<bool>(
+      DialogRoute<bool>(
+      context: navigator.context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
@@ -84,6 +89,7 @@ class _IncomingCallHostState extends State<IncomingCallHost> {
           ),
         ],
       ),
+      ),
     );
 
     if (!mounted) return;
@@ -94,7 +100,7 @@ class _IncomingCallHostState extends State<IncomingCallHost> {
           'status': 'connecting',
           'answeredAt': FieldValue.serverTimestamp(),
         });
-        await Navigator.of(context).push(MaterialPageRoute<void>(
+        await navigator.push(MaterialPageRoute<void>(
           builder: (_) => SkyNestCallScreen(callId: callId, isCaller: false),
         ));
       } catch (error) {
