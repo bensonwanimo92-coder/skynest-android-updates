@@ -3384,69 +3384,6 @@ Future<void> confirmDelete(BuildContext context, String prompt, Future<void> Fun
     catch (e) { if (context.mounted) snack(context, 'Could not remove record: ' + e.toString()); }
   }
 }
-).hasMatch(code)) {
-      snack(context, 'Enter a valid M-Pesa transaction code (8–16 letters or numbers).');
-      return;
-    }
-    setState(() => saving = true);
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) throw StateError('Please sign in again.');
-      final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      final p = profile.data() ?? {};
-      if (p['role'] == 'tenant') {
-        final landlordId = p['landlordId']?.toString();
-        if (landlordId == null || landlordId.isEmpty) throw StateError('Your tenant account is not linked to a landlord.');
-        await FirebaseFirestore.instance.collection('paymentSubmissions').add({
-          'tenantId': uid, 'tenantName': tenant.text.trim(), 'landlordId': landlordId,
-          'houseId': p['houseId'], 'houseNo': house.text.trim(), 'amount': value,
-          'method': 'Manual payment submission', 'status': 'pending',
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-        if (mounted) { amount.clear(); snack(context, 'Payment details sent to your landlord for verification. No automatic M-Pesa payment was made.'); }
-      } else {
-        final paymentRef = await FirebaseFirestore.instance.collection('payments').add({
-          'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(), 'amount': value,
-          'method': 'Manual / awaiting M-Pesa confirmation', 'status': 'Pending verification',
-          'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
-        });
-        final matchingHouse = await FirebaseFirestore.instance.collection('houses')
-          .where('createdBy', isEqualTo: uid).where('houseNo', isEqualTo: house.text.trim()).limit(1).get();
-        if (matchingHouse.docs.isNotEmpty) {
-          final assigned = (matchingHouse.docs.first.data()['caretakerIds'] as List?)?.whereType<String>().toList() ?? <String>[];
-          if (assigned.isNotEmpty) {
-            await FirebaseFirestore.instance.collection('paymentConfirmations').add({
-              'landlordId': uid, 'caretakerId': assigned.first, 'paymentId': paymentRef.id,
-              'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(),
-              'status': 'pending', 'createdAt': FieldValue.serverTimestamp(),
-            });
-          }
-        }
-        if (mounted) { amount.clear(); snack(context, 'Payment record saved. Confirm actual receipt before marking it received.'); }
-      }
-    } catch (e) { if (mounted) snack(context, 'Could not submit payment: ' + e.toString()); }
-    finally { if (mounted) setState(() => saving = false); }
-  }
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Record rent payment')),
-    body: ListView(padding: const EdgeInsets.all(20), children: [
-      const Icon(Icons.phone_android, size: 56, color: Colors.green),
-      const Text('Record a rent payment', textAlign: TextAlign.center, style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 20),
-      TextField(controller: tenant, decoration: const InputDecoration(labelText: 'Tenant name', border: OutlineInputBorder())),
-      const SizedBox(height: 12),
-      TextField(controller: house, decoration: const InputDecoration(labelText: 'House number', border: OutlineInputBorder())),
-      const SizedBox(height: 12),
-      TextField(controller: amount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Amount (KSh)', border: OutlineInputBorder())),
-      const SizedBox(height: 18),
-      FilledButton.icon(onPressed: saving ? null : savePayment, icon: const Icon(Icons.save_outlined), label: Text(saving ? 'Saving...' : 'SAVE PAYMENT RECORD')),
-      const SizedBox(height: 12),
-      const Text('This records a payment for verification only. It does not send an M-Pesa STK Push or confirm money received. Live Daraja payments require credentials and a secure backend server.'),
-    ]),
-  );
-}
-
 
 class PaymentSubmissionsScreen extends StatelessWidget {
   const PaymentSubmissionsScreen({super.key});
@@ -3601,24 +3538,151 @@ class CalculatorScreen extends StatefulWidget {
   State<CalculatorScreen> createState() => _CalculatorScreenState();
 }
 class _CalculatorScreenState extends State<CalculatorScreen> {
-  final rent = TextEditingController(text: '10000'), months = TextEditingController(text: '12');
-  double total = 120000;
-  void calculate() => setState(() => total = (double.tryParse(rent.text) ?? 0) * (int.tryParse(months.text) ?? 0));
+  final rent = TextEditingController(text: '10000');
+  final deposit = TextEditingController(text: '10000');
+  final arrears = TextEditingController(text: '0');
+  final expenses = TextEditingController(text: '0');
+  final loan = TextEditingController(text: '1000000');
+  final annualRate = TextEditingController(text: '12');
+  final loanMonths = TextEditingController(text: '120');
+  final materials = TextEditingController(text: '50000');
+  final contributors = TextEditingController(text: '2');
+  final secondHouseRent = TextEditingController(text: '12000');
+  final exchangeRate = TextEditingController(text: '130');
+  final note = TextEditingController();
+  bool showUsd = false;
+
+  double value(TextEditingController c) => double.tryParse(c.text.trim()) ?? 0;
+  double get rentValue => value(rent);
+  double get arrearsValue => value(arrears);
+  double get depositValue => value(deposit);
+  double get lateFee => arrearsValue * 0.05;
+  double get amountDue => rentValue + depositValue + arrearsValue + lateFee;
+  double get profit => rentValue - value(expenses);
+  double get loanPayment {
+    final principal = value(loan);
+    final months = value(loanMonths);
+    if (principal <= 0 || months <= 0) return 0;
+    final monthlyRate = value(annualRate) / 1200;
+    if (monthlyRate == 0) return principal / months;
+    final factor = math.pow(1 + monthlyRate, months);
+    return principal * monthlyRate * factor / (factor - 1);
+  }
+  double get materialShare => value(contributors) <= 0 ? 0 : value(materials) / value(contributors);
+  double get exchange => value(exchangeRate) <= 0 ? 130 : value(exchangeRate);
+
   @override
-  void dispose() { rent.dispose(); months.dispose(); super.dispose(); }
+  void dispose() {
+    for (final c in [rent, deposit, arrears, expenses, loan, annualRate, loanMonths, materials, contributors, secondHouseRent, exchangeRate, note]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Widget field(String label, TextEditingController controller, {String? suffix}) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(labelText: label, suffixText: suffix, border: const OutlineInputBorder()),
+      onChanged: (_) => setState(() {}),
+    ),
+  );
+
+  String money(double amount) => showUsd
+    ? 'USD ' + (amount / exchange).toStringAsFixed(2)
+    : currency.format(amount);
+
+  Future<void> saveCalculation() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) { snack(context, 'Sign in to save this calculation.'); return; }
+    try {
+      await FirebaseFirestore.instance.collection('savedCalculations').add({
+        'createdBy': uid,
+        'title': note.text.trim().isEmpty ? 'Rent calculation' : note.text.trim(),
+        'rent': rentValue, 'deposit': depositValue, 'arrears': arrearsValue,
+        'lateFee': lateFee, 'amountDue': amountDue, 'monthlyProfitEstimate': profit,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      if (mounted) snack(context, 'Calculation saved to your notes.');
+    } catch (e) {
+      if (mounted) snack(context, 'Could not save calculation: ' + e.toString());
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Rent calculator')),
-    body: Padding(padding: const EdgeInsets.all(20), child: Column(children: [
-      TextField(controller: rent, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Monthly rent (KSh)', border: OutlineInputBorder()), onChanged: (_) => calculate()),
-      const SizedBox(height: 14),
-      TextField(controller: months, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Number of months', border: OutlineInputBorder()), onChanged: (_) => calculate()),
-      const SizedBox(height: 28),
-      Card(child: Padding(padding: const EdgeInsets.all(22), child: Column(children: [
-        const Text('Total rent'), const SizedBox(height: 8),
-        Text(currency.format(total), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+    appBar: AppBar(
+      title: const Text('Property calculator'),
+      actions: [
+        IconButton(
+          tooltip: showUsd ? 'Show Kenyan shillings' : 'Show US dollars',
+          icon: const Icon(Icons.currency_exchange),
+          onPressed: () => setState(() => showUsd = !showUsd),
+        ),
+      ],
+    ),
+    body: ListView(padding: const EdgeInsets.all(16), children: [
+      Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Expanded(child: Text('Rent, deposit & arrears', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+          Text(showUsd ? 'USD view' : 'KES view', style: const TextStyle(fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 12),
+        field('Monthly rent', rent, suffix: 'KES'),
+        field('Deposit', deposit, suffix: 'KES'),
+        field('Outstanding arrears', arrears, suffix: 'KES'),
+        Text('Late fee (5% of arrears): \${currency.format(lateFee)}'),
+        const Divider(height: 24),
+        const Text('Total payable', style: TextStyle(color: Colors.grey)),
+        Text(money(amountDue), style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w900)),
       ]))),
-    ])),
+      Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Profit estimate', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+        const SizedBox(height: 12),
+        field('Monthly rent income', rent, suffix: 'KES'),
+        field('Monthly expenses', expenses, suffix: 'KES'),
+        Text('Estimated monthly profit: \${money(profit)}', style: const TextStyle(fontWeight: FontWeight.w800)),
+      ]))),
+      Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Building loan repayment', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+        const SizedBox(height: 12),
+        field('Loan principal', loan, suffix: 'KES'),
+        field('Annual interest rate', annualRate, suffix: '%'),
+        field('Repayment period', loanMonths, suffix: 'months'),
+        Text('Estimated monthly repayment: \${money(loanPayment)}', style: const TextStyle(fontWeight: FontWeight.w800)),
+      ]))),
+      Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Materials split & rent increase', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+        const SizedBox(height: 12),
+        field('Total materials cost', materials, suffix: 'KES'),
+        field('Number of contributors', contributors),
+        Text('Each contributor pays: \${currency.format(materialShare)}'),
+        const SizedBox(height: 10),
+        Text('Rent after 10% increase: \${currency.format(rentValue * 1.10)}'),
+      ]))),
+      Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Compare two houses', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+        const SizedBox(height: 12),
+        field('House A monthly rent', rent),
+        field('House B monthly rent', secondHouseRent),
+        Text('Difference: \${currency.format((rentValue - value(secondHouseRent)).abs())} • ' +
+          (rentValue >= value(secondHouseRent) ? 'House A earns more' : 'House B earns more')),
+      ]))),
+      Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Currency conversion', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+        const SizedBox(height: 8),
+        const Text('Enter the current exchange rate manually; SkyNest does not fetch live FX rates in this version.'),
+        field('KES per 1 USD', exchangeRate),
+        Text('Current total in \${showUsd ? 'KES' : 'USD'}: \${showUsd ? currency.format(amountDue * exchange) : 'USD ' + (amountDue / exchange).toStringAsFixed(2)}'),
+      ]))),
+      Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+        TextField(controller: note, decoration: const InputDecoration(labelText: 'Calculation note (optional)', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: saveCalculation, icon: const Icon(Icons.save_outlined), label: const Text('SAVE CALCULATION AS NOTE'))),
+      ]))),
+      const Padding(padding: EdgeInsets.all(8), child: Text('Estimates are for planning only. Confirm actual fees, loan terms and exchange rates with the relevant provider.', style: TextStyle(color: Colors.grey))),
+    ]),
   );
 }
 
@@ -4637,18 +4701,40 @@ class NoticesScreen extends StatefulWidget {
 }
 class _NoticesScreenState extends State<NoticesScreen> {
   final title = TextEditingController(), body = TextEditingController(), targetUids = TextEditingController();
-  bool saving = false;
+  String template = 'Custom', urgency = 'Normal';
+  int expiryDays = 7;
+  bool mandatoryRead = false, saving = false;
+
   @override
   void dispose() { title.dispose(); body.dispose(); targetUids.dispose(); super.dispose(); }
+
+  void applyTemplate(String? value) {
+    if (value == null) return;
+    setState(() => template = value);
+    const templates = <String, List<String>>{
+      'Eviction': ['Tenancy notice', 'This is a formal tenancy notice. Please review your tenancy agreement and contact the property manager promptly to discuss the next steps.'],
+      'Rent hike': ['Rent adjustment notice', 'Please note the proposed rent adjustment. The effective date and applicable details will be communicated in accordance with your tenancy agreement and Kenyan law.'],
+      'Meeting': ['Tenant meeting', 'You are invited to a tenants meeting. Please contact the property manager for the meeting time, venue and agenda.'],
+    };
+    final selected = templates[value];
+    if (selected != null) {
+      title.text = selected[0];
+      body.text = selected[1];
+    }
+  }
+
   Future<void> publish() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || title.text.trim().isEmpty || body.text.trim().isEmpty) { snack(context, 'Enter a notice title and message.'); return; }
+    if (uid == null || title.text.trim().isEmpty || body.text.trim().isEmpty) {
+      snack(context, 'Enter a notice title and message.');
+      return;
+    }
     setState(() => saving = true);
     try {
       final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      final p = profile.data() ?? {};
-      final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
-      if (landlordId == null) throw StateError('Your account is not linked to a landlord.');
+      final p = profile.data() ?? <String, dynamic>{};
+      final landlordId = p['role'] == 'landlord' ? uid : p['landlordId']?.toString();
+      if (landlordId == null || landlordId.isEmpty) throw StateError('Your account is not linked to a landlord.');
       final explicitTargets = targetUids.text.split(',').map((v) => v.trim()).where((v) => v.isNotEmpty).toSet().toList();
       final linkedAccounts = await FirebaseFirestore.instance.collection('users')
         .where('landlordId', isEqualTo: landlordId).where('status', isEqualTo: 'active').get();
@@ -4657,64 +4743,175 @@ class _NoticesScreenState extends State<NoticesScreen> {
         throw StateError('One or more selected tenant IDs do not belong to this property account.');
       }
       final recipients = explicitTargets.isNotEmpty ? explicitTargets : linkedAccounts.docs.map((d) => d.id).toList();
-      final notice = {
+      final expiresAt = expiryDays == 0 ? null : Timestamp.fromDate(DateTime.now().add(Duration(days: expiryDays)));
+      final notice = <String, dynamic>{
         'title': title.text.trim(), 'body': body.text.trim(), 'landlordId': landlordId,
         'createdBy': uid, 'createdAt': FieldValue.serverTimestamp(),
         'audience': explicitTargets.isEmpty ? 'all' : 'selected',
+        'template': template, 'urgency': urgency, 'mandatoryRead': mandatoryRead,
+        'expiresAt': expiresAt,
       };
       final noticeRef = await FirebaseFirestore.instance.collection('notices').add(notice);
+      final batch = FirebaseFirestore.instance.batch();
       for (final recipient in recipients) {
-        await FirebaseFirestore.instance.collection('users').doc(recipient).collection('notices').doc(noticeRef.id).set(notice);
+        final ref = FirebaseFirestore.instance.collection('users').doc(recipient)
+          .collection('notices').doc(noticeRef.id);
+        batch.set(ref, {...notice, 'isRead': false, 'readAt': null});
       }
+      await batch.commit();
       title.clear(); body.clear(); targetUids.clear();
       await recordActivity(landlordId, 'Published a property notice');
-      if (mounted) snack(context, 'Notice published.');
-    } catch (e) { if (mounted) snack(context, 'Could not publish notice: ' + e.toString()); }
-    finally { if (mounted) setState(() => saving = false); }
+      if (mounted) snack(context, 'Notice published to \${recipients.length} account(s).');
+    } catch (e) {
+      if (mounted) snack(context, 'Could not publish notice: ' + e.toString());
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
   }
+
+  Future<void> acknowledgeNotice(DocumentReference<Map<String, dynamic>> ref, Map<String, dynamic> data) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+      title: Text(data['title']?.toString() ?? 'Notice'),
+      content: SingleChildScrollView(child: Text(data['body']?.toString() ?? '')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('CLOSE')),
+        FilledButton(onPressed: () async {
+          try {
+            await ref.update({'isRead': true, 'readAt': FieldValue.serverTimestamp()});
+            if (dialogContext.mounted) Navigator.pop(dialogContext);
+            if (mounted) snack(context, 'Notice marked as read.');
+          } catch (e) {
+            if (mounted) snack(context, 'Could not acknowledge notice: ' + e.toString());
+          }
+        }, child: const Text('MARK AS READ')),
+      ],
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    return Scaffold(appBar: AppBar(title: const Text('Property notices')),
-      body: Column(children: [
-        FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          future: uid == null ? null : FirebaseFirestore.instance.collection('users').doc(uid).get(),
-          builder: (context, profile) {
-            if (!profile.hasData) return const SizedBox.shrink();
-            if (profile.data?.data()?['role'] == 'tenant') return const SizedBox.shrink();
-            return Padding(padding: const EdgeInsets.all(12), child: Column(children: [
-              TextField(controller: title, decoration: const InputDecoration(labelText: 'Notice title')),
-              TextField(controller: body, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Message')),
-              TextField(controller: targetUids, decoration: const InputDecoration(labelText: 'Specific tenant UIDs (comma-separated; leave blank for all tenants)')),
-              SizedBox(width: double.infinity, child: FilledButton(onPressed: saving ? null : publish, child: Text(saving ? 'Publishing...' : 'PUBLISH NOTICE'))),
-            ]));
-          },
-        ),
-        const Divider(height: 1),
-        Expanded(child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          future: uid == null ? null : FirebaseFirestore.instance.collection('users').doc(uid).get(),
-          builder: (context, profile) {
-            if (!profile.hasData) return const Center(child: CircularProgressIndicator());
-            final p = profile.data?.data() ?? {};
-            final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
-            if (landlordId == null) return const EmptyView('No landlord linked.');
-            final noticeStream = p['role'] == 'tenant'
-              ? FirebaseFirestore.instance.collection('users').doc(uid).collection('notices').snapshots()
-              : FirebaseFirestore.instance.collection('notices').where('landlordId', isEqualTo: landlordId).snapshots();
-            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    return Scaffold(
+      appBar: AppBar(title: const Text('Property notices')),
+      body: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        future: uid == null ? null : FirebaseFirestore.instance.collection('users').doc(uid).get(),
+        builder: (context, profile) {
+          if (!profile.hasData) return const Center(child: CircularProgressIndicator());
+          final p = profile.data?.data() ?? <String, dynamic>{};
+          final isTenant = p['role'] == 'tenant';
+          final landlordId = isTenant ? p['landlordId']?.toString() : (p['role'] == 'landlord' ? uid : p['landlordId']?.toString());
+          if (landlordId == null || landlordId.isEmpty) return const EmptyView('No landlord linked.');
+          final noticeStream = isTenant
+            ? FirebaseFirestore.instance.collection('users').doc(uid).collection('notices').snapshots()
+            : FirebaseFirestore.instance.collection('notices').where('landlordId', isEqualTo: landlordId).snapshots();
+          return Column(children: [
+            if (!isTenant) Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(children: [
+                DropdownButtonFormField<String>(
+                  value: template,
+                  decoration: const InputDecoration(labelText: 'Notice template'),
+                  items: const [
+                    DropdownMenuItem(value: 'Custom', child: Text('Custom')),
+                    DropdownMenuItem(value: 'Eviction', child: Text('Tenancy notice')),
+                    DropdownMenuItem(value: 'Rent hike', child: Text('Rent adjustment')),
+                    DropdownMenuItem(value: 'Meeting', child: Text('Tenant meeting')),
+                  ],
+                  onChanged: applyTemplate,
+                ),
+                TextField(controller: title, decoration: const InputDecoration(labelText: 'Notice title')),
+                TextField(controller: body, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Message')),
+                TextField(controller: targetUids, decoration: const InputDecoration(labelText: 'Specific tenant UIDs (comma-separated; blank = all active tenants)')),
+                Row(children: [
+                  Expanded(child: DropdownButtonFormField<String>(
+                    value: urgency,
+                    decoration: const InputDecoration(labelText: 'Urgency'),
+                    items: const [
+                      DropdownMenuItem(value: 'Normal', child: Text('Normal')),
+                      DropdownMenuItem(value: 'Urgent', child: Text('Urgent')),
+                      DropdownMenuItem(value: 'Critical', child: Text('Critical')),
+                    ],
+                    onChanged: (v) => setState(() => urgency = v ?? 'Normal'),
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: DropdownButtonFormField<int>(
+                    value: expiryDays,
+                    decoration: const InputDecoration(labelText: 'Auto-hide after'),
+                    items: const [
+                      DropdownMenuItem(value: 1, child: Text('1 day')),
+                      DropdownMenuItem(value: 7, child: Text('7 days')),
+                      DropdownMenuItem(value: 30, child: Text('30 days')),
+                      DropdownMenuItem(value: 0, child: Text('Never')),
+                    ],
+                    onChanged: (v) => setState(() => expiryDays = v ?? 7),
+                  )),
+                ]),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Require tenant acknowledgement'),
+                  subtitle: const Text('Tenants must open and acknowledge this notice. This does not block app launch.'),
+                  value: mandatoryRead,
+                  onChanged: (v) => setState(() => mandatoryRead = v),
+                ),
+                SizedBox(width: double.infinity, child: FilledButton(
+                  onPressed: saving ? null : publish,
+                  child: Text(saving ? 'Publishing...' : 'PUBLISH NOTICE'),
+                )),
+              ]),
+            ),
+            const Divider(height: 1),
+            Expanded(child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: noticeStream,
               builder: (context, snap) {
-                if (snap.hasError) return errorView('Notices could not load.');
+                if (snap.hasError) return errorView('Notices could not load: ' + snap.error.toString());
                 if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                return ListView(children: snap.data!.docs.map((doc) => Card(child: ListTile(
-                  leading: const Icon(Icons.campaign_outlined), title: Text(doc.data()['title']?.toString() ?? ''),
-                  subtitle: Text(doc.data()['body']?.toString() ?? ''),
-                ))).toList());
+                final docs = snap.data!.docs.where((doc) {
+                  final expiry = doc.data()['expiresAt'];
+                  return expiry is! Timestamp || expiry.toDate().isAfter(DateTime.now());
+                }).toList();
+                if (docs.isEmpty) return const EmptyView('No active notices.');
+                return ListView(children: docs.map((doc) {
+                  final data = doc.data();
+                  final read = data['isRead'] == true;
+                  final level = data['urgency']?.toString() ?? 'Normal';
+                  final color = level == 'Critical' ? Colors.red : level == 'Urgent' ? Colors.orange : Colors.blue;
+                  final created = data['createdAt'];
+                  final createdLabel = created is Timestamp ? DateFormat('d MMM, h:mm a').format(created.toDate()) : 'Recently';
+                  return Card(
+                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: color.withOpacity(0.12),
+                        child: Icon(Icons.campaign_outlined, color: color),
+                      ),
+                      title: Text(data['title']?.toString() ?? 'Notice'),
+                      subtitle: Text('\${level.toUpperCase()} • $createdLabel • ' + (read ? 'Read' : 'Not seen')),
+                      isThreeLine: true,
+                      trailing: isTenant ? (read
+                        ? const Icon(Icons.check_circle, color: Colors.green)
+                        : FilledButton.tonal(
+                            onPressed: () => acknowledgeNotice(doc.reference, data),
+                            child: Text(data['mandatoryRead'] == true ? 'READ' : 'OPEN'),
+                          ))
+                        : const Icon(Icons.chevron_right),
+                      onTap: isTenant ? null : () => showDialog<void>(
+                        context: context,
+                        builder: (d) => AlertDialog(
+                          title: Text(data['title']?.toString() ?? 'Notice'),
+                          content: Text(data['body']?.toString() ?? ''),
+                          actions: [TextButton(onPressed: () => Navigator.pop(d), child: const Text('CLOSE'))],
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList());
               },
-            );
-          },
-        )),
-      ]),
+            )),
+          ]);
+        },
+      ),
     );
   }
 }
