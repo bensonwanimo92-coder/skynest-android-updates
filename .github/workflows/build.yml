@@ -232,7 +232,26 @@ jobs:
             exit "$license_status"
           fi
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
-          echo "Android platform 35 and Build Tools 35.0.0 installed."
+          # Preinstall the NDK used by the generated Flutter Android project.
+          # Gradle's on-demand sdkmanager download has intermittently failed while
+          # unpacking this exact package, so retry cleanly before starting Gradle.
+          for attempt in 1 2 3; do
+            if [ -d "$ANDROID_HOME/ndk/28.2.13676358" ]; then
+              break
+            fi
+            rm -rf "$ANDROID_HOME/ndk/28.2.13676358"
+            if "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;28.2.13676358"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Could not install Android NDK 28.2.13676358 after three attempts."
+              exit 1
+            fi
+            echo "NDK install attempt $attempt failed; retrying after cleanup."
+            sleep 10
+          done
+          test -d "$ANDROID_HOME/ndk/28.2.13676358"
+          echo "Android platform 35, Build Tools 35.0.0, and NDK 28.2.13676358 installed."
 
       - name: Audit native Android source for API 31-35 requirements
         run: |
