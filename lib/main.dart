@@ -285,43 +285,234 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(child: Column(children: [
-      Expanded(child: Center(child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 440), child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const Icon(Icons.apartment_rounded, size: 78, color: brand),
-            const SizedBox(height: 8),
-            const Text('SKYNEST PREMIUM', textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
-            const Text('Rental management made simpler', textAlign: TextAlign.center),
-            const SizedBox(height: 30),
-            TextField(controller: email, keyboardType: TextInputType.emailAddress,
-              autofillHints: const [AutofillHints.username, AutofillHints.email],
-              decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined), border: OutlineInputBorder())),
-            const SizedBox(height: 14),
-            TextField(controller: password, obscureText: obscure, autofillHints: const [AutofillHints.password],
-              decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline),
-                suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure),
-                  icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)), border: const OutlineInputBorder())),
-            Align(alignment: Alignment.centerRight,
-              child: TextButton(onPressed: busy ? null : resetPassword, child: const Text('Forgot password? Reset here'))),
-            FilledButton(onPressed: busy ? null : signIn,
-              child: busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('LOGIN')),
-            const SizedBox(height: 8),
-            OutlinedButton(onPressed: busy ? null : showCreateAccount, child: const Text('CREATE ACCOUNT')),
-            if (firebaseError != null) Card(color: Theme.of(context).colorScheme.errorContainer,
-              child: Padding(padding: const EdgeInsets.all(12),
-                child: Text('Firebase setup is required before login or registration works.\n' + (firebaseError ?? '')))),
-          ],
-        )),
-      ))),
-      Padding(padding: const EdgeInsets.only(bottom: 14, top: 6),
-        child: Text('Benson', style: TextStyle(color: Theme.of(context).colorScheme.primary,
-          fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 2.0))),
-    ])),
-  );
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F7FC),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFEAF2FF), Color(0xFFF8FAFD), Color(0xFFFFFFFF)],
+          ),
+        ),
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight - 40),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 440),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(28),
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFF174D83), Color(0xFF2476C8)],
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF174D83).withValues(alpha: 0.20),
+                                blurRadius: 24,
+                                offset: const Offset(0, 12),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              Container(
+                                height: 76,
+                                width: 76,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.14),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+                                ),
+                                child: const Icon(Icons.apartment_rounded, size: 43, color: Colors.white),
+                              ),
+                              const SizedBox(height: 14),
+                              const Text(
+                                'SkyNest',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 34,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'PROPERTY MANAGEMENT',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.88),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 2.1,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Manage properties. Connect people.\nMake renting simpler.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.94),
+                                  height: 1.4,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 28),
+                        const Text(
+                          'Welcome back',
+                          textAlign: TextAlign.left,
+                          style: TextStyle(fontSize: 25, fontWeight: FontWeight.w800, color: Color(0xFF172B4D)),
+                        ),
+                        const SizedBox(height: 5),
+                        const Text(
+                          'Sign in to continue to your SkyNest account.',
+                          style: TextStyle(fontSize: 14, color: Color(0xFF65758B)),
+                        ),
+                        const SizedBox(height: 22),
+                        TextField(
+                          controller: email,
+                          keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                          autofillHints: const [AutofillHints.username, AutofillHints.email],
+                          decoration: InputDecoration(
+                            labelText: 'Email address',
+                            hintText: 'name@example.com',
+                            prefixIcon: const Icon(Icons.email_outlined),
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: const BorderSide(color: Color(0xFFD8E1EE)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        TextField(
+                          controller: password,
+                          obscureText: obscure,
+                          textInputAction: TextInputAction.done,
+                          autofillHints: const [AutofillHints.password],
+                          onSubmitted: (_) { if (!busy) signIn(); },
+                          decoration: InputDecoration(
+                            labelText: 'Password',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: const BorderSide(color: Color(0xFFD8E1EE)),
+                            ),
+                            suffixIcon: IconButton(
+                              tooltip: obscure ? 'Show password' : 'Hide password',
+                              onPressed: () => setState(() => obscure = !obscure),
+                              icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                            ),
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: busy ? null : resetPassword,
+                            child: const Text('Forgot password?'),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          height: 54,
+                          child: FilledButton(
+                            onPressed: busy ? null : signIn,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF174D83),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                            ),
+                            child: busy
+                                ? const SizedBox(height: 21, width: 21, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                : const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.login_rounded),
+                                      SizedBox(width: 10),
+                                      Text('SIGN IN', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+                                    ],
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 52,
+                          child: OutlinedButton(
+                            onPressed: busy ? null : showCreateAccount,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF174D83),
+                              side: const BorderSide(color: Color(0xFF174D83), width: 1.3),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                            ),
+                            child: const Text('CREATE ACCOUNT', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                          ),
+                        ),
+                        if (firebaseError != null) ...[
+                          const SizedBox(height: 14),
+                          Card(
+                            color: colors.errorContainer,
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Text('Firebase setup is required before login or registration works.\\n${firebaseError ?? ''}'),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 24),
+                        const Row(
+                          children: [
+                            Expanded(child: Divider(color: Color(0xFFD6DFEA))),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('SKYNEST', style: TextStyle(color: Color(0xFF8190A5), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                            ),
+                            Expanded(child: Divider(color: Color(0xFFD6DFEA))),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'Your property, our priority.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Color(0xFF65758B), fontSize: 13, fontStyle: FontStyle.italic),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Secure access • Simple property management',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Color(0xFF8A97A9), fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class DashboardScreen extends StatefulWidget {
