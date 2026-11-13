@@ -1413,8 +1413,13 @@ class HousesScreen extends StatelessWidget {
   );
 }
 
-class TenantsScreen extends StatelessWidget {
+class TenantsScreen extends StatefulWidget {
   const TenantsScreen({super.key});
+  @override
+  State<TenantsScreen> createState() => _TenantsScreenState();
+}
+class _TenantsScreenState extends State<TenantsScreen> {
+  String selectedFilter = 'All';
   Future<void> addTenant(BuildContext context) async {
     final name = TextEditingController(), phone = TextEditingController(), house = TextEditingController(), rent = TextEditingController();
     final key = GlobalKey<FormState>();
@@ -1431,7 +1436,12 @@ class TenantsScreen extends StatelessWidget {
         FilledButton(onPressed: () async {
           if (!key.currentState!.validate()) return;
           try {
-            await FirebaseFirestore.instance.collection('tenants').add({'name': name.text.trim(), 'phone': phone.text.trim(), 'houseNo': house.text.trim(), 'rentAmount': double.parse(rent.text), 'createdAt': FieldValue.serverTimestamp(), 'createdBy': FirebaseAuth.instance.currentUser?.uid, 'landlordId': FirebaseAuth.instance.currentUser?.uid});
+            await FirebaseFirestore.instance.collection('tenants').add({
+              'name': name.text.trim(), 'phone': phone.text.trim(), 'houseNo': house.text.trim(),
+              'rentAmount': double.parse(rent.text), 'createdAt': FieldValue.serverTimestamp(),
+              'createdBy': FirebaseAuth.instance.currentUser?.uid, 'landlordId': FirebaseAuth.instance.currentUser?.uid,
+              'status': 'active',
+            });
             if (d.mounted) Navigator.pop(d);
           } catch (e) { snack(context, 'Could not save tenant: ' + e.toString()); }
         }, child: const Text('Save tenant')),
@@ -1449,17 +1459,71 @@ class TenantsScreen extends StatelessWidget {
         if (s.hasError) return errorView('Tenants could not load: ' + s.error.toString());
         if (!s.hasData) return const Center(child: CircularProgressIndicator());
         if (s.data!.docs.isEmpty) return const EmptyView('No tenants added yet.');
-        return ListView(children: s.data!.docs.map((doc) {
+        final docs = s.data!.docs.where((doc) {
           final d = doc.data();
-          final rentValue = (d['rentAmount'] as num?)?.toDouble() ?? 0;
-          return Card(child: ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-            title: Text(d['name']?.toString() ?? 'Tenant'),
-            subtitle: Text('House ' + (d['houseNo']?.toString() ?? '-') + ' • ' + (d['phone']?.toString() ?? '-') + '\n' + currency.format(rentValue) + ' / month'),
-            isThreeLine: true,
-            trailing: IconButton(icon: const Icon(Icons.person_remove_alt_1, color: Colors.red), onPressed: () => confirmDelete(context, 'Remove ' + (d['name']?.toString() ?? 'this tenant') + '? Payment records will remain.', () => doc.reference.delete())),
-          ));
-        }).toList());
+          final status = (d['status']?.toString() ?? 'active').toLowerCase();
+          final balance = (d['balance'] ?? d['outstandingBalance'] ?? 0);
+          final hasDebt = balance is num && balance > 0;
+          if (selectedFilter == 'Overdue') return hasDebt || status == 'overdue';
+          if (selectedFilter == 'New') return status == 'new';
+          if (selectedFilter == 'Vacating') return status == 'vacating' || status == 'moved_out';
+          return true;
+        }).toList()
+          ..sort((a, b) => (a.data()['name']?.toString() ?? '').toLowerCase()
+            .compareTo((b.data()['name']?.toString() ?? '').toLowerCase()));
+        return Column(children: [
+          SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(children: ['All', 'Overdue', 'New', 'Vacating'].map((filter) => Padding(
+              padding: const EdgeInsets.only(right: 7),
+              child: ChoiceChip(label: Text(filter), selected: selectedFilter == filter,
+                onSelected: (_) => setState(() => selectedFilter = filter)),
+            )).toList())),
+          Expanded(child: docs.isEmpty
+            ? const EmptyView('No tenants match this filter.')
+            : ListView(children: docs.map((doc) {
+              final d = doc.data();
+              final rentValue = (d['rentAmount'] as num?)?.toDouble() ?? 0;
+              final balanceRaw = d['balance'] ?? d['outstandingBalance'] ?? 0;
+              final balance = balanceRaw is num ? balanceRaw.toDouble() : 0.0;
+              final status = (d['status']?.toString() ?? 'active').toLowerCase();
+              final active = !['moved_out', 'inactive', 'vacating'].contains(status);
+              final contractEnd = d['contractEnd'];
+              final daysLeft = contractEnd is Timestamp ? contractEnd.toDate().difference(DateTime.now()).inDays : null;
+              final familyCount = d['familyCount'];
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                clipBehavior: Clip.antiAlias,
+                child: IntrinsicHeight(child: Row(children: [
+                  Container(width: 4, color: balance > 0 ? Colors.red : active ? Colors.green : Colors.grey),
+                  Expanded(child: ListTile(
+                    leading: Stack(clipBehavior: Clip.none, children: [
+                      CircleAvatar(child: Text((d['name']?.toString().trim().isNotEmpty == true)
+                        ? d['name'].toString().trim().substring(0, 1).toUpperCase() : 'T')),
+                      Positioned(right: -1, bottom: -1, child: Container(width: 12, height: 12,
+                        decoration: BoxDecoration(color: active ? Colors.green : Colors.grey,
+                          shape: BoxShape.circle, border: Border.all(color: Theme.of(context).colorScheme.surface, width: 2)))),
+                    ]),
+                    title: Row(children: [
+                      Expanded(child: Text(d['name']?.toString() ?? 'Tenant', style: const TextStyle(fontWeight: FontWeight.w700))),
+                      if (balance > 0) Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(color: Colors.red.withOpacity(0.10), borderRadius: BorderRadius.circular(8)),
+                        child: const Text('BALANCE DUE', style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.w900))),
+                    ]),
+                    subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('House ' + (d['houseNo']?.toString() ?? '-') + ' • ' + (d['phone']?.toString() ?? '-')),
+                      Text(currency.format(rentValue) + ' / month' + (balance > 0 ? ' • Due ' + currency.format(balance) : '')),
+                      if (daysLeft != null) Text(daysLeft < 0 ? 'Contract ended' : 'Contract: $daysLeft days left',
+                        style: TextStyle(fontSize: 11, color: daysLeft <= 14 ? Colors.orange : Theme.of(context).colorScheme.onSurfaceVariant)),
+                      if (familyCount is num) Text('Family members: $familyCount', style: const TextStyle(fontSize: 11)),
+                    ]),
+                    isThreeLine: true,
+                    trailing: IconButton(icon: const Icon(Icons.person_remove_alt_1, color: Colors.red),
+                      onPressed: () => confirmDelete(context, 'Remove ' + (d['name']?.toString() ?? 'this tenant') + '? Payment records will remain.', () => doc.reference.delete())),
+                  )),
+                ])),
+              );
+            }).toList())),
+        ]);
       },
     ),
   );
