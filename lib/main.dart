@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'calls/skynest_call_screen.dart';
+import 'security/message_encryption.dart';
 import 'reading/reading_hub.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -4374,6 +4375,26 @@ class GroupChatScreen extends StatefulWidget {
 class _GroupChatScreenState extends State<GroupChatScreen> {
   final message = TextEditingController();
   bool sending = false;
+  bool _encryptionReady = false;
+  String? _encryptionSetupError;
+
+  @override
+  void initState() {
+    super.initState();
+    _prepareEncryption();
+  }
+
+  Future<void> _prepareEncryption() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      await SkyNestMessageEncryption.instance.prepareDevice(uid);
+      if (mounted) setState(() => _encryptionReady = true);
+    } catch (error) {
+      if (mounted) setState(() => _encryptionSetupError = error.toString());
+    }
+  }
+
   @override
   void dispose() { message.dispose(); super.dispose(); }
 
@@ -4384,12 +4405,29 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     setState(() => sending = true);
     message.clear();
     try {
+      final groupRef = FirebaseFirestore.instance.collection('groups').doc(widget.groupId);
+      final groupSnapshot = await groupRef.get();
+      final groupData = groupSnapshot.data();
+      if (groupData == null) throw StateError('This group is no longer available.');
+      final rawMemberIds = groupData['memberIds'];
+      final memberIds = rawMemberIds is List
+          ? rawMemberIds.map((value) => value.toString()).where((value) => value.isNotEmpty).toList()
+          : <String>[user.uid];
+      if (!memberIds.contains(user.uid)) {
+        throw StateError('You are no longer a member of this group.');
+      }
       final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       final senderName = (profile.data()?['displayName'] ?? user.displayName ?? 'Member').toString();
-      await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).collection('messages').add({
+      final encrypted = await SkyNestMessageEncryption.instance.encryptGroupMessage(
+        groupId: widget.groupId,
+        senderId: user.uid,
+        plaintext: text,
+        memberIds: memberIds,
+      );
+      await groupRef.collection('messages').add({
+        ...encrypted,
         'senderId': user.uid,
         'senderName': senderName,
-        'text': text,
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -4522,6 +4560,21 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       ],
     ),
     body: Column(children: [
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(.55),
+        child: Row(children: [
+          Icon(Icons.lock_outline, size: 16, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 8),
+          Expanded(child: Text(
+            _encryptionReady
+                ? 'New messages are encrypted on this device before upload.'
+                : (_encryptionSetupError == null ? 'Preparing secure messaging…' : 'Secure messaging setup needs attention.'),
+            style: Theme.of(context).textTheme.bodySmall,
+          )),
+        ]),
+      ),
       Expanded(child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance.collection('groups').doc(widget.groupId)
             .collection('messages').orderBy('createdAt').snapshots(),
@@ -4566,7 +4619,24 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                             itemBuilder: (_) => const [PopupMenuItem(value: 'delete', child: Text('Delete message'))],
                           ),
                         ]),
-                        Text(data['text']?.toString() ?? ''),
+                        if (data['encryptionVersion'] == 1)
+                          FutureBuilder<String>(
+                            future: SkyNestMessageEncryption.instance.decryptGroupMessage(
+                              groupId: widget.groupId,
+                              senderId: data['senderId']?.toString() ?? '',
+                              recipientId: uid ?? '',
+                              message: data,
+                            ),
+                            builder: (context, decrypted) => Text(
+                              decrypted.hasData
+                                  ? decrypted.data!
+                                  : decrypted.hasError
+                                      ? 'Unable to decrypt this message on this device.'
+                                      : 'Decrypting secure message…',
+                            ),
+                          )
+                        else
+                          Text('Legacy message (not end-to-end encrypted): ${data['text']?.toString() ?? ''}'),
                         if (data['createdAt'] is Timestamp)
                           Align(alignment: Alignment.centerRight, child: Text(
                             DateFormat('HH:mm').format((data['createdAt'] as Timestamp).toDate()),
