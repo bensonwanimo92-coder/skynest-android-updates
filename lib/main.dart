@@ -36,6 +36,9 @@ Future<bool> ensureFirebaseReady() async {
       return true;
     } catch (error) {
       firebaseError = error.toString();
+      // Allow a later tap to retry initialization after a transient config/network
+      // failure instead of caching a permanently failed Future.
+      _firebaseInitialization = null;
       return false;
     }
   }();
@@ -280,16 +283,53 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally { if (mounted) setState(() => busy = false); }
   }
 
+  String resetPasswordMessage(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-email':
+        return 'Enter a valid email address and try again.';
+      case 'user-not-found':
+        // Keep the response neutral: Firebase email-enumeration protection may
+        // intentionally hide whether an account exists for this address.
+        return 'If an account exists for this email, a reset link will be sent. Check your inbox and spam folder.';
+      case 'operation-not-allowed':
+        return 'Password reset is disabled in Firebase Authentication. Enable the Email/Password provider in Firebase Console.';
+      case 'network-request-failed':
+        return 'No connection to Firebase. Check your internet and try again.';
+      case 'too-many-requests':
+      case 'quota-exceeded':
+        return 'Password reset is temporarily rate-limited. Wait a while before trying again.';
+      case 'invalid-continue-uri':
+      case 'missing-continue-uri':
+      case 'unauthorized-continue-uri':
+        return 'Firebase rejected the password-reset link settings. Check the authorised domains and reset action URL in Firebase Console.';
+      default:
+        return 'Firebase could not process the password reset (' + e.code + '). Please try again later.';
+    }
+  }
+
   Future<void> resetPassword() async {
-    if (!await ensureFirebaseReady()) { message('Firebase could not start. Check the Firebase Android configuration and try again.'); return; }
-    if (!validEmail(email.text)) { message('Enter a valid email address in the Email field first.'); return; }
+    final address = email.text.trim();
+    if (!validEmail(address)) {
+      message('Enter a valid email address in the Email field first.');
+      return;
+    }
+    if (busy) return;
+    if (!await ensureFirebaseReady()) {
+      message('Firebase could not start. Check the Firebase Android configuration and try again.');
+      return;
+    }
+    if (!mounted) return;
     setState(() => busy = true);
     try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email.text.trim());
-      message('If an account exists for this email, a password-reset link has been sent. Check your inbox and spam folder.');
-    } on FirebaseAuthException catch (e) { message(authMessage(e)); }
-    catch (_) { message('Could not send the reset email. Check your connection and try again.'); }
-    finally { if (mounted) setState(() => busy = false); }
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: address);
+      message('Request accepted. If an account exists for this email, Firebase will send a reset link. Check your inbox and spam folder.');
+    } on FirebaseAuthException catch (e) {
+      message(resetPasswordMessage(e));
+    } catch (_) {
+      message('Could not contact Firebase to request a reset link. Check your connection and try again.');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
 
   Future<void> showCreateAccount() async {
