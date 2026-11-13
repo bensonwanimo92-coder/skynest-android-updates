@@ -107,6 +107,21 @@ service cloud.firestore {
         allow read, create, update, delete: if activeUser() && request.auth.uid == userId;
       }
 
+      // Public X25519 identity keys may be fetched by signed-in peers; private
+      // key material is never accepted by this document.
+      match /security/{securityDoc} {
+        allow get: if signedIn() && securityDoc == 'identity';
+        allow list: if false;
+        allow create, update: if signedIn() && request.auth.uid == userId &&
+          securityDoc == 'identity' &&
+          request.resource.data.keys().hasOnly(['algorithm', 'keyVersion', 'publicKey', 'createdAt']) &&
+          request.resource.data.algorithm == 'X25519' &&
+          request.resource.data.keyVersion == 1 &&
+          request.resource.data.publicKey is string &&
+          request.resource.data.publicKey.size() == 44;
+        allow delete: if false;
+      }
+
       match /houses/{houseId} {
         allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
       }
@@ -238,8 +253,23 @@ service cloud.firestore {
       }
       match /messages/{messageId} {
         allow read: if activeUser() && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
-        allow create: if activeUser() && request.resource.data.senderId == request.auth.uid &&
-          request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+        // New messages must contain authenticated ciphertext and a wrapped
+        // content key for every current group member. Plaintext "text" writes
+        // are rejected so a client cannot silently fall back to cleartext.
+        allow create: if activeUser() &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds &&
+          request.resource.data.encryptionVersion == 1 &&
+          request.resource.data.encryptionAlgorithm == 'X25519-HKDF-SHA256-AES-256-GCM' &&
+          request.resource.data.senderPublicKey is string &&
+          request.resource.data.ciphertext is string &&
+          request.resource.data.nonce is string &&
+          request.resource.data.mac is string &&
+          request.resource.data.keyEnvelopes is map &&
+          request.resource.data.keyEnvelopes.keys().hasAll(
+            get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds
+          ) &&
+          !request.resource.data.keys().hasAny(['text']);
         allow update: if false;
         allow delete: if activeUser() &&
           request.auth.uid == resource.data.senderId &&
