@@ -520,6 +520,9 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          # GitHub-hosted runners can take longer than the action's older 5-minute default
+          # to boot a clean API 34 image. Allow up to 15 minutes before declaring a boot failure.
+          emulator-boot-timeout: 900
           disable-animations: false
           # Resolve the actual launcher component from the installed package instead of
           # assuming Flutter's generated activity name. Keep diagnostics on every failure.
