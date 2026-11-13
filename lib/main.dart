@@ -401,14 +401,64 @@ class SkynestApp extends StatelessWidget {
   );
 }
 
-class StartupGate extends StatelessWidget {
+class StartupGate extends StatefulWidget {
   const StartupGate({super.key, this.enableRemoteImages = true});
 
   final bool enableRemoteImages;
 
   @override
-  Widget build(BuildContext context) =>
-      LoginScreen(enableRemoteImages: enableRemoteImages);
+  State<StartupGate> createState() => _StartupGateState();
+}
+
+class _StartupGateState extends State<StartupGate> {
+  bool _checkingSession = true;
+  Widget? _restoredHome;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreSession();
+  }
+
+  Future<void> _restoreSession() async {
+    try {
+      if (await ensureFirebaseReady()) {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+          if (profile.data()?['status'] == 'active') {
+            _restoredHome = const DashboardScreen();
+          } else if (profile.data()?['status'] == 'pending') {
+            _restoredHome = const PendingApprovalScreen();
+          }
+        }
+      }
+    } catch (error) {
+      debugPrint('Session restore skipped: $error');
+    }
+    if (mounted) setState(() => _checkingSession = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_checkingSession) {
+      return Scaffold(
+        body: Center(child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Icon(Icons.apartment_rounded, size: 52, color: brand),
+            const SizedBox(height: 14),
+            const Text('SkyNest', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 16),
+            const SizedBox(width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 2.5)),
+            const SizedBox(height: 10),
+            Text('Restoring your session…', style: Theme.of(context).textTheme.bodySmall),
+          ],
+        )),
+      );
+    }
+    return _restoredHome ?? LoginScreen(enableRemoteImages: widget.enableRemoteImages);
+  }
 }
 
 class LoginScreen extends StatefulWidget {
