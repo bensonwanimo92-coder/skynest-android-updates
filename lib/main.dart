@@ -2473,10 +2473,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 }
-class PlansScreen extends StatelessWidget {
+class PlansScreen extends StatefulWidget {
   const PlansScreen({super.key});
-  Future<void> addPlan(BuildContext context) async {
+  @override
+  State<PlansScreen> createState() => _PlansScreenState();
+}
+
+class _PlansScreenState extends State<PlansScreen> {
+  String _type(String value) => const {
+    'build': 'New build', 'renovate': 'Renovation',
+    'expand': 'Expansion', 'loanClear': 'Loan clearance',
+  }[value] ?? 'Property project';
+
+  Future<void> _addReminder() async {
     final title = TextEditingController(), note = TextEditingController();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
     await showDialog<void>(context: context, builder: (d) => AlertDialog(
       title: const Text('Add reminder'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -2486,30 +2498,274 @@ class PlansScreen extends StatelessWidget {
       actions: [
         TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
         FilledButton(onPressed: () async {
-          if (title.text.trim().isEmpty) return;
-          await FirebaseFirestore.instance.collection('plans').add({'title': title.text.trim(), 'note': note.text.trim(), 'done': false, 'createdAt': FieldValue.serverTimestamp(), 'createdBy': FirebaseAuth.instance.currentUser?.uid});
-          if (d.mounted) Navigator.pop(d);
+          if (title.text.trim().isEmpty) { snack(d, 'Enter a reminder title.'); return; }
+          try {
+            await FirebaseFirestore.instance.collection('plans').add({
+              'title': title.text.trim(), 'note': note.text.trim(), 'done': false,
+              'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+            });
+            if (d.mounted) Navigator.pop(d);
+          } catch (e) { if (d.mounted) snack(d, 'Could not save reminder: $e'); }
         }, child: const Text('Save')),
       ],
     ));
     title.dispose(); note.dispose();
   }
+
+  Future<void> _addProject() async {
+    final name = TextEditingController(), budget = TextEditingController();
+    final spent = TextEditingController(text: '0'), progress = TextEditingController(text: '0');
+    final materials = TextEditingController(), costs = TextEditingController(), note = TextEditingController();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    DateTime deadline = DateTime.now().add(const Duration(days: 30));
+    String type = 'build';
+    await showDialog<void>(context: context, builder: (d) => StatefulBuilder(
+      builder: (d, refresh) => AlertDialog(
+        title: const Text('New property plan'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: name, decoration: const InputDecoration(labelText: 'Plan name')),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: type, decoration: const InputDecoration(labelText: 'Plan type'),
+            items: const [
+              DropdownMenuItem(value: 'build', child: Text('Build')),
+              DropdownMenuItem(value: 'renovate', child: Text('Renovate')),
+              DropdownMenuItem(value: 'expand', child: Text('Expand')),
+              DropdownMenuItem(value: 'loanClear', child: Text('Clear loan')),
+            ],
+            onChanged: (v) => refresh(() => type = v ?? 'build'),
+          ),
+          const SizedBox(height: 8),
+          TextField(controller: budget, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Budget (KES)')),
+          const SizedBox(height: 8),
+          TextField(controller: spent, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Already spent (KES)')),
+          const SizedBox(height: 8),
+          TextField(controller: progress, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Progress (0–100%)')),
+          const SizedBox(height: 8),
+          TextField(controller: materials, maxLines: 2, decoration: const InputDecoration(labelText: 'Materials (comma separated)')),
+          const SizedBox(height: 8),
+          TextField(controller: costs, maxLines: 3, decoration: const InputDecoration(labelText: 'Cost split, one per line: Cement=50000')),
+          const SizedBox(height: 8),
+          TextField(controller: note, maxLines: 2, decoration: const InputDecoration(labelText: 'Notes')),
+          ListTile(
+            contentPadding: EdgeInsets.zero, leading: const Icon(Icons.event),
+            title: const Text('Deadline'), subtitle: Text(dateFormat.format(deadline)),
+            onTap: () async {
+              final picked = await showDatePicker(context: d, initialDate: deadline,
+                firstDate: DateTime.now(), lastDate: DateTime(2035, 12, 31));
+              if (picked != null) refresh(() => deadline = picked);
+            },
+          ),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
+          FilledButton(onPressed: () async {
+            final b = double.tryParse(budget.text.trim()), s = double.tryParse(spent.text.trim());
+            final p = int.tryParse(progress.text.trim());
+            if (name.text.trim().isEmpty || b == null || b <= 0 || s == null || s < 0 || p == null || p < 0 || p > 100) {
+              snack(d, 'Enter a name, positive budget, non-negative spending and progress from 0 to 100.');
+              return;
+            }
+            final split = <String, double>{};
+            for (final line in costs.text.split('\n')) {
+              if (line.trim().isEmpty) continue;
+              final pair = line.split('=');
+              final amount = pair.length == 2 ? double.tryParse(pair[1].trim()) : null;
+              if (pair.length != 2 || pair[0].trim().isEmpty || amount == null || amount < 0) {
+                snack(d, 'Cost split format must be Category=Amount, with non-negative amounts.');
+                return;
+              }
+              split[pair[0].trim()] = amount;
+            }
+            try {
+              await FirebaseFirestore.instance.collection('plans').add({
+                'title': name.text.trim(), 'note': note.text.trim(), 'done': false,
+                'planType': type, 'budget': b, 'spent': s, 'progress': p,
+                'deadline': Timestamp.fromDate(DateTime(deadline.year, deadline.month, deadline.day)),
+                'materials': materials.text.split(',').map((v) => v.trim()).where((v) => v.isNotEmpty).toList(),
+                'costBreakdown': split, 'isCompleted': false,
+                'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+              });
+              if (d.mounted) Navigator.pop(d);
+              if (mounted) snack(context, 'Property plan saved.');
+            } catch (e) { if (d.mounted) snack(d, 'Could not save plan: $e'); }
+          }, child: const Text('Save plan')),
+        ],
+      ),
+    ));
+    name.dispose(); budget.dispose(); spent.dispose(); progress.dispose();
+    materials.dispose(); costs.dispose(); note.dispose();
+  }
+
+  Future<void> _share(Map<String, dynamic> data) async {
+    final deadline = data['deadline'];
+    final date = deadline is Timestamp ? deadline.toDate() : null;
+    final b = data['budget'], s = data['spent'];
+    final lines = <String>[
+      'SkyNest plan: \${data['title'] ?? 'Property project'}',
+      'Type: \${_type(data['planType']?.toString() ?? '')}',
+      if (b is num) 'Budget: \${currency.format(b)}',
+      if (s is num) 'Spent: \${currency.format(s)}',
+      if (b is num && s is num) 'Remaining: \${currency.format(b - s)}',
+      if (date != null) 'Deadline: \${dateFormat.format(date)}',
+      if ((data['note']?.toString() ?? '').isNotEmpty) 'Notes: \${data['note']}',
+    ];
+    await Clipboard.setData(ClipboardData(text: lines.join('\n')));
+    if (mounted) snack(context, 'Plan details copied. Paste them into a message to share.');
+  }
+
+  Future<void> _loanEstimate(double remaining) async {
+    final rate = TextEditingController(text: '12');
+    await showDialog<void>(context: context, builder: (d) => AlertDialog(
+      title: const Text('Simple loan estimate'),
+      content: TextField(controller: rate, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(labelText: 'Interest rate (%)')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
+        FilledButton(onPressed: () {
+          final r = double.tryParse(rate.text.trim());
+          if (r == null || r < 0) { snack(d, 'Enter a non-negative interest rate.'); return; }
+          Navigator.pop(d);
+          snack(context, 'Simple one-year estimate: \${currency.format(remaining * (1 + r / 100))}. Not a lender quote or monthly repayment schedule.');
+        }, child: const Text('Calculate')),
+      ],
+    ));
+    rate.dispose();
+  }
+
+  Future<void> _complete(DocumentReference<Map<String, dynamic>> ref, bool value) async {
+    try { await ref.update({'isCompleted': value, 'done': value}); }
+    catch (e) { if (mounted) snack(context, 'Could not update plan: $e'); }
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Plans and reminders')),
-    floatingActionButton: FloatingActionButton(onPressed: () => addPlan(context), child: const Icon(Icons.add)),
-    body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('plans').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
-      builder: (context, s) {
-        if (s.hasError) return errorView('Plans could not load: ' + s.error.toString());
-        if (!s.hasData) return const Center(child: CircularProgressIndicator());
-        if (s.data!.docs.isEmpty) return const EmptyView('No reminders yet. Tap + to add one.');
-        return ListView(children: s.data!.docs.map((doc) {
-          final d = doc.data();
-          return CheckboxListTile(value: d['done'] == true, title: Text(d['title']?.toString() ?? ''), subtitle: Text(d['note']?.toString() ?? ''), onChanged: (v) => doc.reference.update({'done': v == true}));
-        }).toList());
-      },
-    ),
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Scaffold(body: EmptyView('Please sign in to view your plans.'));
+    return Scaffold(
+      appBar: AppBar(title: const Text('Plans and reminders'), actions: [
+        IconButton(tooltip: 'Add reminder', onPressed: _addReminder, icon: const Icon(Icons.notifications_active_outlined)),
+      ]),
+      floatingActionButton: FloatingActionButton.extended(onPressed: _addProject,
+        icon: const Icon(Icons.add), label: const Text('New plan')),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance.collection('plans').where('createdBy', isEqualTo: user.uid).snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) return errorView('Plans could not load: \${snapshot.error}');
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          final docs = snapshot.data!.docs.toList()..sort((a, b) {
+            final ad = a.data()['deadline'], bd = b.data()['deadline'];
+            return (ad is Timestamp ? ad.toDate() : DateTime(9999))
+              .compareTo(bd is Timestamp ? bd.toDate() : DateTime(9999));
+          });
+          if (docs.isEmpty) return const EmptyView('No plans or reminders yet. Tap New plan to begin.');
+          final projects = docs.where((d) => d.data()['planType'] != null).toList();
+          final totalBudget = projects.fold<double>(0, (v, d) => v + (d.data()['budget'] is num ? (d.data()['budget'] as num).toDouble() : 0));
+          final totalSpent = projects.fold<double>(0, (v, d) => v + (d.data()['spent'] is num ? (d.data()['spent'] as num).toDouble() : 0));
+          final active = projects.where((d) => d.data()['isCompleted'] != true).length;
+          return ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 96), children: [
+            if (projects.isNotEmpty) Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Project overview', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: _metric('Active plans', '$active')),
+                  Expanded(child: _metric('Total budget', currency.format(totalBudget))),
+                  Expanded(child: _metric('Spent', currency.format(totalSpent))),
+                ]),
+                const SizedBox(height: 8),
+                LinearProgressIndicator(value: totalBudget <= 0 ? 0 : (totalSpent / totalBudget).clamp(0.0, 1.0)),
+                Align(alignment: Alignment.centerRight, child: Text('Remaining: \${currency.format(totalBudget - totalSpent)}')),
+              ],
+            ))),
+            if (projects.isNotEmpty) const Padding(padding: EdgeInsets.fromLTRB(4, 14, 4, 6),
+              child: Text('Property projects', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+            ...docs.map((doc) {
+              final d = doc.data();
+              if (d['planType'] == null) return Card(child: CheckboxListTile(
+                value: d['done'] == true, title: Text(d['title']?.toString() ?? 'Reminder'),
+                subtitle: Text(d['note']?.toString() ?? ''),
+                onChanged: (v) async {
+                  try { await doc.reference.update({'done': v == true}); }
+                  catch (e) { if (mounted) snack(context, 'Could not update reminder: $e'); }
+                },
+              ));
+              final type = d['planType']?.toString() ?? 'build';
+              final budget = d['budget'] is num ? (d['budget'] as num).toDouble() : 0.0;
+              final spent = d['spent'] is num ? (d['spent'] as num).toDouble() : 0.0;
+              final remaining = budget - spent;
+              final progress = d['progress'] is num ? (d['progress'] as num).toInt().clamp(0, 100) : 0;
+              final deadlineValue = d['deadline'];
+              final deadline = deadlineValue is Timestamp ? deadlineValue.toDate() : null;
+              final days = deadline?.difference(DateTime.now()).inDays;
+              final complete = d['isCompleted'] == true;
+              final rawMaterials = d['materials'];
+              final materials = rawMaterials is List ? rawMaterials.map((v) => v.toString()).toList() : <String>[];
+              final rawSplit = d['costBreakdown'];
+              final split = rawSplit is Map ? rawSplit : <String, dynamic>{};
+              final color = type == 'renovate' ? Colors.teal : type == 'expand' ? Colors.indigo : type == 'loanClear' ? Colors.deepPurple : Colors.orange;
+              return Card(margin: const EdgeInsets.only(bottom: 12), clipBehavior: Clip.antiAlias,
+                child: ExpansionTile(
+                  leading: CircleAvatar(backgroundColor: color.withOpacity(0.14),
+                    child: Icon(Icons.home_work_outlined, color: color)),
+                  title: Text(d['title']?.toString() ?? 'Property plan', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(_type(type) + (deadline == null ? '' : ' • ' + dateFormat.format(deadline))),
+                  trailing: Icon(complete ? Icons.check_circle : Icons.expand_more, color: complete ? Colors.green : color),
+                  childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                  children: [
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Progress'), Text('$progress%')]),
+                    LinearProgressIndicator(value: progress / 100, color: color),
+                    const SizedBox(height: 10),
+                    _moneyRow('Budget', budget),
+                    _moneyRow('Spent', spent),
+                    _moneyRow('Remaining', remaining, color: remaining < 0 ? Colors.red : Colors.green),
+                    if (days != null) Padding(padding: const EdgeInsets.only(top: 8),
+                      child: Text(days < 0 ? '\${-days} days overdue' : '$days days left',
+                        style: TextStyle(color: days < 0 ? Colors.red : null))),
+                    if (materials.isNotEmpty) ...[
+                      const Align(alignment: Alignment.centerLeft, child: Padding(padding: EdgeInsets.only(top: 10),
+                        child: Text('Materials', style: TextStyle(fontWeight: FontWeight.w600)))),
+                      Wrap(spacing: 4, children: materials.map((v) => Chip(label: Text(v))).toList()),
+                    ],
+                    if (split.isNotEmpty) ...[
+                      const Align(alignment: Alignment.centerLeft, child: Padding(padding: EdgeInsets.only(top: 8),
+                        child: Text('Cost breakdown', style: TextStyle(fontWeight: FontWeight.w600)))),
+                      ...split.entries.map((entry) => _moneyRow(entry.key.toString(), entry.value is num ? (entry.value as num).toDouble() : 0)),
+                    ],
+                    if ((d['note']?.toString() ?? '').isNotEmpty) Align(alignment: Alignment.centerLeft,
+                      child: Padding(padding: const EdgeInsets.only(top: 8), child: Text(d['note'].toString()))),
+                    const Divider(height: 22),
+                    Wrap(spacing: 6, children: [
+                      TextButton.icon(onPressed: remaining > 0 ? () => _loanEstimate(remaining) : null,
+                        icon: const Icon(Icons.calculate_outlined), label: const Text('Loan estimate')),
+                      TextButton.icon(onPressed: () => _share(d),
+                        icon: const Icon(Icons.share_outlined), label: const Text('Copy / share')),
+                      TextButton.icon(onPressed: () => _complete(doc.reference, !complete),
+                        icon: Icon(complete ? Icons.undo : Icons.check_circle_outline),
+                        label: Text(complete ? 'Reopen' : 'Complete')),
+                    ]),
+                  ],
+                ),
+              );
+            }),
+          ]);
+        },
+      ),
+    );
+  }
+
+  Widget _metric(String label, String value) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Text(value, maxLines: 2, overflow: TextOverflow.ellipsis,
+      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+    Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+  ]);
+
+  Widget _moneyRow(String label, double value, [Color? color]) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Text(label), Text(currency.format(value), style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+    ]),
   );
 }
 
