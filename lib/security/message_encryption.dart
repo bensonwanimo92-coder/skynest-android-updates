@@ -15,10 +15,10 @@ class SkyNestMessageEncryption {
   SkyNestMessageEncryption._();
 
   static final SkyNestMessageEncryption instance = SkyNestMessageEncryption._();
-  static const FlutterSecureStorage _storage = FlutterSecureStorage();
-  static const X25519 _x25519 = X25519();
-  static const AesGcm _aes = AesGcm.with256bits();
-  static const Hkdf _hkdf = Hkdf(hmac: Hmac.sha256(), outputLength: 32);
+  static final FlutterSecureStorage _storage = FlutterSecureStorage();
+  static final X25519 _x25519 = X25519();
+  static final AesGcm _aes = AesGcm.with256bits();
+  static final Hkdf _hkdf = Hkdf(hmac: Hmac.sha256(), outputLength: 32);
 
   String _privateStorageKey(String uid) => 'skynest_e2ee_x25519_private_$uid';
   String _publicStorageKey(String uid) => 'skynest_e2ee_x25519_public_$uid';
