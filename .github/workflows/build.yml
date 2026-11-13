@@ -43,6 +43,26 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
+          roots = [Path("android/app/src/main/kotlin"), Path("android/app/src/main/java")]
+          files = [p for root in roots if root.exists() for p in root.rglob("MainActivity.kt")]
+          if len(files) != 1:
+              raise SystemExit(f"Expected one generated MainActivity.kt, found {len(files)}")
+          p = files[0]
+          source = p.read_text()
+          source = source.replace("import io.flutter.embedding.android.FlutterActivity",
+                                  "import io.flutter.embedding.android.FlutterFragmentActivity")
+          source = source.replace("class MainActivity: FlutterActivity()",
+                                  "class MainActivity: FlutterFragmentActivity()")
+          source = source.replace("class MainActivity : FlutterActivity()",
+                                  "class MainActivity : FlutterFragmentActivity()")
+          if "FlutterFragmentActivity" not in source:
+              raise SystemExit("Could not configure MainActivity for Android biometric prompt.")
+          p.write_text(source)
+          print("Configured FlutterFragmentActivity for local biometric authentication.")
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
           p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text()
           permission = '    <uses-permission android:name="android.permission.INTERNET"/>'
@@ -90,6 +110,7 @@ jobs:
           ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
           permissions = [
               "android.permission.INTERNET",
+              "android.permission.USE_BIOMETRIC",
               "android.permission.CAMERA",
               "android.permission.RECORD_AUDIO",
               "android.permission.ACCESS_NETWORK_STATE",
