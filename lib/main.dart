@@ -1939,12 +1939,25 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   double get exchange => value(exchangeRate) <= 0 ? 130 : value(exchangeRate);
 
   double? parseQuickExpression(String input) {
-    final match = RegExp(r'^\\s*(\\d+(?:\\.\\d+)?)\\s*([kK]?)\\s*(?:\\+|plus)\\s*(\\d+(?:\\.\\d+)?)\\s*([kK]?)\\s*
+    final pattern = RegExp(r'^[ ]*(\d+(?:[.]\d+)?)[ ]*([kK]?)[ ]*(?:[+]|plus)[ ]*(\d+(?:[.]\d+)?)[ ]*([kK]?)[ ]*$', caseSensitive: false);
+    final match = pattern.firstMatch(input.trim());
+    if (match == null) return null;
+    final first = double.tryParse(match.group(1)!);
+    final second = double.tryParse(match.group(3)!);
+    if (first == null || second == null) return null;
+    final a = first * (match.group(2)!.isEmpty ? 1 : 1000);
+    final b = second * (match.group(4)!.isEmpty ? 1 : 1000);
+    final result = a + b;
+    return result.isFinite ? result : null;
+  }
+
+  @override
+  void dispose() {
+    for (final c in [rent, rentIncome, quickEntry, deposit, arrears, expenses, loan, annualRate, loanMonths, materials, contributors, secondHouseRent, exchangeRate, note]) {
       c.dispose();
     }
     super.dispose();
   }
-
   Widget field(String label, TextEditingController controller, {String? suffix}) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
     child: TextField(
