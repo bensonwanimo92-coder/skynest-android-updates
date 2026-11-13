@@ -1264,10 +1264,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           final item = filteredItems[index];
                           final scheme = Theme.of(context).colorScheme;
                           final tint = Color.lerp(item.color, scheme.surface, 0.84)!;
-                          return Card(
+                          var hovered = false;
+                          return StatefulBuilder(
+                            builder: (context, setTileState) => MouseRegion(
+                              onEnter: (_) => setTileState(() => hovered = true),
+                              onExit: (_) => setTileState(() => hovered = false),
+                              child: AnimatedScale(
+                                scale: hovered ? 1.035 : 1.0,
+                                duration: const Duration(milliseconds: 170),
+                                curve: Curves.easeOutBack,
+                                child: Card(
                             color: tint,
-                            elevation: 3,
-                            shadowColor: item.color.withOpacity(0.22),
+                            elevation: hovered ? 7 : 3,
+                            shadowColor: item.color.withOpacity(0.30),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(23),
                             ),
@@ -1338,6 +1347,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ),
                                   ),
                                 ],
+                              ),
+                                ),
                               ),
                             ),
                           );
@@ -3372,7 +3383,16 @@ class _ThemesScreenState extends State<ThemesScreen> {
                     Expanded(
                       child: Container(
                         decoration: BoxDecoration(gradient: LinearGradient(colors: [option.primary, option.secondary], begin: Alignment.topLeft, end: Alignment.bottomRight)),
-                        child: Stack(children: [
+                        child: Stack(fit: StackFit.expand, children: [
+                          Image.network(_menuImageFor(option.name), fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => DecoratedBox(decoration: BoxDecoration(
+                              gradient: LinearGradient(colors: [option.primary, option.secondary], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                            )),
+                          ),
+                          const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+                            begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                            colors: [Color(0x22000000), Color(0x99000000)],
+                          ))),
                           Positioned(right: 12, top: 10, child: Icon(option.icon, size: 40, color: Colors.white.withOpacity(0.28))),
                           Positioned(left: 12, bottom: 8, child: Icon(Icons.apartment_rounded, size: 56, color: Colors.white.withOpacity(0.88))),
                           if (selected) const Positioned(right: 9, bottom: 9, child: Icon(Icons.check_circle, color: Colors.white, size: 23)),
@@ -4410,7 +4430,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
               final doc = snap.data!.docs[index];
               final data = doc.data();
               final mine = data['senderId'] == uid;
-              return Align(
+              return TweenAnimationBuilder<double>(
+                key: ValueKey<String>(doc.id),
+                tween: Tween<double>(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOutCubic,
+                builder: (context, value, child) => Opacity(
+                  opacity: value,
+                  child: Transform.translate(offset: Offset(mine ? (1 - value) * 12 : (value - 1) * 12, (1 - value) * 5), child: child),
+                ),
+                child: Align(
                 alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
@@ -4439,6 +4468,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                       ]),
                     ),
                   ),
+                ),
                 ),
               );
             },
@@ -5250,7 +5280,17 @@ Future<void> recordActivity(String landlordId, String action) async {
 
 Future<void> confirmDelete(BuildContext context, String prompt, Future<void> Function() action) async {
   final yes = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
-    title: const Text('Please confirm'), content: Text(prompt),
+    title: Row(children: [
+      TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0.65, end: 1),
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.elasticOut,
+        builder: (_, scale, child) => Transform.scale(scale: scale, child: child),
+        child: const Icon(Icons.delete_sweep_rounded, color: Colors.deepOrange),
+      ),
+      const SizedBox(width: 10),
+      const Expanded(child: Text('Please confirm')),
+    ]), content: Text(prompt),
     actions: [
       TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
       FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Confirm')),
