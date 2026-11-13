@@ -264,24 +264,6 @@ class _SkynestRouteObserver extends NavigatorObserver {
   }
 }
 
-String _screenBackdropFor(String screen) {
-  final key = screen.toLowerCase();
-  if (key.contains('tenant') || key.contains('people') || key.contains('approval')) {
-    return 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=1600&q=88';
-  }
-  if (key.contains('payment') || key.contains('rent') || key.contains('pay') || key.contains('calculator')) {
-    return 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1600&q=88';
-  }
-  if (key.contains('house') || key.contains('property') || key.contains('vacant')) {
-    return 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1600&q=88';
-  }
-  if (key.contains('complaint') || key.contains('support') || key.contains('request') ||
-      key.contains('group') || key.contains('notice') || key.contains('technology')) {
-    return 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=1600&q=88';
-  }
-  return 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1600&q=88';
-}
-
 List<String> _backdropImagesFor(String screen, String themeName) {
   final key = (screen + ' ' + themeName).toLowerCase();
   if (key.contains('tenant') || key.contains('people') || key.contains('approval')) {
