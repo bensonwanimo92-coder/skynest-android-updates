@@ -100,6 +100,20 @@ jobs:
           print("WorkManager initializer removal directive configured.")
           PY
 
+      - name: Add Google Mobile Ads application ID
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          content = p.read_text()
+          meta = '        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-1281241380359357~6894041283"/>'
+          if "com.google.android.gms.ads.APPLICATION_ID" not in content:
+              content = content.replace("</application>", meta + "\\n    </application>")
+          p.write_text(content)
+          print("Google Mobile Ads application ID configured.")
+          PY
+
       - name: Install Android SDK 35
         run: |
           set -euo pipefail
