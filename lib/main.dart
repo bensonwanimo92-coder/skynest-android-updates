@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'dart:math';
 import 'package:table_calendar/table_calendar.dart';
 
@@ -2964,20 +2966,281 @@ class ThemesScreen extends StatelessWidget {
     );
   }
 }
-class PamphletsScreen extends StatelessWidget {
+class PamphletsScreen extends StatefulWidget {
   const PamphletsScreen({super.key});
   @override
+  State<PamphletsScreen> createState() => _PamphletsScreenState();
+}
+
+class _PamphletsScreenState extends State<PamphletsScreen> {
+  final Set<String> selectedIds = <String>{};
+  String typeFilter = 'all';
+
+  String _typeLabel(String value) {
+    switch (value) {
+      case 'rentNotice': return 'Rent notice';
+      case 'eviction': return 'Tenancy notice';
+      case 'appreciation': return 'Appreciation';
+      case 'rules': return 'House rules';
+      default: return 'Other';
+    }
+  }
+
+  Color _typeColor(String value) {
+    switch (value) {
+      case 'rentNotice': return Colors.red;
+      case 'eviction': return Colors.deepOrange;
+      case 'appreciation': return Colors.green;
+      case 'rules': return Colors.blue;
+      default: return Colors.blueGrey;
+    }
+  }
+
+  Future<void> _createPamphlet() async {
+    final title = TextEditingController();
+    final message = TextEditingController();
+    final swahili = TextEditingController();
+    final copies = TextEditingController(text: '1');
+    final formKey = GlobalKey<FormState>();
+    String type = 'rentNotice';
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: const Text('Create pamphlet'),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextFormField(controller: title, decoration: const InputDecoration(labelText: 'Title'), validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter a title' : null),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                value: type,
+                decoration: const InputDecoration(labelText: 'Pamphlet type'),
+                items: const [
+                  DropdownMenuItem(value: 'rentNotice', child: Text('Rent notice')),
+                  DropdownMenuItem(value: 'eviction', child: Text('Tenancy notice')),
+                  DropdownMenuItem(value: 'appreciation', child: Text('Appreciation')),
+                  DropdownMenuItem(value: 'rules', child: Text('House rules')),
+                ],
+                onChanged: (v) => refresh(() => type = v ?? 'rentNotice'),
+              ),
+              const SizedBox(height: 10),
+              TextFormField(controller: message, minLines: 3, maxLines: 5, decoration: const InputDecoration(labelText: 'Message (English)'), validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter the message' : null),
+              const SizedBox(height: 10),
+              TextFormField(controller: swahili, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Swahili version (optional)')),
+              const SizedBox(height: 10),
+              TextFormField(controller: copies, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Number of copies'), validator: (v) {
+                final n = int.tryParse((v ?? '').trim());
+                return n == null || n < 1 || n > 500 ? 'Enter 1–500 copies' : null;
+              }),
+            ])),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(onPressed: () {
+              if (!formKey.currentState!.validate()) return;
+              Navigator.pop(dialogContext, {
+                'title': title.text.trim(), 'type': type, 'message': message.text.trim(),
+                'swahiliMessage': swahili.text.trim(), 'copies': int.parse(copies.text.trim()),
+              });
+            }, child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+    title.dispose(); message.dispose(); swahili.dispose(); copies.dispose();
+    if (result == null || !mounted) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) { snack(context, 'Sign in to save pamphlets.'); return; }
+    try {
+      await FirebaseFirestore.instance.collection('pamphlets').add({
+        ...result, 'landlordId': user.uid, 'createdBy': user.uid,
+        'createdAt': FieldValue.serverTimestamp(), 'isPrinted': false,
+      });
+      if (mounted) snack(context, 'Pamphlet saved.');
+    } catch (e) {
+      if (mounted) snack(context, 'Could not save pamphlet: ' + e.toString());
+    }
+  }
+
+  pw.Document _buildPdf(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    final pdf = pw.Document();
+    for (final doc in docs) {
+      final data = doc.data();
+      final copies = ((data['copies'] is num ? (data['copies'] as num).toInt() : 1)).clamp(1, 500);
+      for (var copy = 0; copy < copies; copy++) {
+        pdf.addPage(pw.Page(
+          margin: const pw.EdgeInsets.all(42),
+          build: (context) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: [
+              pw.Text('SKYNEST', textAlign: pw.TextAlign.center, style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, letterSpacing: 2)),
+              pw.SizedBox(height: 24),
+              pw.Text(data['title']?.toString() ?? 'Property notice', textAlign: pw.TextAlign.center, style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 8),
+              pw.Text(_typeLabel(data['type']?.toString() ?? ''), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 10)),
+              pw.Divider(),
+              pw.SizedBox(height: 18),
+              pw.Text(data['message']?.toString() ?? '', style: const pw.TextStyle(fontSize: 13, lineSpacing: 5)),
+              if ((data['swahiliMessage']?.toString() ?? '').trim().isNotEmpty) ...[
+                pw.SizedBox(height: 18),
+                pw.Text('Kiswahili', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                pw.SizedBox(height: 5),
+                pw.Text(data['swahiliMessage'].toString(), style: const pw.TextStyle(fontSize: 12, lineSpacing: 4)),
+              ],
+              pw.Spacer(),
+              pw.Divider(),
+              pw.Text('Issued ' + DateFormat('dd MMM yyyy').format(DateTime.now()), textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 9)),
+            ],
+          ),
+        ));
+      }
+    }
+    return pdf;
+  }
+
+  Future<void> _printDocs(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
+    if (docs.isEmpty) return;
+    try {
+      final pdf = _buildPdf(docs);
+      final printed = await Printing.layoutPdf(onLayout: (_) => pdf.save(), name: 'SkyNest_Pamphlets.pdf');
+      if (printed) {
+        final batch = FirebaseFirestore.instance.batch();
+        for (final doc in docs) {
+          batch.update(doc.reference, {'isPrinted': true, 'printedAt': FieldValue.serverTimestamp()});
+        }
+        await batch.commit();
+        if (mounted) snack(context, 'Print job sent for ' + docs.length.toString() + ' pamphlet(s).');
+      }
+    } catch (e) {
+      if (mounted) snack(context, 'Printing failed: ' + e.toString());
+    }
+  }
+
+  Future<void> _shareDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    try {
+      final pdf = _buildPdf([doc]);
+      await Printing.sharePdf(bytes: await pdf.save(), filename: 'SkyNest_Pamphlet.pdf');
+    } catch (e) {
+      if (mounted) snack(context, 'Could not share pamphlet: ' + e.toString());
+    }
+  }
+
+  Future<void> _deleteDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete pamphlet?'),
+        content: Text('Delete "' + (doc.data()['title']?.toString() ?? 'this pamphlet') + '"? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await doc.reference.delete();
+      if (mounted) setState(() => selectedIds.remove(doc.id));
+    } catch (e) {
+      if (mounted) snack(context, 'Could not delete pamphlet: ' + e.toString());
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final items = <(String, String)>[
-      ('Being a responsible landlord', 'Keep clear rent records, respond to maintenance requests, communicate respectfully, and follow the written tenancy agreement and applicable Kenyan law.'),
-      ('Tenant responsibilities', 'Pay rent as agreed, take reasonable care of the property, report repair issues promptly, and keep copies of important communications and receipts.'),
-      ('Keeping payment records', 'Record the amount, date, tenant, house number and payment reference. Confirm money has reached the correct account before marking a payment as received.'),
-      ('Planning property maintenance', 'Inspect shared facilities regularly, keep a maintenance log, prioritise urgent safety repairs, and inform tenants about planned work.'),
-    ];
-    return Scaffold(appBar: AppBar(title: const Text('Pamphlets and guidance')), body: ListView(children: items.map((x) => Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: ExpansionTile(leading: const Icon(Icons.menu_book_outlined), title: Text(x.$1), children: [Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 18), child: Text(x.$2))]),
-    )).toList()));
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return Scaffold(appBar: AppBar(title: const Text('Pamphlets')), body: const EmptyView('Sign in to manage pamphlets.'));
+    final stream = FirebaseFirestore.instance.collection('pamphlets').where('landlordId', isEqualTo: user.uid).snapshots();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pamphlets')),
+      floatingActionButton: FloatingActionButton.extended(onPressed: _createPamphlet, icon: const Icon(Icons.add), label: const Text('New pamphlet')),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: stream,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) return errorView('Pamphlets could not load: ' + snapshot.error.toString());
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          final docs = snapshot.data!.docs.toList()..sort((a, b) {
+            final ad = a.data()['createdAt']; final bd = b.data()['createdAt'];
+            final at = ad is Timestamp ? ad.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
+            final bt = bd is Timestamp ? bd.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
+            return bt.compareTo(at);
+          });
+          final filtered = docs.where((doc) => typeFilter == 'all' || doc.data()['type'] == typeFilter).toList();
+          final selectedDocs = filtered.where((doc) => selectedIds.contains(doc.id)).toList();
+          return Column(children: [
+            Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4), child: Row(children: [
+              Expanded(child: Text(docs.length.toString() + ' saved pamphlet(s)', style: const TextStyle(fontWeight: FontWeight.w700))),
+              DropdownButton<String>(
+                value: typeFilter,
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('All types')),
+                  DropdownMenuItem(value: 'rentNotice', child: Text('Rent notice')),
+                  DropdownMenuItem(value: 'eviction', child: Text('Tenancy')),
+                  DropdownMenuItem(value: 'appreciation', child: Text('Appreciation')),
+                  DropdownMenuItem(value: 'rules', child: Text('House rules')),
+                ],
+                onChanged: (v) => setState(() { typeFilter = v ?? 'all'; selectedIds.clear(); }),
+              ),
+            ])),
+            if (filtered.isNotEmpty) Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(children: [
+                TextButton.icon(
+                  onPressed: () => setState(() {
+                    if (selectedIds.length == filtered.length) { selectedIds.clear(); }
+                    else { selectedIds..clear()..addAll(filtered.map((d) => d.id)); }
+                  }),
+                  icon: const Icon(Icons.checklist),
+                  label: Text(selectedIds.length == filtered.length ? 'Clear selection' : 'Select all'),
+                ),
+                const Spacer(),
+                FilledButton.tonalIcon(onPressed: selectedDocs.isEmpty ? null : () => _printDocs(selectedDocs), icon: const Icon(Icons.print), label: Text('Print (' + selectedDocs.length.toString() + ')')),
+              ]),
+            ),
+            Expanded(child: filtered.isEmpty
+              ? const EmptyView('No pamphlets yet. Create your first notice or guidance sheet.')
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 90),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final doc = filtered[index]; final data = doc.data();
+                    final type = data['type']?.toString() ?? '';
+                    final printed = data['isPrinted'] == true;
+                    final copies = data['copies'] is num ? (data['copies'] as num).toInt() : 1;
+                    final date = data['createdAt'] is Timestamp ? dateFormat.format((data['createdAt'] as Timestamp).toDate()) : 'Just created';
+                    return Card(margin: const EdgeInsets.only(bottom: 10), child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Checkbox(value: selectedIds.contains(doc.id), onChanged: (v) => setState(() { if (v == true) selectedIds.add(doc.id); else selectedIds.remove(doc.id); })),
+                        Container(width: 4, height: 112, decoration: BoxDecoration(color: _typeColor(type), borderRadius: BorderRadius.circular(4))),
+                        const SizedBox(width: 10),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            Expanded(child: Text(data['title']?.toString() ?? 'Untitled', style: const TextStyle(fontWeight: FontWeight.bold))),
+                            Chip(visualDensity: VisualDensity.compact, label: Text(printed ? 'Printed' : 'Draft', style: const TextStyle(fontSize: 10)), backgroundColor: printed ? Colors.green.shade100 : Colors.orange.shade100),
+                          ]),
+                          Text(_typeLabel(type), style: TextStyle(color: _typeColor(type), fontSize: 11, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 4),
+                          Text(data['message']?.toString() ?? '', maxLines: 2, overflow: TextOverflow.ellipsis),
+                          if ((data['swahiliMessage']?.toString() ?? '').isNotEmpty)
+                            Text(data['swahiliMessage'].toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey, fontSize: 12)),
+                          const SizedBox(height: 4),
+                          Text(copies.toString() + ' copies • ' + date, style: Theme.of(context).textTheme.bodySmall),
+                          Row(children: [
+                            IconButton(tooltip: 'Print', onPressed: () => _printDocs([doc]), icon: const Icon(Icons.print, size: 19)),
+                            IconButton(tooltip: 'Share PDF', onPressed: () => _shareDoc(doc), icon: const Icon(Icons.share, size: 19)),
+                            IconButton(tooltip: 'Delete', onPressed: () => _deleteDoc(doc), icon: const Icon(Icons.delete_outline, size: 19)),
+                          ]),
+                        ])),
+                      ]),
+                    ));
+                  },
+                )),
+          ]);
+        },
+      ),
+    );
   }
 }
 
