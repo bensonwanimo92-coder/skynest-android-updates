@@ -150,6 +150,9 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
   bool _cameraOff = false;
   bool _speakerOn = true;
   bool _ending = false;
+  bool _released = false;
+  bool _renderersInitialized = false;
+  final List<RTCIceCandidate> _pendingCandidates = <RTCIceCandidate>[];
   String _status = 'Connecting…';
   String _peerName = 'SkyNest member';
   bool _isVideo = false;
@@ -184,6 +187,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
     try {
       await _localRenderer.initialize();
       await _remoteRenderer.initialize();
+      _renderersInitialized = true;
       final callRef = FirebaseFirestore.instance.collection('calls').doc(widget.callId);
       final callSnapshot = await callRef.get();
       final data = callSnapshot.data();
@@ -248,11 +252,12 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
           if (candidate == null ||
               candidate['senderId'] == FirebaseAuth.instance.currentUser?.uid) continue;
           final rawIndex = candidate['sdpMLineIndex'];
-          _peer?.addCandidate(RTCIceCandidate(
+          final remoteCandidate = RTCIceCandidate(
             candidate['candidate']?.toString(),
             candidate['sdpMid']?.toString(),
             rawIndex is num ? rawIndex.toInt() : null,
-          ));
+          );
+          _addRemoteCandidate(remoteCandidate);
         }
       });
 
@@ -316,6 +321,23 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
     }
   }
 
+  Future<void> _addRemoteCandidate(RTCIceCandidate candidate) async {
+    final remoteDescription = await _peer?.getRemoteDescription();
+    if (remoteDescription == null) {
+      _pendingCandidates.add(candidate);
+      return;
+    }
+    await _peer?.addCandidate(candidate);
+  }
+
+  Future<void> _flushPendingCandidates() async {
+    final pending = List<RTCIceCandidate>.from(_pendingCandidates);
+    _pendingCandidates.clear();
+    for (final candidate in pending) {
+      await _peer?.addCandidate(candidate);
+    }
+  }
+
   Future<void> _endCall() async {
     if (_ending) return;
     _ending = true;
@@ -333,6 +355,8 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
   }
 
   Future<void> _releaseMedia() async {
+    if (_released) return;
+    _released = true;
     await _callSub?.cancel();
     await _candidateSub?.cancel();
     for (final track in _localStream?.getTracks() ?? <MediaStreamTrack>[]) {
@@ -341,24 +365,18 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
     await _localStream?.dispose();
     await _peer?.close();
     await _peer?.dispose();
-    _localRenderer.srcObject = null;
-    _remoteRenderer.srcObject = null;
-    await _localRenderer.dispose();
-    await _remoteRenderer.dispose();
+    if (_renderersInitialized) {
+      _localRenderer.srcObject = null;
+      _remoteRenderer.srcObject = null;
+      await _localRenderer.dispose();
+      await _remoteRenderer.dispose();
+      _renderersInitialized = false;
+    }
   }
 
   @override
   void dispose() {
-    _callSub?.cancel();
-    _candidateSub?.cancel();
-    for (final track in _localStream?.getTracks() ?? <MediaStreamTrack>[]) {
-      track.stop();
-    }
-    _localStream?.dispose();
-    _peer?.close();
-    _peer?.dispose();
-    _localRenderer.dispose();
-    _remoteRenderer.dispose();
+    unawaited(_releaseMedia());
     super.dispose();
   }
 
