@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
@@ -68,6 +69,8 @@ final dateFormat = DateFormat('dd MMM yyyy');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Opt into Android edge-to-edge so app surfaces can draw behind transparent system bars.
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   // Render Flutter immediately. Firebase is initialized only when the user
   // requests authentication, so Firebase startup cannot block the login screen.
   FlutterError.onError = (details) {
@@ -180,7 +183,23 @@ class SkynestApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: themeManager,
-    builder: (_, __) => MaterialApp(title: 'SkyNest', scaffoldMessengerKey: _rootScaffoldMessengerKey, debugShowCheckedModeBanner: false, theme: themeManager.value, home: const StartupGate()),
+    builder: (_, __) {
+      final isDark = themeManager.value.brightness == Brightness.dark;
+      SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      ));
+      return MaterialApp(
+        title: 'SkyNest',
+        scaffoldMessengerKey: _rootScaffoldMessengerKey,
+        debugShowCheckedModeBanner: false,
+        theme: themeManager.value,
+        home: const StartupGate(),
+      );
+    },
   );
 }
 
@@ -461,10 +480,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(28),
-                            gradient: const LinearGradient(
+                            image: const DecorationImage(
+                              image: NetworkImage('https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1200&q=90'),
+                              fit: BoxFit.cover,
+                            ),
+                            gradient: LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
-                              colors: [Color(0xFF174D83), Color(0xFF2476C8)],
+                              colors: [const Color(0xFF10365F).withOpacity(0.86), const Color(0xFF2476C8).withOpacity(0.70)],
                             ),
                             boxShadow: [
                               BoxShadow(
@@ -649,6 +672,17 @@ class _LoginScreenState extends State<LoginScreen> {
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Color(0xFF8A97A9), fontSize: 11),
                         ),
+                        const SizedBox(height: 18),
+                        const Text(
+                          'Developed by Benson',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Color(0xFF174D83),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.7,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -673,6 +707,56 @@ const List<String> _skynestPropertyPhotos = [
   'https://images.unsplash.com/photo-1600585154526-990dced4db0d?w=1000&q=85',
   'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=1000&q=85',
 ];
+
+String _menuImageFor(String title) {
+  final key = title.toLowerCase();
+  if (key.contains('house') || key.contains('vacant')) {
+    return 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1000&q=88';
+  }
+  if (key.contains('tenant') || key.contains('people') || key.contains('approval')) {
+    return 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=1000&q=88';
+  }
+  if (key.contains('payment') || key.contains('rent') || key.contains('pay')) {
+    return 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1000&q=88';
+  }
+  if (key.contains('caretaker') || key.contains('invitation')) {
+    return 'https://images.unsplash.com/photo-1521791136064-7986c2920216?w=1000&q=88';
+  }
+  if (key.contains('complaint') || key.contains('support') || key.contains('request')) {
+    return 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1000&q=88';
+  }
+  if (key.contains('group')) {
+    return 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1000&q=88';
+  }
+  if (key.contains('notice')) {
+    return 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=1000&q=88';
+  }
+  if (key.contains('electric')) {
+    return 'https://images.unsplash.com/photo-1473341304170-971813c3e7b8?w=1000&q=88';
+  }
+  if (key.contains('activity') || key.contains('plan')) {
+    return 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1000&q=88';
+  }
+  if (key.contains('calculator')) {
+    return 'https://images.unsplash.com/photo-1554224154-22dec7ec8818?w=1000&q=88';
+  }
+  if (key.contains('calendar')) {
+    return 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?w=1000&q=88';
+  }
+  if (key.contains('achievement')) {
+    return 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1000&q=88';
+  }
+  if (key.contains('pamphlet') || key.contains('book')) {
+    return 'https://images.unsplash.com/photo-1455390582262-044cdead277a?w=1000&q=88';
+  }
+  if (key.contains('theme')) {
+    return 'https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?w=1000&q=88';
+  }
+  if (key.contains('premium')) {
+    return 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?w=1000&q=88';
+  }
+  return _skynestPropertyPhotos[0];
+}
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -775,7 +859,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Navigator.pushAndRemoveUntil(context, MaterialPageRoute<void>(builder: (_) => const LoginScreen()), (_) => false);
         }),
       ]),
-      body: GridView.builder(
+      body: Stack(fit: StackFit.expand, children: [
+        Image.network(
+          _skynestPropertyPhotos[1],
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => ColoredBox(color: Theme.of(context).scaffoldBackgroundColor),
+        ),
+        ColoredBox(color: Theme.of(context).colorScheme.surface.withOpacity(0.88)),
+        GridView.builder(
         padding: const EdgeInsets.all(14), itemCount: items.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 1.12, crossAxisSpacing: 12, mainAxisSpacing: 12),
         itemBuilder: (context, i) {
@@ -792,7 +883,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => item.page)),
               child: Stack(fit: StackFit.expand, children: [
                 Image.network(
-                  _skynestPropertyPhotos[i % _skynestPropertyPhotos.length],
+                  _menuImageFor(item.title),
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => ColoredBox(color: tint),
                 ),
@@ -826,7 +917,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           );
         },
-      ),
+      )]),
       bottomNavigationBar: loaded && banner != null ? SizedBox(height: banner!.size.height.toDouble(), child: AdWidget(ad: banner!)) : null,
     );
   }
