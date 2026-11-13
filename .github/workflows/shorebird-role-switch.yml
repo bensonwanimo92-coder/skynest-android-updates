@@ -1,13 +1,6 @@
 name: SkyNest Role Switch OTA Patch
 
 on:
-  push:
-    branches:
-      - integration/roles-on-current-main
-    paths:
-      - 'lib/main.dart'
-      - 'functions/**'
-      - '.github/workflows/shorebird-role-switch.yml'
   workflow_dispatch:
 
 permissions:
