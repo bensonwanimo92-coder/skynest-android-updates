@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: skynest-release
+  group: skynest-release-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -473,7 +473,7 @@ jobs:
           # Never infer availability from GitHub tags or workflow run numbers.
           release_list="$(shorebird releases list)"
           printf '%s\n' "$release_list"
-          build_number=2026
+          build_number=2044
           while RELEASE_LIST="$release_list" CANDIDATE="$build_number" python3 - <<'PY'
           import os
           import re
