@@ -275,6 +275,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
           offerData['sdp']?.toString(),
           offerData['type']?.toString(),
         ));
+        await _flushPendingCandidates();
         final answer = await _peer!.createAnswer();
         await _peer!.setLocalDescription(answer);
         await callRef.update({
@@ -294,6 +295,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
               answer['sdp']?.toString(),
               answer['type']?.toString(),
             ));
+            await _flushPendingCandidates();
           }
         }
         final state = call['status']?.toString();
@@ -312,6 +314,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
       });
     } catch (error) {
       debugPrint('WebRTC call setup failed: $error');
+      await _releaseMedia();
       if (mounted) {
         setState(() => _status = 'Could not start call');
         ScaffoldMessenger.of(context).showSnackBar(
