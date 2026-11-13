@@ -318,21 +318,26 @@ class SkynestApp extends StatelessWidget {
             if (child != null) child,
           ],
         ),
-        home: const StartupGate(),
+        home: StartupGate(enableRemoteImages: enableRemoteBackdrops),
       );
     },
   );
 }
 
 class StartupGate extends StatelessWidget {
-  const StartupGate({super.key});
+  const StartupGate({super.key, this.enableRemoteImages = true});
+
+  final bool enableRemoteImages;
 
   @override
-  Widget build(BuildContext context) => const LoginScreen();
+  Widget build(BuildContext context) =>
+      LoginScreen(enableRemoteImages: enableRemoteImages);
 }
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.enableRemoteImages = true});
+
+  final bool enableRemoteImages;
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -633,10 +638,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(28),
-                            image: const DecorationImage(
-                              image: NetworkImage('https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1200&q=90'),
-                              fit: BoxFit.cover,
-                            ),
+                            image: widget.enableRemoteImages
+                                ? const DecorationImage(
+                                    image: NetworkImage('https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1200&q=90'),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
