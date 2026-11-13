@@ -423,6 +423,10 @@ service cloud.firestore {
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offer', 'status']) &&
             request.resource.data.status == 'ringing' &&
             request.resource.data.offer is map) ||
+          (request.auth.uid == resource.data.callerId &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'endedAt', 'endedBy']) &&
+            request.resource.data.status == 'missed' &&
+            request.resource.data.endedBy == request.auth.uid) ||
           (request.auth.uid == resource.data.calleeId &&
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'answeredAt', 'answer']) &&
             request.resource.data.status in ['connecting', 'active', 'declined'] &&
