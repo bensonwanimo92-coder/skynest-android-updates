@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 final GlobalKey<NavigatorState> skyNestNavigatorKey = GlobalKey<NavigatorState>();
+final ValueNotifier<bool> skyNestFirebaseReady = ValueNotifier<bool>(false);
 
 /// Incoming-call watcher mounted above the app's routed screens. It remains
 /// alive while a user moves between dashboard tabs and chat routes.
@@ -26,6 +27,12 @@ class _IncomingCallHostState extends State<IncomingCallHost> {
   @override
   void initState() {
     super.initState();
+    skyNestFirebaseReady.addListener(_onFirebaseReady);
+    if (skyNestFirebaseReady.value) _onFirebaseReady();
+  }
+
+  void _onFirebaseReady() {
+    if (!skyNestFirebaseReady.value || _authSub != null) return;
     _authSub = FirebaseAuth.instance.authStateChanges().listen(_watchUser);
     _watchUser(FirebaseAuth.instance.currentUser);
   }
@@ -122,6 +129,7 @@ class _IncomingCallHostState extends State<IncomingCallHost> {
 
   @override
   void dispose() {
+    skyNestFirebaseReady.removeListener(_onFirebaseReady);
     _authSub?.cancel();
     _callsSub?.cancel();
     super.dispose();
