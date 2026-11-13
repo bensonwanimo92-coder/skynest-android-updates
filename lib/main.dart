@@ -4123,7 +4123,7 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
       final ref = FirebaseFirestore.instance.collection('groups').doc();
       await ref.set({'name': name.text.trim(), 'createdBy': uid, 'landlordId': landlordId,
         'createdAt': FieldValue.serverTimestamp(), 'memberIds': [uid]});
-      await ref.collection('members').doc(uid).set({'joinedAt': FieldValue.serverTimestamp(), 'role': p['role'] ?? 'tenant'});
+      await ref.collection('members').doc(uid).set({'joinedAt': FieldValue.serverTimestamp(), 'role': p['role'] ?? 'tenant', 'displayName': (p['displayName'] ?? FirebaseAuth.instance.currentUser?.displayName ?? 'Member').toString()});
       name.clear();
       if (mounted) snack(context, 'Group created.');
     } catch (e) { if (mounted) snack(context, 'Could not create group: ' + e.toString()); }
@@ -4217,7 +4217,7 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                                 try {
                                   final groupRef = FirebaseFirestore.instance.collection('groups').doc(doc.id);
                                   await groupRef.update({'memberIds': FieldValue.arrayUnion([uid])});
-                                  await groupRef.collection('members').doc(uid).set({'joinedAt': FieldValue.serverTimestamp(), 'role': p['role'] ?? 'tenant'});
+                                  await groupRef.collection('members').doc(uid).set({'joinedAt': FieldValue.serverTimestamp(), 'role': p['role'] ?? 'tenant', 'displayName': (p['displayName'] ?? FirebaseAuth.instance.currentUser?.displayName ?? 'Member').toString()});
                                   if (context.mounted) snack(context, 'Joined group.');
                                 } catch (e) { if (context.mounted) snack(context, 'Could not join group: ' + e.toString()); }
                               },
