@@ -1872,7 +1872,10 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
     final value = double.tryParse(amount.text.trim());
     final code = transactionCode.text.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
     if (tenant.text.trim().isEmpty || value == null || value <= 0) { snack(context, 'Enter tenant name and a valid amount.'); return; }
-    if (paymentMethod == 'mpesa' && !RegExp(r'^[A-Z0-9]{8,16}
+    if (paymentMethod == 'mpesa' && (code.length < 8 || code.length > 16 || !RegExp(r'^[A-Z0-9]+').hasMatch(code))) {
+      snack(context, 'Enter a valid M-Pesa transaction code (8–16 letters or numbers).');
+      return;
+    }
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) throw StateError('Please sign in again.');
