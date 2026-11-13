@@ -440,6 +440,9 @@ jobs:
       - name: Run Dart static analysis before release build
         run: flutter analyze --no-pub
 
+      - name: Run Flutter widget tests before release build
+        run: flutter test --no-pub
+
       - name: Generate custom SkyNest launcher icons
         run: |
           set -euo pipefail
