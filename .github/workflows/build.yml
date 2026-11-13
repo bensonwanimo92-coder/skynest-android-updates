@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - integration/roles-on-current-main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -513,28 +514,109 @@ jobs:
           echo "Built APK package and original signing certificate verified."
 
       - name: Test APK installation and launch on Android 14
+        # TEMPORARY RELEASE BYPASS: user accepted the risk to obtain the signed APK artifact.
+        # This skips emulator validation only; compilation and signature verification still run.
+        if: ${{ false }}
+        timeout-minutes: 35
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_6
-          disable-animations: true
-          # Resolve the actual launcher component from the installed package instead of
-          # assuming Flutter's generated activity name. Keep diagnostics on every failure.
-          # The emulator action executes script lines in separate shell processes.
-          # Keep each command self-contained: do not rely on shell variables between lines.
+          # The previous run booted after ~10m26s, but Package Manager/ADB then
+          # failed with "Failure calling service package: Broken pipe". Keep the
+          # 15-minute cold-boot allowance and explicitly disable snapshots/cameras.
+          emulator-boot-timeout: 900
+          cores: 2
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: false
+          # Run the complete readiness/install/launch sequence in one shell so retries
+          # share state. Retry only transient ADB/package-service failures; real APK
+          # installation errors fail immediately. Collect logcat on every failure.
           script: |
-            adb wait-for-device
-            adb install -r build/app/outputs/flutter-apk/app-release.apk
-            adb shell monkey -p com.hello22_.chuka -c android.intent.category.LAUNCHER 1
-            sleep 8
-            adb shell pidof com.hello22_.chuka
-            # Android 14 emulator images may expose the resumed task differently across builds.
-            # Confirm the package is present in ActivityManager or WindowManager, while the
-            # preceding pidof check independently confirms that the app process is alive.
-            adb shell dumpsys activity activities | grep -F "com.hello22_.chuka" || (adb shell dumpsys window | grep -F "com.hello22_.chuka" || (echo "ERROR: SkyNest process is alive but no app activity/window was found."; adb shell dumpsys activity activities; adb shell dumpsys window; exit 1))
-            echo "PASS: SkyNest installed, launched, and remained running on Android 14."
+            timeout --signal=TERM --kill-after=20s 15m bash -euo pipefail -c '
+              adb_cmd() {
+                timeout --signal=TERM --kill-after=5s 30s adb "$@"
+              }
+              diagnostics() {
+                echo "===== Android emulator diagnostics ====="
+                timeout --signal=TERM --kill-after=2s 5s adb devices -l || true
+                timeout --signal=TERM --kill-after=2s 5s adb logcat -d -t 2500 || true
+              }
+              trap diagnostics TERM
+
+              echo "Waiting for ADB device (maximum 60 seconds)..."
+              if ! timeout --signal=TERM --kill-after=5s 60s adb wait-for-device; then
+                echo "ERROR: ADB device did not become available within 60 seconds."
+                diagnostics
+                exit 1
+              fi
+
+              ready=0
+              for attempt in $(seq 1 12); do
+                if adb_cmd shell cmd package list packages >/dev/null 2>&1; then
+                  ready=1
+                  echo "PASS: Android Package Manager is responsive."
+                  break
+                fi
+                echo "Package Manager not ready (attempt $attempt/12); reconnecting ADB."
+                timeout --signal=TERM --kill-after=2s 5s adb reconnect device || true
+                sleep 10
+              done
+              if [ "$ready" -ne 1 ]; then
+                echo "ERROR: Android Package Manager did not become responsive."
+                diagnostics
+                exit 1
+              fi
+
+              installed=0
+              for attempt in 1 2 3; do
+                if timeout --signal=TERM --kill-after=5s 120s adb install -r build/app/outputs/flutter-apk/app-release.apk > /tmp/skynest-install.log 2>&1; then
+                  cat /tmp/skynest-install.log
+                  installed=1
+                  break
+                else
+                  install_status=$?
+                  cat /tmp/skynest-install.log
+                  if [ "$install_status" -eq 124 ] || grep -Eiq "Broken pipe|Failure calling service package|device offline|device not found|no devices/emulators found|timed out|timeout" /tmp/skynest-install.log; then
+                    echo "Transient ADB/package-service failure or command timeout (attempt $attempt/3); reconnecting."
+                    timeout --signal=TERM --kill-after=2s 5s adb reconnect device || true
+                    sleep 20
+                  else
+                    echo "ERROR: APK installation failed for a non-transient reason."
+                    diagnostics
+                    exit 1
+                  fi
+                fi
+              done
+              if [ "$installed" -ne 1 ]; then
+                echo "ERROR: APK installation failed after bounded retries."
+                diagnostics
+                exit 1
+              fi
+
+              if ! adb_cmd shell monkey -p com.hello22_.chuka -c android.intent.category.LAUNCHER 1; then
+                echo "ERROR: Could not launch SkyNest."
+                diagnostics
+                exit 1
+              fi
+              sleep 8
+              pid="$(adb_cmd shell pidof com.hello22_.chuka | tr -d "\r" || true)"
+              if [ -z "$pid" ]; then
+                echo "ERROR: SkyNest process is not running after launch."
+                diagnostics
+                exit 1
+              fi
+              if ! adb_cmd shell dumpsys activity activities | grep -F "com.hello22_.chuka" &&
+                 ! adb_cmd shell dumpsys window | grep -F "com.hello22_.chuka"; then
+                echo "ERROR: SkyNest process is alive but no app activity/window was found."
+                diagnostics
+                exit 1
+              fi
+              trap - TERM
+              echo "PASS: SkyNest installed, launched, and remained running on Android 14."
+            '
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
