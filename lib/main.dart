@@ -12,7 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:math';
+import 'dart:math' as math;
 import 'package:table_calendar/table_calendar.dart';
 
 const brand = Color(0xFF1565C0);
@@ -2975,7 +2975,7 @@ class _PlansScreenState extends State<PlansScreen> {
     Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
   ]);
 
-  Widget _moneyRow(String label, double value, [Color? color]) => Padding(
+  Widget _moneyRow(String label, double value, {Color? color}) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 3),
     child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
       Text(label), Text(currency.format(value), style: TextStyle(color: color, fontWeight: FontWeight.w600)),
