@@ -2291,6 +2291,7 @@ class ComplaintsScreen extends StatefulWidget {
 class _ComplaintsScreenState extends State<ComplaintsScreen> {
   final subject = TextEditingController(), details = TextEditingController();
   bool saving = false;
+  String priority = 'medium';
   @override
   void dispose() { subject.dispose(); details.dispose(); super.dispose(); }
   Future<void> submit() async {
@@ -2305,7 +2306,7 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
       await FirebaseFirestore.instance.collection('complaints').add({
         'createdBy': uid, 'createdByName': p['displayName'] ?? 'User', 'role': p['role'] ?? 'tenant',
         'landlordId': landlordId, 'subject': subject.text.trim(), 'details': details.text.trim(),
-        'status': 'open', 'createdAt': FieldValue.serverTimestamp(),
+        'priority': priority, 'status': 'open', 'createdAt': FieldValue.serverTimestamp(),
       });
       subject.clear(); details.clear();
       if (mounted) snack(context, 'Complaint submitted.');
@@ -2358,6 +2359,17 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
           const SizedBox(height: 8),
           TextField(controller: details, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Describe the issue', border: OutlineInputBorder())),
           const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: priority,
+            decoration: const InputDecoration(labelText: 'Priority'),
+            items: const [
+              DropdownMenuItem(value: 'low', child: Text('Low')),
+              DropdownMenuItem(value: 'medium', child: Text('Normal')),
+              DropdownMenuItem(value: 'high', child: Text('High')),
+            ],
+            onChanged: saving ? null : (value) => setState(() => priority = value ?? 'medium'),
+          ),
+          const SizedBox(height: 8),
           SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: saving ? null : submit,
             icon: const Icon(Icons.send), label: Text(saving ? 'Sending...' : 'SUBMIT COMPLAINT'))),
         ])),
@@ -2379,26 +2391,72 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
               if (snap.data!.docs.isEmpty) return const EmptyView('No complaints yet.');
               return ListView(children: snap.data!.docs.map((doc) {
                 final d = doc.data();
-                return Card(child: ExpansionTile(leading: const Icon(Icons.report_problem_outlined),
-                  title: Text(d['subject']?.toString() ?? 'Complaint'),
-                  subtitle: Text((d['createdByName'] ?? 'User').toString() + ' • ' + (d['status'] ?? 'open').toString()),
-                  children: [
-                    Padding(padding: const EdgeInsets.all(14), child: Align(alignment: Alignment.centerLeft, child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(d['details']?.toString() ?? ''),
-                        if ((d['response'] ?? '').toString().isNotEmpty) ...[
-                          const SizedBox(height: 10),
-                          const Text('Manager response', style: TextStyle(fontWeight: FontWeight.bold)),
-                          Text(d['response'].toString()),
-                        ],
+                final priorityValue = (d['priority']?.toString() ?? 'medium').toLowerCase();
+                final priorityColor = priorityValue == 'high' ? Colors.red : priorityValue == 'low' ? Colors.grey : Colors.orange;
+                final subjectValue = (d['subject']?.toString() ?? '').toLowerCase();
+                final issueIcon = subjectValue.contains('water') ? Icons.water_drop
+                  : subjectValue.contains('electric') || subjectValue.contains('stima') ? Icons.bolt
+                  : Icons.report_problem_outlined;
+                final created = d['createdAt'];
+                final openDays = created is Timestamp ? DateTime.now().difference(created.toDate()).inDays : null;
+                return Dismissible(
+                  key: ValueKey('complaint-' + doc.id),
+                  direction: role == 'tenant' || d['status'] == 'resolved' ? DismissDirection.none : DismissDirection.startToEnd,
+                  confirmDismiss: (_) async {
+                    final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+                      title: const Text('Resolve complaint?'),
+                      content: const Text('Mark this complaint as resolved? The status change will be recorded.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('CANCEL')),
+                        FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('RESOLVE')),
                       ],
-                    ))),
-                    if (role != 'tenant') Wrap(spacing: 8, children: [
-                      TextButton(onPressed: () => respond(doc.id), child: const Text('Reply')),
-                      TextButton(onPressed: () => updateStatus(doc.id, 'in_progress'), child: const Text('In progress')),
-                      TextButton(onPressed: () => updateStatus(doc.id, 'resolved'), child: const Text('Resolve')),
+                    ));
+                    if (confirmed == true) {
+                      await updateStatus(doc.id, 'resolved');
+                      HapticFeedback.mediumImpact();
+                    }
+                    return false;
+                  },
+                  background: Container(
+                    alignment: Alignment.centerLeft, padding: const EdgeInsets.only(left: 20),
+                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(color: Colors.green, borderRadius: BorderRadius.circular(16)),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.check_circle, color: Colors.white), SizedBox(width: 7),
+                      Text('Resolve', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     ]),
-                  ]));
+                  ),
+                  child: Card(
+                    color: priorityColor.withOpacity(0.07),
+                    child: ExpansionTile(
+                      leading: Stack(clipBehavior: Clip.none, children: [
+                        Icon(issueIcon, size: 30, color: priorityColor),
+                        if (d['escalated'] == true) const Positioned(right: -8, top: -8,
+                          child: Icon(Icons.local_fire_department, color: Colors.deepOrange, size: 17)),
+                      ]),
+                      title: Text(d['subject']?.toString() ?? 'Complaint', style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text((d['createdByName'] ?? 'User').toString() + ' • ' +
+                        (d['status'] ?? 'open').toString() + ' • ' + priorityValue.toUpperCase() +
+                        (openDays == null ? '' : ' • Open $openDays days')),
+                      children: [
+                        Padding(padding: const EdgeInsets.all(14), child: Align(alignment: Alignment.centerLeft, child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(d['details']?.toString() ?? ''),
+                            if ((d['response'] ?? '').toString().isNotEmpty) ...[
+                              const SizedBox(height: 10),
+                              const Text('Manager response', style: TextStyle(fontWeight: FontWeight.bold)),
+                              Text(d['response'].toString()),
+                            ],
+                          ],
+                        ))),
+                        if (role != 'tenant') Wrap(spacing: 8, children: [
+                          TextButton(onPressed: () => respond(doc.id), child: const Text('Reply')),
+                          TextButton(onPressed: () => updateStatus(doc.id, 'in_progress'), child: const Text('In progress')),
+                          TextButton(onPressed: () => updateStatus(doc.id, 'resolved'), child: const Text('Resolve')),
+                        ]),
+                      ]),
+                  ),
+                );
               }).toList());
             });
           },
