@@ -49,6 +49,25 @@ service cloud.firestore {
           request.resource.data.landlordId == resource.data.landlordId &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone', 'photoUrl', 'updatedAt'])
         ) ||
+        // One-time, self-only migration for pre-role accounts with no tenant/caretaker linkage.
+        (
+          request.auth.uid == userId &&
+          !resource.data.keys().hasAny(['role', 'status', 'landlordId', 'invitationCode']) &&
+          request.resource.data.role == 'landlord' &&
+          request.resource.data.status == 'active' &&
+          request.resource.data.legacyAccount == true &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'status', 'legacyAccount', 'updatedAt'])
+        ) ||
+        // Repair status only for an already identified landlord; never assign a role here.
+        (
+          request.auth.uid == userId &&
+          resource.data.role == 'landlord' &&
+          !resource.data.keys().hasAny(['status']) &&
+          request.resource.data.role == 'landlord' &&
+          request.resource.data.status == 'active' &&
+          request.resource.data.legacyAccount == true &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'legacyAccount', 'updatedAt'])
+        ) ||
         (
           resource.data.role == 'tenant' &&
           resource.data.status == 'pending' &&
