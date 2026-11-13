@@ -11,6 +11,6 @@ void main() {
 
     expect(find.byType(SkynestApp), findsOneWidget);
     expect(find.byType(MaterialApp), findsOneWidget);
-    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.byType(StartupGate), findsOneWidget);
   });
 }
