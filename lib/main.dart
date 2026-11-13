@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'calls/skynest_call_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -388,7 +389,7 @@ class SkynestApp extends StatelessWidget {
                   ? Colors.black.withOpacity(0.68)
                   : Colors.white.withOpacity(0.70),
             ),
-            if (child != null) child,
+            if (child != null) IncomingCallHost(child: child),
           ],
         ),
         home: StartupGate(enableRemoteImages: enableRemoteBackdrops),
@@ -4364,6 +4365,58 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
+  Future<void> startGroupCall(String type) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final members = await FirebaseFirestore.instance
+          .collection('groups').doc(widget.groupId).collection('members').get();
+      final peers = members.docs.where((doc) => doc.id != uid).toList();
+      if (peers.isEmpty) {
+        snack(context, 'No other members are available in this group yet.');
+        return;
+      }
+      final selected = await showModalBottomSheet<QueryDocumentSnapshot<Map<String, dynamic>>>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: ListView(shrinkWrap: true, children: [
+            Padding(padding: const EdgeInsets.all(16), child: Text(
+              type == 'video' ? 'Start a video call' : 'Start a voice call',
+              style: Theme.of(sheetContext).textTheme.titleLarge,
+            )),
+            ...peers.map((peer) => ListTile(
+              leading: CircleAvatar(child: Icon(type == 'video' ? Icons.videocam : Icons.call)),
+              title: Text((peer.data()['displayName'] ?? 'Group member').toString()),
+              subtitle: Text(peer.id, maxLines: 1, overflow: TextOverflow.ellipsis),
+              onTap: () => Navigator.pop(sheetContext, peer),
+            )),
+          ]),
+        ),
+      );
+      if (selected == null || !mounted) return;
+      final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final callerName = (profile.data()?['displayName'] ?? FirebaseAuth.instance.currentUser?.displayName ?? 'SkyNest member').toString();
+      final calleeName = (selected.data()['displayName'] ?? 'SkyNest member').toString();
+      final call = await FirebaseFirestore.instance.collection('calls').add({
+        'groupId': widget.groupId,
+        'callerId': uid,
+        'calleeId': selected.id,
+        'callerName': callerName,
+        'calleeName': calleeName,
+        'type': type,
+        'status': 'preparing',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      if (!mounted) return;
+      await Navigator.push(context, MaterialPageRoute<void>(
+        builder: (_) => SkyNestCallScreen(callId: call.id, isCaller: true),
+      ));
+    } catch (error) {
+      if (mounted) snack(context, 'Could not start call: $error');
+    }
+  }
+
   Future<void> leaveGroup() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -4394,6 +4447,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     appBar: AppBar(
       title: Text(widget.groupName),
       actions: [
+        IconButton(
+          tooltip: 'Voice call',
+          onPressed: () => startGroupCall('voice'),
+          icon: const Icon(Icons.call_rounded),
+        ),
+        IconButton(
+          tooltip: 'Video call',
+          onPressed: () => startGroupCall('video'),
+          icon: const Icon(Icons.videocam_rounded),
+        ),
         IconButton(
           tooltip: 'Leave group',
           onPressed: leaveGroup,
