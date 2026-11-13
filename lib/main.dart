@@ -2523,6 +2523,7 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                   final isMember = members.contains(uid);
                   final selected = selectedGroupIds.contains(doc.id);
                   final due = data['totalDue'];
+                  final hasUnread = (data['unreadCount'] as num?)?.toInt() ?? 0;
                   final groupColor = data['colorValue'] is int
                     ? Color(data['colorValue'] as int) : Theme.of(context).colorScheme.primary;
                   return GestureDetector(
@@ -2557,7 +2558,7 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                             Transform.translate(offset: const Offset(-18, 0), child: CircleAvatar(radius: 18,
                               backgroundColor: groupColor.withOpacity(0.36), child: Icon(Icons.person_2_outlined, size: 18, color: groupColor))),
                           ]),
-                          if ((data['unreadCount'] as num?)?.toInt() case final unread? when unread > 0)
+                          if (hasUnread > 0)
                             const Positioned(right: -1, top: -3, child: CircleAvatar(radius: 5, backgroundColor: Colors.blue)),
                         ]),
                         const SizedBox(width: 2),
