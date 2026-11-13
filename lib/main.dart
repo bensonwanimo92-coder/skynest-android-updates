@@ -146,13 +146,27 @@ class _LoginScreenState extends State<LoginScreen> {
       final profile = FirebaseFirestore.instance.collection('users').doc(user.uid);
       final profileSnapshot = await profile.get();
       if (!profileSnapshot.exists) {
-        // Existing SkyNest accounts pre-date role profiles; preserve them as landlords.
+        // First-time legacy account profile: the authenticated user owns this UID.
         await profile.set({'displayName': user.displayName ?? user.email ?? 'Landlord',
           'email': user.email, 'role': 'landlord', 'status': 'active',
           'createdAt': FieldValue.serverTimestamp(), 'legacyAccount': true});
+      } else {
+        final existing = profileSnapshot.data() ?? <String, dynamic>{};
+        final keys = existing.keys.toSet();
+        // Migrate only unlinked pre-role accounts. Never promote an account that
+        // already carries tenant/caretaker linkage or an invitation.
+        if (!keys.contains('role') && !keys.contains('status') &&
+            !keys.contains('landlordId') && !keys.contains('invitationCode')) {
+          await profile.update({'role': 'landlord', 'status': 'active',
+            'legacyAccount': true, 'updatedAt': FieldValue.serverTimestamp()});
+        } else if (existing['role'] == 'landlord' && !keys.contains('status')) {
+          // Repair an incomplete landlord profile without changing its role.
+          await profile.update({'status': 'active', 'legacyAccount': true,
+            'updatedAt': FieldValue.serverTimestamp()});
+        }
       }
       final latest = await profile.get();
-      final accountStatus = latest.data()?['status']?.toString() ?? 'active';
+      final accountStatus = latest.data()?['status']?.toString() ?? 'incomplete';
       if (!mounted) return;
       if (accountStatus == 'pending') {
         Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const PendingApprovalScreen()));
