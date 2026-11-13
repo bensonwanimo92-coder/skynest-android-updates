@@ -3565,7 +3565,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     if (principal <= 0 || months <= 0) return 0;
     final monthlyRate = value(annualRate) / 1200;
     if (monthlyRate == 0) return principal / months;
-    final factor = math.pow(1 + monthlyRate, months);
+    final factor = math.pow(1 + monthlyRate, months).toDouble();
     return principal * monthlyRate * factor / (factor - 1);
   }
   double get materialShare => value(contributors) <= 0 ? 0 : value(materials) / value(contributors);
