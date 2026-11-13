@@ -468,7 +468,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: shorebird release android --artifact apk -- --no-shrink --no-obfuscate --build-name=1.1.3 --build-number=2025
+        run: shorebird release android --artifact apk -- --no-shrink --no-obfuscate --build-name=1.1.3 --build-number=2026
 
       - name: Verify built APK package and signature
         shell: bash
@@ -512,7 +512,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: skynest-android-1.1.2-2021
+          name: skynest-android-1.1.3-2026
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
@@ -521,8 +521,8 @@ jobs:
         if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && steps.firebase.outputs.configured == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref == 'refs/heads/main' && 'v1.1.2+2021' || github.ref_name }}
-          name: SkyNest Android 1.1.2 (build 2021)
+          tag_name: ${{ github.ref == 'refs/heads/main' && 'v1.1.3+2026' || github.ref_name }}
+          name: SkyNest Android 1.1.3 (build 2026)
           target_commitish: ${{ github.sha }}
           files: build/app/outputs/flutter-apk/app-release.apk
           token: ${{ secrets.GITHUB_TOKEN }}
