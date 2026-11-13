@@ -302,9 +302,14 @@ jobs:
             echo "::warning::Firebase config is missing. Build validation may run, but no release APK will be published until Firebase is configured."
             exit 0
           fi
-          if ! printf '%s' "$FIREBASE_ANDROID_CONFIG_BASE64" | base64 --decode > android/app/google-services.json; then
-            echo "::error::FIREBASE_ANDROID_CONFIG_BASE64 is not valid Base64."
-            exit 1
+          if ! printf '%s' "$FIREBASE_ANDROID_CONFIG_BASE64" | base64 --decode > android/app/google-services.json 2>/dev/null; then
+            # Accept a raw google-services.json secret too, while preferring Base64.
+            printf '%s' "$FIREBASE_ANDROID_CONFIG_BASE64" > android/app/google-services.json
+            if ! python3 -m json.tool android/app/google-services.json > /dev/null 2>&1; then
+              echo "::error::Firebase Android config secret is neither valid Base64 nor valid JSON."
+              exit 1
+            fi
+            echo "::warning::Firebase Android config secret contains raw JSON; consider storing its Base64 encoding."
           fi
           python3 - <<'PY'
           import json
