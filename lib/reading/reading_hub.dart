@@ -151,6 +151,7 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
       });
       final request = await _http.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.set(HttpHeaders.userAgentHeader, 'SkyNestReadingHub/1.0');
       final response = await request.close();
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException('Reading search returned HTTP ${response.statusCode}.');
