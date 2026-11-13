@@ -218,7 +218,7 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
         alignment: pw.Alignment.centerRight,
         padding: const pw.EdgeInsets.only(bottom: 12),
         child: pw.Text(_pdfSafe('SKYNEST READING  •  ${issue.category.toUpperCase()}'),
-          style: pw.TextStyle(fontSize: 8, color: pdf.pdf.PdfColor.fromInt(0xFF64748B))),
+          style: pw.TextStyle(fontSize: 8, color: pdf.PdfColor.fromInt(0xFF64748B))),
       ),
       footer: (context) => pw.Container(
         alignment: pw.Alignment.center,
