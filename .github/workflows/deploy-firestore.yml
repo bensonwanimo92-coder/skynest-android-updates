@@ -1,6 +1,14 @@
 name: Deploy SkyNest Firestore rules and indexes
 
 on:
+  push:
+    branches:
+      - integration/roles-on-current-main
+    paths:
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - 'firebase.json'
+      - '.github/workflows/deploy-firestore.yml'
   workflow_dispatch:
 
 permissions:
