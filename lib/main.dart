@@ -22,6 +22,9 @@ import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 import 'package:table_calendar/table_calendar.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
+import 'messaging/voice_message_bubble.dart';
 
 const brand = Color(0xFF1565C0);
 const skynestBannerAdUnitId = 'ca-app-pub-1281241380359357/4686680349';
@@ -4653,6 +4656,9 @@ class GroupChatScreen extends StatefulWidget {
 class _GroupChatScreenState extends State<GroupChatScreen> {
   final message = TextEditingController();
   bool sending = false;
+  final AudioRecorder _voiceRecorder = AudioRecorder();
+  bool _recordingVoice = false;
+  Timer? _voiceLimit;
   bool _encryptionReady = false;
   String? _encryptionSetupError;
 
@@ -4674,14 +4680,19 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   @override
-  void dispose() { message.dispose(); super.dispose(); }
+  void dispose() { _voiceLimit?.cancel(); message.dispose(); unawaited(_voiceRecorder.dispose()); super.dispose(); }
 
   Future<void> send() async {
-    final user = FirebaseAuth.instance.currentUser;
     final text = message.text.trim();
-    if (user == null || text.isEmpty || sending) return;
-    setState(() => sending = true);
+    if (text.isEmpty || sending) return;
     message.clear();
+    await _sendEncryptedPayload(text, restoreText: text);
+  }
+
+  Future<void> _sendEncryptedPayload(String payload, {String? restoreText}) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || payload.isEmpty || sending) return;
+    setState(() => sending = true);
     try {
       final groupRef = FirebaseFirestore.instance.collection('groups').doc(widget.groupId);
       final groupSnapshot = await groupRef.get();
@@ -4691,16 +4702,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       final memberIds = rawMemberIds is List
           ? rawMemberIds.map((value) => value.toString()).where((value) => value.isNotEmpty).toList()
           : <String>[user.uid];
-      if (!memberIds.contains(user.uid)) {
-        throw StateError('You are no longer a member of this group.');
-      }
+      if (!memberIds.contains(user.uid)) throw StateError('You are no longer a member of this group.');
       final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       final senderName = (profile.data()?['displayName'] ?? user.displayName ?? 'Member').toString();
       final encrypted = await SkyNestMessageEncryption.instance.encryptGroupMessage(
-        groupId: widget.groupId,
-        senderId: user.uid,
-        plaintext: text,
-        memberIds: memberIds,
+        groupId: widget.groupId, senderId: user.uid, plaintext: payload, memberIds: memberIds,
       );
       await groupRef.collection('messages').add({
         ...encrypted,
@@ -4710,10 +4716,49 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      if (mounted) snack(context, 'Message not sent: ' + e.toString());
-      message.text = text;
+      if (restoreText != null) message.text = restoreText;
+      if (mounted) snack(context, 'Message not sent: $e');
     } finally {
       if (mounted) setState(() => sending = false);
+    }
+  }
+
+  Future<void> _toggleVoiceRecording() async {
+    if (_recordingVoice) {
+      await _finishVoiceRecording();
+      return;
+    }
+    try {
+      if (!await _voiceRecorder.hasPermission()) {
+        if (mounted) snack(context, 'Microphone permission is required for voice notes.');
+        return;
+      }
+      final directory = await getTemporaryDirectory();
+      final path = '${directory.path}/skynest_voice_${DateTime.now().microsecondsSinceEpoch}.m4a';
+      await _voiceRecorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 64000, sampleRate: 22050),
+        path: path,
+      );
+      if (mounted) setState(() => _recordingVoice = true);
+      _voiceLimit?.cancel();
+      _voiceLimit = Timer(const Duration(seconds: 30), _finishVoiceRecording);
+    } catch (error) {
+      if (mounted) snack(context, 'Could not start voice recording: $error');
+    }
+  }
+
+  Future<void> _finishVoiceRecording() async {
+    if (!_recordingVoice) return;
+    _voiceLimit?.cancel();
+    final path = await _voiceRecorder.stop();
+    if (mounted) setState(() => _recordingVoice = false);
+    if (path == null) return;
+    try {
+      final bytes = await File(path).readAsBytes();
+      if (bytes.length > 700 * 1024) throw StateError('Voice note is too large. Keep recordings shorter.');
+      await _sendEncryptedPayload(VoiceMessageBubble.encode(bytes));
+    } catch (error) {
+      if (mounted) snack(context, 'Voice note could not be sent: $error');
     }
   }
 
@@ -4967,13 +5012,17 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                               recipientId: uid ?? '',
                               message: data,
                             ),
-                            builder: (context, decrypted) => Text(
-                              decrypted.hasData
-                                  ? decrypted.data!
-                                  : decrypted.hasError
-                                      ? 'Unable to decrypt this message on this device.'
-                                      : 'Decrypting secure message…',
-                            ),
+                            builder: (context, decrypted) {
+                              if (decrypted.hasData) {
+                                final clear = decrypted.data!;
+                                return VoiceMessageBubble.isVoiceMessage(clear)
+                                    ? VoiceMessageBubble(payload: clear)
+                                    : Text(clear);
+                              }
+                              return Text(decrypted.hasError
+                                  ? 'Unable to decrypt this message on this device.'
+                                  : 'Decrypting secure message…');
+                            },
                           )
                         else
                           Text('Legacy message (not end-to-end encrypted): ${data['text']?.toString() ?? ''}'),
@@ -5000,7 +5049,14 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           decoration: const InputDecoration(hintText: 'Write a message'),
           onSubmitted: (_) => send(),
         )),
-        const SizedBox(width: 8),
+        const SizedBox(width: 4),
+        IconButton(
+          tooltip: _recordingVoice ? 'Stop and send voice note' : 'Record voice note (30 seconds max)',
+          onPressed: sending ? null : _toggleVoiceRecording,
+          icon: Icon(_recordingVoice ? Icons.stop_circle_rounded : Icons.mic_rounded,
+            color: _recordingVoice ? Colors.redAccent : const Color(0xFF58E5F2)),
+        ),
+        const SizedBox(width: 4),
         IconButton.filled(onPressed: sending ? null : send, icon: const Icon(Icons.send)),
       ]))),
     ]),
