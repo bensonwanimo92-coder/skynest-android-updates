@@ -586,7 +586,7 @@ service cloud.firestore {
         ]) &&
         data.ownerUid is string && data.title is string &&
         data.title.size() >= 8 && data.title.size() <= 120 &&
-        data.category in ['Residential', 'Commercial', 'Land', 'Development', 'Vehicles', 'Restaurants', 'Hospitality', 'Products', 'Services', 'Luxury'] &&
+        data.category in ['Residential', 'Commercial', 'Land', 'Development', 'Farms', 'Vehicles', 'Jobs', 'Restaurants', 'Hospitality', 'Products', 'Services', 'Luxury', 'Business', 'Other'] &&
         data.advertType is string && data.advertType.size() > 0 && data.advertType.size() <= 60 &&
         data.county is string && data.county.size() > 0 && data.county.size() <= 80 &&
         data.town is string && data.town.size() > 0 && data.town.size() <= 120 &&
