@@ -105,7 +105,7 @@ class _MarketplaceDiscoveryScreenState extends State<MarketplaceDiscoveryScreen>
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (photos.isNotEmpty)
           SizedBox(height: 185, child: PageView.builder(
-            itemCount: photos.length.clamp(1, 8),
+            itemCount: photos.length.clamp(1, 8).toInt(),
             itemBuilder: (_, index) => Image.network(photos[index], fit: BoxFit.cover,
               errorBuilder: (_, __, ___) => Container(color: colors.surfaceContainerHighest,
                 child: const Icon(Icons.image_not_supported_outlined, size: 40))),
