@@ -340,8 +340,7 @@ service cloud.firestore {
               ]) &&
               request.resource.data.attachment.name is string &&
               request.resource.data.attachment.mimeType in [
-                'image/jpeg', 'image/png', 'image/webp', 'application/pdf',
-                
+                'image/jpeg', 'image/png', 'image/webp', 'application/pdf'
               ] &&
               request.resource.data.attachment.storagePath is string &&
               request.resource.data.attachment.size is int &&
