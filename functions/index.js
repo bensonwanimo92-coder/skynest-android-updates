@@ -54,7 +54,7 @@ exports.notifyGroupMessage = onDocumentCreated(
         },
         android: {
           priority: "high",
-          notification: { channelId: "skynest_messages" },
+          notification: { channelId: "skynest_messages_v2", sound: "pop" },
         },
       });
 
@@ -158,7 +158,7 @@ exports.notifyAccountDecision = onDocumentUpdated("users/{userId}", async (event
     },
     android: {
       priority: "high",
-      notification: { channelId: "skynest_messages" },
+      notification: { channelId: "skynest_messages_v2", sound: "pop" },
     },
   });
 

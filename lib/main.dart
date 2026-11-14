@@ -5,6 +5,10 @@ import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
 import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
+import 'services/sound_service.dart';
+import 'services/voice_service.dart';
+import 'services/notification_service.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -56,6 +60,7 @@ Future<void> initializePushNotifications() async {
     final settings = await messaging.requestPermission(
       alert: true, badge: true, sound: true,
     );
+    await SkyNestNotificationService.initialize();
     if (settings.authorizationStatus == AuthorizationStatus.denied) return;
     final token = await messaging.getToken();
     if (token != null && token.isNotEmpty) await _savePushToken(user.uid, token);
@@ -63,9 +68,7 @@ Future<void> initializePushNotifications() async {
       FirebaseMessaging.onMessage.listen((message) {
         final title = message.notification?.title ?? 'SkyNest';
         final body = message.notification?.body ?? 'You have a new notification.';
-        _rootScaffoldMessengerKey.currentState?.showSnackBar(
-          SnackBar(content: Text('$title: $body')),
-        );
+        unawaited(SkyNestNotificationService.showMessage(title: title, body: body, payload: message.data['groupId']?.toString()));
       });
       _pushForegroundListenerRegistered = true;
     }
@@ -455,7 +458,7 @@ class _StartupGateState extends State<StartupGate> {
         body: Center(child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            const Icon(Icons.apartment_rounded, size: 52, color: brand),
+            const SkyNestLogo(size: 58),
             const SizedBox(height: 14),
             const Text('SkyNest', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
             const SizedBox(height: 16),
@@ -795,16 +798,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           child: Column(
                             children: [
-                              Container(
-                                height: 76,
-                                width: 76,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.14),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white.withOpacity(0.35)),
-                                ),
-                                child: const Icon(Icons.apartment_rounded, size: 43, color: Color(0xFFF5D76E)),
-                              ),
+                              const SkyNestLogo(size: 82),
                               const SizedBox(height: 14),
                               const Text(
                                 'SkyNest',
@@ -1257,6 +1251,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ]);
     }
 
+    items.add(_MenuItem('Discovery', Icons.explore_rounded, const Color(0xFF06B6D4), const MarketDiscoveryScreen()));
     items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
     items.add(_MenuItem('Security & fingerprint', Icons.fingerprint_rounded, Colors.blueGrey, const SecuritySettingsScreen()));
 
@@ -1289,7 +1284,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
             opacity: animation,
             child: SlideTransition(position: Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero).animate(animation), child: child),
           ),
-          child: Text('SkyNest • ' + userRole[0].toUpperCase() + userRole.substring(1), key: ValueKey<String>(userRole)),
+          child: Row(
+            key: ValueKey<String>(userRole),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SkyNestLogo(size: 30),
+              const SizedBox(width: 9),
+              Flexible(
+                child: Text(
+                  'SkyNest • ' + userRole[0].toUpperCase() + userRole.substring(1),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           IconButton(
@@ -1491,113 +1499,221 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       )
                     : GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
+                        padding: const EdgeInsets.fromLTRB(14, 6, 14, 20),
                         itemCount: filteredItems.length,
                         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: 250,
-                          childAspectRatio: 0.94,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
+                          childAspectRatio: 0.88,
+                          crossAxisSpacing: 14,
+                          mainAxisSpacing: 14,
                         ),
                         itemBuilder: (context, index) {
                           final item = filteredItems[index];
                           final scheme = Theme.of(context).colorScheme;
-                          final tint = Color.lerp(item.color, scheme.surface, 0.84)!;
                           var hovered = false;
                           return StatefulBuilder(
                             builder: (context, setTileState) => MouseRegion(
                               onEnter: (_) => setTileState(() => hovered = true),
                               onExit: (_) => setTileState(() => hovered = false),
                               child: AnimatedScale(
-                                scale: hovered ? 1.035 : 1.0,
-                                duration: const Duration(milliseconds: 170),
-                                curve: Curves.easeOutBack,
-                                child: Card(
-                            color: tint,
-                            elevation: hovered ? 7 : 3,
-                            shadowColor: item.color.withOpacity(0.30),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(23),
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: InkWell(
-                              onTap: () async {
-                                await SkyNestFeedback.playTap();
-                                if (!context.mounted) return;
-                                await _previewModule(context, item);
-                              },
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  Image.network(
-                                    _menuImageFor(item.title),
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => ColoredBox(color: tint),
+                                scale: hovered ? 1.025 : 1,
+                                duration: const Duration(milliseconds: 190),
+                                curve: Curves.easeOutCubic,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 190),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(25),
+                                    border: Border.all(
+                                      color: item.color.withOpacity(hovered ? 0.95 : 0.52),
+                                      width: hovered ? 1.8 : 1.15,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: item.color.withOpacity(hovered ? 0.30 : 0.16),
+                                        blurRadius: hovered ? 24 : 15,
+                                        spreadRadius: hovered ? 1 : 0,
+                                        offset: const Offset(0, 8),
+                                      ),
+                                      const BoxShadow(
+                                        color: Color(0x33020A18),
+                                        blurRadius: 16,
+                                        offset: Offset(0, 7),
+                                      ),
+                                    ],
                                   ),
-                                  DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        colors: [
-                                          Colors.black.withOpacity(0.20),
-                                          Colors.black.withOpacity(0.76),
-                                        ],
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(24),
+                                    child: Material(
+                                      color: const Color(0xFF09172B),
+                                      child: InkWell(
+                                        onTap: () async {
+                                          await SkyNestFeedback.playTap();
+                                          if (!context.mounted) return;
+                                          await _previewModule(context, item);
+                                        },
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            Image.network(
+                                              _menuImageFor(item.title),
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) => DecoratedBox(
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    begin: Alignment.topLeft,
+                                                    end: Alignment.bottomRight,
+                                                    colors: [
+                                                      Color.lerp(item.color, const Color(0xFF07152F), 0.35)!,
+                                                      const Color(0xFF07152F),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  begin: Alignment.topCenter,
+                                                  end: Alignment.bottomCenter,
+                                                  colors: [
+                                                    const Color(0x99071327),
+                                                    const Color(0x44071327),
+                                                    const Color(0xF2071022),
+                                                  ],
+                                                  stops: const [0, 0.36, 1],
+                                                ),
+                                              ),
+                                            ),
+                                            Positioned(
+                                              top: 0,
+                                              left: 0,
+                                              right: 0,
+                                              height: 3,
+                                              child: DecoratedBox(
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    colors: [
+                                                      item.color.withOpacity(0.15),
+                                                      item.color,
+                                                      scheme.tertiary,
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            Positioned(
+                                              top: 13,
+                                              right: 13,
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0x7708172B),
+                                                  borderRadius: BorderRadius.circular(30),
+                                                  border: Border.all(color: Colors.white.withOpacity(0.22)),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(Icons.auto_awesome, size: 11, color: item.color.withOpacity(0.95)),
+                                                    const SizedBox(width: 5),
+                                                    const Text(
+                                                      'SKYNEST',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 8,
+                                                        letterSpacing: 1.15,
+                                                        fontWeight: FontWeight.w800,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                            Positioned(
+                                              right: -18,
+                                              top: 45,
+                                              child: Icon(item.icon, size: 112, color: Colors.white.withOpacity(0.075)),
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.fromLTRB(15, 17, 15, 15),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Container(
+                                                    width: 56,
+                                                    height: 56,
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.white.withOpacity(0.13),
+                                                      borderRadius: BorderRadius.circular(18),
+                                                      border: Border.all(color: Colors.white.withOpacity(0.36)),
+                                                      boxShadow: [
+                                                        BoxShadow(
+                                                          color: item.color.withOpacity(0.22),
+                                                          blurRadius: 15,
+                                                          spreadRadius: 1,
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    child: Icon(item.icon, size: 29, color: Colors.white),
+                                                  ),
+                                                  const Spacer(),
+                                                  Text(
+                                                    item.title,
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 16,
+                                                      fontWeight: FontWeight.w800,
+                                                      height: 1.14,
+                                                      letterSpacing: -0.25,
+                                                      shadows: [
+                                                        Shadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 9),
+                                                  Row(
+                                                    children: [
+                                                      Text(
+                                                        'Explore module',
+                                                        style: TextStyle(
+                                                          color: Colors.white.withOpacity(0.78),
+                                                          fontSize: 11,
+                                                          fontWeight: FontWeight.w600,
+                                                        ),
+                                                      ),
+                                                      const Spacer(),
+                                                      Container(
+                                                        width: 29,
+                                                        height: 29,
+                                                        decoration: BoxDecoration(
+                                                          color: item.color.withOpacity(0.22),
+                                                          shape: BoxShape.circle,
+                                                          border: Border.all(color: item.color.withOpacity(0.8)),
+                                                        ),
+                                                        child: const Icon(
+                                                          Icons.arrow_forward_rounded,
+                                                          size: 16,
+                                                          color: Colors.white,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                  Positioned(
-                                    right: -13,
-                                    top: -18,
-                                    child: Icon(item.icon, size: 92, color: Colors.white.withOpacity(0.16)),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.all(15),
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Container(
-                                          width: 58,
-                                          height: 58,
-                                          decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(0.20),
-                                            border: Border.all(color: Colors.white.withOpacity(0.35)),
-                                            borderRadius: BorderRadius.circular(18),
-                                          ),
-                                          child: Icon(item.icon, size: 29, color: Colors.white),
-                                        ),
-                                        const Spacer(),
-                                        Text(
-                                          item.title,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            color: Colors.white,
-                                            height: 1.15,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 5),
-                                        const Row(
-                                          children: [
-                                            Text('Open module', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                                            SizedBox(width: 5),
-                                            Icon(Icons.arrow_forward_rounded, size: 16, color: Colors.white),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
                                 ),
                               ),
                             ),
-                          ),
                           );
                         },
-                      ),
+                      )
               ),
             ],
           ),
@@ -1611,6 +1727,119 @@ class _DashboardScreenState extends State<DashboardScreen> {
           : null,
     );
   }
+}
+
+class MarketDiscoveryScreen extends StatelessWidget {
+  const MarketDiscoveryScreen({super.key});
+
+  static final Uri _marketUri = Uri.parse('https://bensonwanimo92-coder.github.io/');
+
+  Future<void> _openMarket(BuildContext context) async {
+    try {
+      final opened = await launchUrl(_marketUri, mode: LaunchMode.externalApplication);
+      if (!opened && context.mounted) {
+        snack(context, 'SkyNest Market could not be opened. Please try again.');
+      }
+    } catch (error) {
+      if (context.mounted) snack(context, 'Could not open SkyNest Market: $error');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const navy = Color(0xFF07152F);
+    const cyan = Color(0xFF22D3EE);
+    return Scaffold(
+      backgroundColor: navy,
+      appBar: AppBar(
+        title: const Text('SkyNest Discovery'),
+        backgroundColor: navy,
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF07152F), Color(0xFF102B55), Color(0xFF241B4B)],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 62,
+                  height: 62,
+                  decoration: BoxDecoration(
+                    color: cyan.withOpacity(.13),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: cyan.withOpacity(.48)),
+                    boxShadow: [BoxShadow(color: cyan.withOpacity(.16), blurRadius: 24)],
+                  ),
+                  child: const Icon(Icons.travel_explore_rounded, color: cyan, size: 32),
+                ),
+                const SizedBox(height: 22),
+                const Text('Discover more with SkyNest.',
+                  style: TextStyle(color: Colors.white, fontSize: 27, height: 1.15, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 10),
+                Text('Explore opportunities across Kenya — from homes and land to vehicles, careers, restaurants and local services.',
+                  style: TextStyle(color: Colors.white.withOpacity(.76), fontSize: 15, height: 1.5)),
+                const SizedBox(height: 24),
+                _marketCategoryCard(Icons.home_work_outlined, 'Homes & Property', 'Homes · Apartments · Offices'),
+                _marketCategoryCard(Icons.landscape_outlined, 'Land & Farms', 'Plots · Farms · Agricultural land'),
+                _marketCategoryCard(Icons.directions_car_filled_outlined, 'Cars & Vehicles', 'Cars · Motorbikes · Commercial'),
+                _marketCategoryCard(Icons.work_outline_rounded, 'Jobs & Careers', 'Vacancies · Gigs · Opportunities'),
+                _marketCategoryCard(Icons.restaurant_outlined, 'Restaurants & Dining', 'Restaurants · Cafés · Catering'),
+                _marketCategoryCard(Icons.storefront_outlined, 'Business & Services', 'Companies · Services · Retail'),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: cyan,
+                      foregroundColor: navy,
+                      padding: const EdgeInsets.symmetric(vertical: 17),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    onPressed: () => _openMarket(context),
+                    icon: const Icon(Icons.open_in_new_rounded),
+                    label: const Text('Explore SkyNest Market', style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Center(child: Text('Discover · Advertise · Connect',
+                  style: TextStyle(color: Colors.white.withOpacity(.55), fontSize: 11, letterSpacing: 1.1))),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _marketCategoryCard(IconData icon, String title, String subtitle) => Container(
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: Colors.white.withOpacity(.07),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Colors.white.withOpacity(.12)),
+    ),
+    child: Row(children: [
+      Icon(icon, color: const Color(0xFF67E8F9), size: 23),
+      const SizedBox(width: 13),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 3),
+        Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(.62), fontSize: 11)),
+      ])),
+      Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withOpacity(.55), size: 14),
+    ]),
+  );
 }
 
 class AccountRoleScreen extends StatefulWidget {
@@ -4831,10 +5060,11 @@ class TenantGroupsScreen extends StatefulWidget {
 }
 class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
   final name = TextEditingController();
+  final search = TextEditingController();
   bool saving = false;
   final Set<String> selectedGroupIds = <String>{};
   @override
-  void dispose() { name.dispose(); super.dispose(); }
+  void dispose() { name.dispose(); search.dispose(); super.dispose(); }
   Future<void> createGroup() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || name.text.trim().isEmpty) { snack(context, 'Enter a group name.'); return; }
@@ -4856,10 +5086,19 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    return Scaffold(appBar: AppBar(title: const Text('Tenant-to-tenant groups')),
+    final filter = search.text.trim().toLowerCase();
+    return Scaffold(backgroundColor: const Color(0xFF07152F),
+      appBar: AppBar(title: const Text('Tenant Groups'), backgroundColor: const Color(0xFF07152F), foregroundColor: Colors.white),
       body: Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 8), child: TextField(
+          controller: search, style: const TextStyle(color: Colors.white), onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(hintText: 'Search groups...', hintStyle: TextStyle(color: Colors.white.withOpacity(.55)),
+            prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF67E8F9)), filled: true, fillColor: const Color(0xFF10264A),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.white.withOpacity(.10))),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF22D3EE)))),
+        )),
         Padding(padding: const EdgeInsets.all(12), child: Row(children: [
-          Expanded(child: TextField(controller: name, decoration: const InputDecoration(labelText: 'New group name'))),
+          Expanded(child: TextField(controller: name, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: 'New group name', labelStyle: const TextStyle(color: Colors.white70), filled: true, fillColor: const Color(0xFF10264A), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14))))),
           IconButton(onPressed: saving ? null : createGroup, icon: const Icon(Icons.add_circle, size: 32)),
         ])),
         Expanded(child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -4874,8 +5113,9 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
               builder: (context, snap) {
                 if (snap.hasError) return errorView('Groups could not load.');
                 if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                if (snap.data!.docs.isEmpty) return const EmptyView('No groups yet. Create the first group.');
-                return ListView(children: snap.data!.docs.map((doc) {
+                final visibleGroups = snap.data!.docs.where((doc) => (doc.data()['name']?.toString() ?? '').toLowerCase().contains(filter)).toList();
+                if (visibleGroups.isEmpty) return Center(child: Text(filter.isEmpty ? 'No groups yet. Create the first group.' : 'No groups match your search.', style: const TextStyle(color: Colors.white70)));
+                return ListView(children: visibleGroups.map((doc) {
                   final data = doc.data();
                   final members = (data['memberIds'] as List?) ?? const [];
                   final isMember = members.contains(uid);
@@ -4893,9 +5133,9 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                   final highDue = due is num && due > 0;
                   final tile = Container(
                     margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFF1F1F1)),
-                      boxShadow: const [BoxShadow(color: Color(0x0F000000), blurRadius: 20, offset: Offset(0, 4))]),
+                    decoration: BoxDecoration(color: const Color(0xFF10264A), borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: groupColor.withOpacity(.38)),
+                      boxShadow: [BoxShadow(color: groupColor.withOpacity(.12), blurRadius: 20, offset: const Offset(0, 4))]),
                     child: ClipRRect(borderRadius: BorderRadius.circular(20), child: IntrinsicHeight(child: Row(children: [
                       Container(width: 4, color: highDue ? const Color(0xFFEF4444) : groupColor),
                       Expanded(child: Padding(padding: const EdgeInsets.fromLTRB(12, 12, 12, 11), child: Row(children: [
@@ -4914,7 +5154,7 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                         const SizedBox(width: 2),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
                           Text(data['name']?.toString() ?? 'Group', maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
                           const SizedBox(height: 7),
                           Wrap(spacing: 6, runSpacing: 4, children: [
                             _GroupInfoChip(icon: Icons.people_alt_outlined, label: members.length.toString() + ' members'),
@@ -5043,11 +5283,24 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   bool sending = false;
   bool _encryptionReady = false;
   String? _encryptionSetupError;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _messageSoundSubscription;
+  bool _initialMessagesLoaded = false;
+  bool _recordingVoice = false;
+  bool _playingVoice = false;
+  final AudioPlayer _voicePlayer = AudioPlayer();
 
   @override
   void initState() {
     super.initState();
     _prepareEncryption();
+    _messageSoundSubscription = FirebaseFirestore.instance.collection('groups').doc(widget.groupId)
+        .collection('messages').snapshots().listen((snapshot) {
+      if (!_initialMessagesLoaded) { _initialMessagesLoaded = true; return; }
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (snapshot.docChanges.any((change) => change.type == DocumentChangeType.added && change.doc.data()?['senderId'] != uid)) {
+        SkyNestSoundService.playReceived();
+      }
+    }, onError: (_) {});
   }
 
   Future<void> _prepareEncryption() async {
@@ -5062,7 +5315,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   @override
-  void dispose() { message.dispose(); super.dispose(); }
+  void dispose() { _messageSoundSubscription?.cancel(); message.dispose(); _voicePlayer.dispose(); unawaited(SkyNestVoiceService.dispose()); super.dispose(); }
 
   Future<void> send() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -5097,11 +5350,97 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         'senderPhotoUrl': profile.data()?['photoUrl'] ?? user.photoURL,
         'createdAt': FieldValue.serverTimestamp(),
       });
+      await SkyNestSoundService.playSent();
     } catch (e) {
       if (mounted) snack(context, 'Message not sent: ' + e.toString());
       message.text = text;
     } finally {
       if (mounted) setState(() => sending = false);
+    }
+  }
+
+  Future<void> _startVoiceRecording() async {
+    if (sending || _recordingVoice) return;
+    try {
+      await SkyNestVoiceService.startRecording();
+      if (mounted) setState(() => _recordingVoice = true);
+    } catch (error) {
+      if (mounted) snack(context, 'Could not start recording: $error');
+    }
+  }
+
+  Future<void> _stopVoiceRecording() async {
+    if (!_recordingVoice) return;
+    final path = await SkyNestVoiceService.stopRecording();
+    if (mounted) setState(() => _recordingVoice = false);
+    if (path == null) {
+      if (mounted) snack(context, 'No voice recording was captured.');
+      return;
+    }
+    await _sendVoiceNote(path);
+  }
+
+  Future<void> _sendVoiceNote(String localPath) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || sending) return;
+    setState(() => sending = true);
+    String? uploadedPath;
+    try {
+      final groupRef = FirebaseFirestore.instance.collection('groups').doc(widget.groupId);
+      final groupSnapshot = await groupRef.get();
+      final groupData = groupSnapshot.data();
+      if (groupData == null) throw StateError('This group is no longer available.');
+      final memberIds = (groupData['memberIds'] as List? ?? const []).map((value) => value.toString()).toList();
+      if (!memberIds.contains(user.uid)) throw StateError('You are no longer a member of this group.');
+      final attachment = await SkyNestVoiceService.uploadVoiceNote(
+        groupId: widget.groupId, userId: user.uid, localPath: localPath,
+      );
+      uploadedPath = attachment['storagePath']?.toString();
+      final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final senderName = (profile.data()?['displayName'] ?? user.displayName ?? 'Member').toString();
+      final encrypted = await SkyNestMessageEncryption.instance.encryptGroupMessage(
+        groupId: widget.groupId, senderId: user.uid, plaintext: 'Voice message', memberIds: memberIds,
+      );
+      await groupRef.collection('messages').add({
+        ...encrypted,
+        'senderId': user.uid,
+        'senderName': senderName,
+        'senderPhotoUrl': profile.data()?['photoUrl'] ?? user.photoURL,
+        'attachment': attachment,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      await SkyNestSoundService.playSent();
+    } catch (error) {
+      if (uploadedPath != null) {
+        try { await FirebaseStorage.instance.ref(uploadedPath).delete(); } catch (_) {}
+      }
+      if (mounted) snack(context, 'Voice note not sent: $error');
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
+
+  Future<void> _playVoiceAttachment(Map<String, dynamic> attachment) async {
+    final path = attachment['storagePath']?.toString() ?? '';
+    if (!path.startsWith('group_attachments/' + widget.groupId + '/')) {
+      snack(context, 'This voice note does not belong to the current group.');
+      return;
+    }
+    try {
+      if (_playingVoice) {
+        await _voicePlayer.stop();
+        if (mounted) setState(() => _playingVoice = false);
+        return;
+      }
+      final bytes = await FirebaseStorage.instance.ref(path).getData(8 * 1024 * 1024);
+      if (bytes == null || bytes.isEmpty) throw StateError('Voice note is unavailable.');
+      await _voicePlayer.play(BytesSource(bytes));
+      if (mounted) setState(() => _playingVoice = true);
+      _voicePlayer.onPlayerComplete.first.then((_) {
+        if (mounted) setState(() => _playingVoice = false);
+      });
+    } catch (error) {
+      if (mounted) snack(context, 'Could not play voice note: $error');
     }
   }
 
@@ -5154,6 +5493,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         },
         'createdAt': FieldValue.serverTimestamp(),
       });
+      await SkyNestSoundService.playSent();
       if (mounted) snack(context, 'File shared with the group.');
     } catch (error) {
       if (uploadedRef != null) {
@@ -5220,6 +5560,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             ),
           ),
         );
+      } else if (mime.startsWith('audio/')) {
+        await _playVoiceAttachment(attachment);
       } else if (mime == 'application/pdf') {
         await FileSaver.instance.saveToDownloads(
           name: attachment['name']?.toString() ?? 'SkyNest attachment',
@@ -5360,6 +5702,107 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
+  Future<void> _showGroupMembers() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('groups').doc(widget.groupId).collection('members').get();
+      if (!mounted) return;
+      var queryText = '';
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: const Color(0xFF0B1D3A),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            final visible = snapshot.docs.where((doc) {
+              final d = doc.data();
+              final name = (d['displayName'] ?? 'Group member').toString().toLowerCase();
+              return name.contains(queryText.toLowerCase()) || doc.id.toLowerCase().contains(queryText.toLowerCase());
+            }).toList();
+            return SafeArea(
+              child: SizedBox(
+                height: MediaQuery.of(sheetContext).size.height * .72,
+                child: Column(children: [
+                  const SizedBox(height: 12),
+                  Container(width: 42, height: 4, decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(8))),
+                  Padding(padding: const EdgeInsets.fromLTRB(20, 18, 20, 12), child: Row(children: [
+                    const Expanded(child: Text('Group members', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800))),
+                    Text(snapshot.docs.length.toString(), style: const TextStyle(color: Color(0xFF67E8F9), fontWeight: FontWeight.w800)),
+                  ])),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: TextField(
+                    style: const TextStyle(color: Colors.white),
+                    onChanged: (value) => setSheetState(() => queryText = value),
+                    decoration: InputDecoration(
+                      hintText: 'Search members...', hintStyle: const TextStyle(color: Colors.white54),
+                      prefixIcon: const Icon(Icons.search, color: Color(0xFF67E8F9)),
+                      filled: true, fillColor: const Color(0xFF142847),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+                    ),
+                  )),
+                  const SizedBox(height: 8),
+                  Expanded(child: visible.isEmpty
+                    ? const Center(child: Text('No matching members.', style: TextStyle(color: Colors.white70)))
+                    : ListView(children: visible.map((peer) {
+                      final d = peer.data();
+                      final peerName = (d['displayName'] ?? 'Group member').toString();
+                      final photo = (d['photoUrl'] ?? d['photoURL'] ?? '').toString();
+                      final hasPresence = d.containsKey('isOnline') || d.containsKey('online');
+                      final online = d['isOnline'] == true || d['online'] == true;
+                      final isSelf = peer.id == uid;
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(color: const Color(0xFF142847), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.white10)),
+                        child: ListTile(
+                          leading: Stack(children: [
+                            CircleAvatar(
+                              backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
+                              child: photo.isEmpty ? const Icon(Icons.person_outline_rounded) : null,
+                            ),
+                            if (hasPresence) Positioned(right: 0, bottom: 0, child: CircleAvatar(radius: 5, backgroundColor: online ? const Color(0xFF22C55E) : Colors.grey, child: const SizedBox())),
+                          ]),
+                          title: Text(peerName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                          subtitle: Text(isSelf ? 'You' : hasPresence ? (online ? 'Online' : 'Offline') : 'Status unavailable',
+                            style: TextStyle(color: online ? const Color(0xFF4ADE80) : Colors.white54, fontSize: 11)),
+                          trailing: isSelf ? null : Wrap(spacing: 0, children: [
+                            IconButton(tooltip: 'Call', icon: const Icon(Icons.call_rounded, color: Color(0xFF67E8F9)), onPressed: () async {
+                              Navigator.pop(sheetContext);
+                              try {
+                                final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+                                final callerName = (profile.data()?['displayName'] ?? FirebaseAuth.instance.currentUser?.displayName ?? 'SkyNest member').toString();
+                                final call = await FirebaseFirestore.instance.collection('calls').add({
+                                  'groupId': widget.groupId, 'callerId': uid, 'calleeId': peer.id,
+                                  'callerName': callerName, 'calleeName': peerName, 'type': 'voice',
+                                  'status': 'preparing', 'createdAt': FieldValue.serverTimestamp(),
+                                });
+                                if (!mounted) return;
+                                await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => SkyNestCallScreen(callId: call.id, isCaller: true)));
+                              } catch (error) { if (mounted) snack(context, 'Could not start call: $error'); }
+                            }),
+                            IconButton(tooltip: 'Direct message', icon: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFFA78BFA)), onPressed: () {
+                              Navigator.pop(sheetContext);
+                              Navigator.push(context, MaterialPageRoute<void>(builder: (_) => SkyNestDirectMessageScreen(
+                                peerId: peer.id, peerName: peerName, peerPhotoUrl: photo.isEmpty ? null : photo,
+                              )));
+                            }),
+                          ]),
+                        ),
+                      );
+                    }).toList()),
+                  ),
+                ]),
+              ),
+            );
+          },
+        ),
+      );
+    } catch (error) {
+      if (mounted) snack(context, 'Could not load group members: $error');
+    }
+  }
+
   Future<void> leaveGroup() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -5387,8 +5830,18 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFF07152F),
     appBar: AppBar(
-      title: Text(widget.groupName),
+      backgroundColor: const Color(0xFF07152F),
+      foregroundColor: Colors.white,
+      title: InkWell(onTap: _showGroupMembers, borderRadius: BorderRadius.circular(12), child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const CircleAvatar(radius: 17, backgroundColor: Color(0xFF173D6B), child: Icon(Icons.groups_rounded, color: Color(0xFF67E8F9), size: 19)),
+        const SizedBox(width: 9),
+        Flexible(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(widget.groupName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          const Text('Tap to view members', style: TextStyle(fontSize: 10, color: Color(0xFF67E8F9))),
+        ])),
+      ])),
       actions: [
         IconButton(
           tooltip: 'Private message',
@@ -5457,7 +5910,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
                   child: Card(
-                    color: mine ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerHighest,
+                    color: mine ? const Color(0xFF174A75) : const Color(0xFF142847),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(13, 9, 7, 8),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -5467,7 +5920,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                             const SizedBox(width: 6),
                           ],
                           Flexible(child: Text(mine ? 'You' : (data['senderName']?.toString() ?? 'Group member'),
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.primary))),
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF67E8F9)))),
                           if (mine) PopupMenuButton<String>(
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(minWidth: 44, minHeight: 36),
@@ -5490,15 +5943,17 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                   : decrypted.hasError
                                       ? 'Unable to decrypt this message on this device.'
                                       : 'Decrypting secure message…',
+                              style: const TextStyle(color: Colors.white, height: 1.35),
                             ),
                           )
                         else
-                          Text('Legacy message (not end-to-end encrypted): ${data['text']?.toString() ?? ''}'),
+                          Text('Legacy message (not end-to-end encrypted): ${data['text']?.toString() ?? ''}', style: const TextStyle(color: Colors.white)),
                         if (data['attachment'] is Map)
                           Builder(builder: (context) {
                             final attachment = Map<String, dynamic>.from(data['attachment'] as Map);
                             final mime = attachment['mimeType']?.toString() ?? '';
                             final isImage = mime.startsWith('image/');
+                            final isAudio = mime.startsWith('audio/');
                             return InkWell(
                               onTap: () => _openGroupAttachment(attachment),
                               borderRadius: BorderRadius.circular(12),
@@ -5511,7 +5966,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                   color: Theme.of(context).colorScheme.surface.withOpacity(.65),
                                 ),
                                 child: Row(children: [
-                                  Icon(isImage ? Icons.image_rounded : Icons.picture_as_pdf_rounded, size: 28),
+                                  Icon(isImage ? Icons.image_rounded : isAudio ? Icons.graphic_eq_rounded : Icons.picture_as_pdf_rounded, size: 28, color: const Color(0xFF67E8F9)),
                                   const SizedBox(width: 9),
                                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                     Text(attachment['name']?.toString() ?? 'Shared file',
@@ -5528,7 +5983,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                         if (data['createdAt'] is Timestamp)
                           Align(alignment: Alignment.centerRight, child: Text(
                             DateFormat('HH:mm').format((data['createdAt'] as Timestamp).toDate()),
-                            style: Theme.of(context).textTheme.labelSmall,
+                            style: const TextStyle(color: Colors.white60, fontSize: 10),
                           )),
                       ]),
                     ),
@@ -5540,7 +5995,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           );
         },
       )),
-      SafeArea(child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [
+      SafeArea(child: Padding(padding: const EdgeInsets.all(10), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (_recordingVoice) const Padding(padding: EdgeInsets.only(bottom: 7), child: Text('Recording voice note · release microphone to send', style: TextStyle(color: Color(0xFF67E8F9), fontWeight: FontWeight.w700, fontSize: 12))),
+        Row(children: [
         PopupMenuButton<String>(
           enabled: !sending,
           tooltip: 'Attach image or document',
@@ -5556,13 +6013,23 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         ),
         Expanded(child: TextField(
           controller: message,
+          style: const TextStyle(color: Colors.white),
           minLines: 1, maxLines: 4,
           textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(hintText: 'Write a message'),
+          decoration: InputDecoration(hintText: 'Write a message', hintStyle: TextStyle(color: Colors.white.withOpacity(.5)), filled: true, fillColor: const Color(0xFF10264A), border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none)),
           onSubmitted: (_) => send(),
         )),
         const SizedBox(width: 8),
+        GestureDetector(
+          onLongPressStart: sending ? null : (_) => _startVoiceRecording(),
+          onLongPressEnd: (_) => _stopVoiceRecording(),
+          onLongPressCancel: _stopVoiceRecording,
+          child: Container(width: 43, height: 43, margin: const EdgeInsets.only(right: 6),
+            decoration: BoxDecoration(color: _recordingVoice ? const Color(0xFFEF4444) : const Color(0xFF173D6B), shape: BoxShape.circle, border: Border.all(color: const Color(0xFF67E8F9).withOpacity(.6))),
+            child: Icon(_recordingVoice ? Icons.mic : Icons.mic_none_rounded, color: Colors.white)),
+        ),
         IconButton.filled(onPressed: sending ? null : send, icon: const Icon(Icons.send)),
+        ]),
       ]))),
     ]),
   );
@@ -6337,6 +6804,7 @@ String _modulePreviewDescription(String title) {
     'Caretakers & invitations': 'Create time-limited invitations, manage linked caretakers and control property access.',
     'Complaints': 'Receive, prioritise, respond to and track property or maintenance complaints.',
     'Tenant groups': 'Communicate with tenant groups, share updates and follow group activity.',
+    'Discovery': 'Explore SkyNest Market for property, land, vehicles, jobs, restaurants and services across Kenya.',
     'Notices': 'Publish notices, choose urgency and templates, and track tenant acknowledgements.',
     'Electricity': 'Register meters, allocate usage and keep electricity billing records.',
     'Activity log': 'Review important account and property actions with timestamps.',
@@ -6459,4 +6927,107 @@ Future<void> confirmDelete(BuildContext context, String prompt, Future<void> Fun
     try { await action(); if (context.mounted) snack(context, 'Record removed.'); }
     catch (e) { if (context.mounted) snack(context, 'Could not remove record: ' + e.toString()); }
   }
+}
+
+
+/// SkyNest's compact brand mark: a modern roof-and-nest monogram.
+class SkyNestLogo extends StatelessWidget {
+  const SkyNestLogo({super.key, this.size = 48});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: size,
+        height: size,
+        child: CustomPaint(painter: _SkyNestLogoPainter()),
+      );
+}
+
+class _SkyNestLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width;
+    final bounds = Offset.zero & size;
+    final plate = RRect.fromRectAndRadius(
+      Rect.fromLTWH(s * .035, s * .035, s * .93, s * .93),
+      Radius.circular(s * .25),
+    );
+    canvas.drawRRect(
+      plate,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF153B62), Color(0xFF11172F), Color(0xFF281C50)],
+        ).createShader(bounds),
+    );
+    canvas.drawRRect(
+      plate,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * .025
+        ..color = const Color(0xFF65DFFF).withOpacity(.8),
+    );
+
+    final roof = Path()
+      ..moveTo(s * .19, s * .49)
+      ..cubicTo(s * .31, s * .39, s * .42, s * .27, s * .50, s * .22)
+      ..cubicTo(s * .59, s * .28, s * .70, s * .39, s * .82, s * .49);
+    canvas.drawPath(
+      roof,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * .075
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..shader = const LinearGradient(
+          colors: [Color(0xFF65E8FF), Color(0xFF8B83FF)],
+        ).createShader(bounds),
+    );
+
+    final nest = Path()
+      ..moveTo(s * .29, s * .49)
+      ..lineTo(s * .29, s * .69)
+      ..cubicTo(s * .29, s * .76, s * .36, s * .79, s * .43, s * .79)
+      ..lineTo(s * .57, s * .79)
+      ..cubicTo(s * .65, s * .79, s * .71, s * .75, s * .71, s * .68)
+      ..lineTo(s * .71, s * .49);
+    canvas.drawPath(
+      nest,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * .052
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..color = const Color(0xFFEAF8FF),
+    );
+
+    final innerNest = Path()
+      ..moveTo(s * .37, s * .63)
+      ..quadraticBezierTo(s * .50, s * .73, s * .63, s * .63);
+    canvas.drawPath(
+      innerNest,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * .045
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0xFF63DFFF),
+    );
+
+    final star = Path()
+      ..moveTo(s * .77, s * .17)
+      ..lineTo(s * .80, s * .23)
+      ..lineTo(s * .86, s * .26)
+      ..lineTo(s * .80, s * .29)
+      ..lineTo(s * .77, s * .35)
+      ..lineTo(s * .74, s * .29)
+      ..lineTo(s * .68, s * .26)
+      ..lineTo(s * .74, s * .23)
+      ..close();
+    canvas.drawPath(star, Paint()..color = const Color(0xFFF5D77A));
+  }
+
+  @override
+  bool shouldRepaint(covariant _SkyNestLogoPainter oldDelegate) => false;
 }
