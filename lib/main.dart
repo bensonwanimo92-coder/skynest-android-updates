@@ -1495,113 +1495,221 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       )
                     : GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
+                        padding: const EdgeInsets.fromLTRB(14, 6, 14, 20),
                         itemCount: filteredItems.length,
                         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: 250,
-                          childAspectRatio: 0.94,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
+                          childAspectRatio: 0.88,
+                          crossAxisSpacing: 14,
+                          mainAxisSpacing: 14,
                         ),
                         itemBuilder: (context, index) {
                           final item = filteredItems[index];
                           final scheme = Theme.of(context).colorScheme;
-                          final tint = Color.lerp(item.color, scheme.surface, 0.84)!;
                           var hovered = false;
                           return StatefulBuilder(
                             builder: (context, setTileState) => MouseRegion(
                               onEnter: (_) => setTileState(() => hovered = true),
                               onExit: (_) => setTileState(() => hovered = false),
                               child: AnimatedScale(
-                                scale: hovered ? 1.035 : 1.0,
-                                duration: const Duration(milliseconds: 170),
-                                curve: Curves.easeOutBack,
-                                child: Card(
-                            color: tint,
-                            elevation: hovered ? 7 : 3,
-                            shadowColor: item.color.withOpacity(0.30),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(23),
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: InkWell(
-                              onTap: () async {
-                                await SkyNestFeedback.playTap();
-                                if (!context.mounted) return;
-                                await _previewModule(context, item);
-                              },
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  Image.network(
-                                    _menuImageFor(item.title),
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => ColoredBox(color: tint),
+                                scale: hovered ? 1.025 : 1,
+                                duration: const Duration(milliseconds: 190),
+                                curve: Curves.easeOutCubic,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 190),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(25),
+                                    border: Border.all(
+                                      color: item.color.withOpacity(hovered ? 0.95 : 0.52),
+                                      width: hovered ? 1.8 : 1.15,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: item.color.withOpacity(hovered ? 0.30 : 0.16),
+                                        blurRadius: hovered ? 24 : 15,
+                                        spreadRadius: hovered ? 1 : 0,
+                                        offset: const Offset(0, 8),
+                                      ),
+                                      const BoxShadow(
+                                        color: Color(0x33020A18),
+                                        blurRadius: 16,
+                                        offset: Offset(0, 7),
+                                      ),
+                                    ],
                                   ),
-                                  DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        colors: [
-                                          Colors.black.withOpacity(0.20),
-                                          Colors.black.withOpacity(0.76),
-                                        ],
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(24),
+                                    child: Material(
+                                      color: const Color(0xFF09172B),
+                                      child: InkWell(
+                                        onTap: () async {
+                                          await SkyNestFeedback.playTap();
+                                          if (!context.mounted) return;
+                                          await _previewModule(context, item);
+                                        },
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            Image.network(
+                                              _menuImageFor(item.title),
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) => DecoratedBox(
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    begin: Alignment.topLeft,
+                                                    end: Alignment.bottomRight,
+                                                    colors: [
+                                                      Color.lerp(item.color, const Color(0xFF07152F), 0.35)!,
+                                                      const Color(0xFF07152F),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  begin: Alignment.topCenter,
+                                                  end: Alignment.bottomCenter,
+                                                  colors: [
+                                                    const Color(0x99071327),
+                                                    const Color(0x44071327),
+                                                    const Color(0xF2071022),
+                                                  ],
+                                                  stops: const [0, 0.36, 1],
+                                                ),
+                                              ),
+                                            ),
+                                            Positioned(
+                                              top: 0,
+                                              left: 0,
+                                              right: 0,
+                                              height: 3,
+                                              child: DecoratedBox(
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    colors: [
+                                                      item.color.withOpacity(0.15),
+                                                      item.color,
+                                                      scheme.tertiary,
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            Positioned(
+                                              top: 13,
+                                              right: 13,
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0x7708172B),
+                                                  borderRadius: BorderRadius.circular(30),
+                                                  border: Border.all(color: Colors.white.withOpacity(0.22)),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(Icons.auto_awesome, size: 11, color: item.color.withOpacity(0.95)),
+                                                    const SizedBox(width: 5),
+                                                    const Text(
+                                                      'SKYNEST',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 8,
+                                                        letterSpacing: 1.15,
+                                                        fontWeight: FontWeight.w800,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                            Positioned(
+                                              right: -18,
+                                              top: 45,
+                                              child: Icon(item.icon, size: 112, color: Colors.white.withOpacity(0.075)),
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.fromLTRB(15, 17, 15, 15),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Container(
+                                                    width: 56,
+                                                    height: 56,
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.white.withOpacity(0.13),
+                                                      borderRadius: BorderRadius.circular(18),
+                                                      border: Border.all(color: Colors.white.withOpacity(0.36)),
+                                                      boxShadow: [
+                                                        BoxShadow(
+                                                          color: item.color.withOpacity(0.22),
+                                                          blurRadius: 15,
+                                                          spreadRadius: 1,
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    child: Icon(item.icon, size: 29, color: Colors.white),
+                                                  ),
+                                                  const Spacer(),
+                                                  Text(
+                                                    item.title,
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 16,
+                                                      fontWeight: FontWeight.w800,
+                                                      height: 1.14,
+                                                      letterSpacing: -0.25,
+                                                      shadows: [
+                                                        Shadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 9),
+                                                  Row(
+                                                    children: [
+                                                      Text(
+                                                        'Explore module',
+                                                        style: TextStyle(
+                                                          color: Colors.white.withOpacity(0.78),
+                                                          fontSize: 11,
+                                                          fontWeight: FontWeight.w600,
+                                                        ),
+                                                      ),
+                                                      const Spacer(),
+                                                      Container(
+                                                        width: 29,
+                                                        height: 29,
+                                                        decoration: BoxDecoration(
+                                                          color: item.color.withOpacity(0.22),
+                                                          shape: BoxShape.circle,
+                                                          border: Border.all(color: item.color.withOpacity(0.8)),
+                                                        ),
+                                                        child: const Icon(
+                                                          Icons.arrow_forward_rounded,
+                                                          size: 16,
+                                                          color: Colors.white,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                  Positioned(
-                                    right: -13,
-                                    top: -18,
-                                    child: Icon(item.icon, size: 92, color: Colors.white.withOpacity(0.16)),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.all(15),
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Container(
-                                          width: 58,
-                                          height: 58,
-                                          decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(0.20),
-                                            border: Border.all(color: Colors.white.withOpacity(0.35)),
-                                            borderRadius: BorderRadius.circular(18),
-                                          ),
-                                          child: Icon(item.icon, size: 29, color: Colors.white),
-                                        ),
-                                        const Spacer(),
-                                        Text(
-                                          item.title,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            color: Colors.white,
-                                            height: 1.15,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 5),
-                                        const Row(
-                                          children: [
-                                            Text('Open module', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                                            SizedBox(width: 5),
-                                            Icon(Icons.arrow_forward_rounded, size: 16, color: Colors.white),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
                                 ),
                               ),
                             ),
-                          ),
                           );
                         },
-                      ),
+                      )
               ),
             ],
           ),
