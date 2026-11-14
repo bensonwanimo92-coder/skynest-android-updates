@@ -628,7 +628,7 @@ service cloud.firestore {
         request.resource.data.updatedAt == request.time &&
         !request.resource.data.keys().hasAny([
           'submittedAt', 'reviewedAt', 'reviewedBy', 'rejectionReason',
-          'expiresAt', 'featured'
+          'expiresAt', 'featured', 'advertiserTier'
         ]);
 
       allow update: if signedIn() && request.auth.token.email_verified == true &&
@@ -640,7 +640,7 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'title', 'category', 'advertType', 'county', 'town', 'estate',
           'price', 'currency', 'description', 'contactPhone', 'photoUrls', 'media', 'videoUrls', 'details', 'businessName', 'websiteUrl', 'latitude', 'longitude', 'coverImagePath',
-          'bedrooms', 'bathrooms', 'status', 'updatedAt'
+          'bedrooms', 'bathrooms', 'status', 'submittedAt', 'updatedAt'
         ]) &&
         request.resource.data.updatedAt == request.time &&
         validListingFields(request.resource.data);
