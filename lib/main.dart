@@ -458,7 +458,7 @@ class _StartupGateState extends State<StartupGate> {
         body: Center(child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            const Icon(Icons.apartment_rounded, size: 52, color: brand),
+            const SkyNestLogo(size: 58),
             const SizedBox(height: 14),
             const Text('SkyNest', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
             const SizedBox(height: 16),
@@ -798,16 +798,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           child: Column(
                             children: [
-                              Container(
-                                height: 76,
-                                width: 76,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.14),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white.withOpacity(0.35)),
-                                ),
-                                child: const Icon(Icons.apartment_rounded, size: 43, color: Color(0xFFF5D76E)),
-                              ),
+                              const SkyNestLogo(size: 82),
                               const SizedBox(height: 14),
                               const Text(
                                 'SkyNest',
@@ -1293,7 +1284,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
             opacity: animation,
             child: SlideTransition(position: Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero).animate(animation), child: child),
           ),
-          child: Text('SkyNest • ' + userRole[0].toUpperCase() + userRole.substring(1), key: ValueKey<String>(userRole)),
+          child: Row(
+            key: ValueKey<String>(userRole),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SkyNestLogo(size: 30),
+              const SizedBox(width: 9),
+              Flexible(
+                child: Text(
+                  'SkyNest • ' + userRole[0].toUpperCase() + userRole.substring(1),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           IconButton(
@@ -6923,4 +6927,107 @@ Future<void> confirmDelete(BuildContext context, String prompt, Future<void> Fun
     try { await action(); if (context.mounted) snack(context, 'Record removed.'); }
     catch (e) { if (context.mounted) snack(context, 'Could not remove record: ' + e.toString()); }
   }
+}
+
+
+/// SkyNest's compact brand mark: a modern roof-and-nest monogram.
+class SkyNestLogo extends StatelessWidget {
+  const SkyNestLogo({super.key, this.size = 48});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: size,
+        height: size,
+        child: CustomPaint(painter: _SkyNestLogoPainter()),
+      );
+}
+
+class _SkyNestLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width;
+    final bounds = Offset.zero & size;
+    final plate = RRect.fromRectAndRadius(
+      Rect.fromLTWH(s * .035, s * .035, s * .93, s * .93),
+      Radius.circular(s * .25),
+    );
+    canvas.drawRRect(
+      plate,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF153B62), Color(0xFF11172F), Color(0xFF281C50)],
+        ).createShader(bounds),
+    );
+    canvas.drawRRect(
+      plate,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * .025
+        ..color = const Color(0xFF65DFFF).withOpacity(.8),
+    );
+
+    final roof = Path()
+      ..moveTo(s * .19, s * .49)
+      ..cubicTo(s * .31, s * .39, s * .42, s * .27, s * .50, s * .22)
+      ..cubicTo(s * .59, s * .28, s * .70, s * .39, s * .82, s * .49);
+    canvas.drawPath(
+      roof,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * .075
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..shader = const LinearGradient(
+          colors: [Color(0xFF65E8FF), Color(0xFF8B83FF)],
+        ).createShader(bounds),
+    );
+
+    final nest = Path()
+      ..moveTo(s * .29, s * .49)
+      ..lineTo(s * .29, s * .69)
+      ..cubicTo(s * .29, s * .76, s * .36, s * .79, s * .43, s * .79)
+      ..lineTo(s * .57, s * .79)
+      ..cubicTo(s * .65, s * .79, s * .71, s * .75, s * .71, s * .68)
+      ..lineTo(s * .71, s * .49);
+    canvas.drawPath(
+      nest,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * .052
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..color = const Color(0xFFEAF8FF),
+    );
+
+    final innerNest = Path()
+      ..moveTo(s * .37, s * .63)
+      ..quadraticBezierTo(s * .50, s * .73, s * .63, s * .63);
+    canvas.drawPath(
+      innerNest,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * .045
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0xFF63DFFF),
+    );
+
+    final star = Path()
+      ..moveTo(s * .77, s * .17)
+      ..lineTo(s * .80, s * .23)
+      ..lineTo(s * .86, s * .26)
+      ..lineTo(s * .80, s * .29)
+      ..lineTo(s * .77, s * .35)
+      ..lineTo(s * .74, s * .29)
+      ..lineTo(s * .68, s * .26)
+      ..lineTo(s * .74, s * .23)
+      ..close();
+    canvas.drawPath(star, Paint()..color = const Color(0xFFF5D77A));
+  }
+
+  @override
+  bool shouldRepaint(covariant _SkyNestLogoPainter oldDelegate) => false;
 }
