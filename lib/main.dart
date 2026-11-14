@@ -2274,7 +2274,7 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
         final paymentRef = await FirebaseFirestore.instance.collection('payments').add({
           'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(), 'amount': value,
           'method': paymentMethod.toUpperCase(), 'transactionCode': paymentMethod == 'mpesa' ? code : '', 'status': 'Pending verification',
-          'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+          'createdAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp(), 'createdBy': uid,
         });
         final matchingHouse = await FirebaseFirestore.instance.collection('houses')
           .where('createdBy', isEqualTo: uid).where('houseNo', isEqualTo: house.text.trim()).limit(1).get();
@@ -3062,10 +3062,105 @@ class PlansScreen extends StatefulWidget {
 }
 
 class _PlansScreenState extends State<PlansScreen> {
+  final Set<String> _selectedPlanIds = <String>{};
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _currentPlanDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+  bool get _selectionMode => _selectedPlanIds.isNotEmpty;
+
   String _type(String value) => const {
     'build': 'New build', 'renovate': 'Renovation',
     'expand': 'Expansion', 'loanClear': 'Loan clearance',
   }[value] ?? 'Property project';
+
+  Future<void> _editEntry(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final data = doc.data();
+    final title = TextEditingController(text: data['title']?.toString() ?? '');
+    final note = TextEditingController(text: data['note']?.toString() ?? '');
+    final budget = TextEditingController(text: data['budget']?.toString() ?? '');
+    final spent = TextEditingController(text: data['spent']?.toString() ?? '0');
+    final progress = TextEditingController(text: data['progress']?.toString() ?? '0');
+    final isProject = data['planType'] != null;
+    await showDialog<void>(context: context, builder: (d) => AlertDialog(
+      title: const Text('Edit plan or reminder'),
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: title, decoration: const InputDecoration(labelText: 'Title')),
+        TextField(controller: note, maxLines: 3, decoration: const InputDecoration(labelText: 'Notes')),
+        if (isProject) ...[
+          TextField(controller: budget, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Budget (KES)')),
+          TextField(controller: spent, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Spent (KES)')),
+          TextField(controller: progress, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Progress (0–100)')),
+        ],
+      ])),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
+        FilledButton(onPressed: () async {
+          final b = double.tryParse(budget.text.trim());
+          final sp = double.tryParse(spent.text.trim());
+          final pr = int.tryParse(progress.text.trim());
+          if (title.text.trim().isEmpty ||
+              (isProject && (b == null || b <= 0 || sp == null || sp < 0 || pr == null || pr < 0 || pr > 100))) {
+            snack(d, 'Check the title, budget, spending and progress values.');
+            return;
+          }
+          try {
+            final changes = <String, dynamic>{
+              'title': title.text.trim(), 'note': note.text.trim(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            };
+            if (isProject) {
+              changes.addAll({'budget': b, 'spent': sp, 'progress': pr});
+            }
+            await doc.reference.update(changes);
+            if (d.mounted) Navigator.pop(d);
+            if (mounted) snack(context, 'Updated successfully.');
+          } catch (error) {
+            if (d.mounted) snack(d, 'Could not update: $error');
+          }
+        }, child: const Text('Save changes')),
+      ],
+    ));
+    title.dispose(); note.dispose(); budget.dispose(); spent.dispose(); progress.dispose();
+  }
+
+  Future<void> _deleteEntry(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final confirmed = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
+      title: const Text('Delete this item?'),
+      content: Text('“${doc.data()['title'] ?? 'Plan'}” will be permanently deleted.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete')),
+      ],
+    ));
+    if (confirmed != true) return;
+    try {
+      await doc.reference.delete();
+      if (mounted) snack(context, 'Item deleted.');
+    } catch (error) {
+      if (mounted) snack(context, 'Could not delete item: $error');
+    }
+  }
+
+  Future<void> _deleteSelected(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
+    final selected = docs.where((doc) => _selectedPlanIds.contains(doc.id)).toList();
+    if (selected.isEmpty) return;
+    final confirmed = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
+      title: Text('Delete ${selected.length} selected items?'),
+      content: const Text('This action cannot be undone.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete all')),
+      ],
+    ));
+    if (confirmed != true) return;
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in selected) { batch.delete(doc.reference); }
+      await batch.commit();
+      if (mounted) setState(() => _selectedPlanIds.clear());
+      if (mounted) snack(context, '${selected.length} items deleted.');
+    } catch (error) {
+      if (mounted) snack(context, 'Bulk delete failed: $error');
+    }
+  }
 
   Future<void> _addReminder() async {
     final title = TextEditingController(), note = TextEditingController();
@@ -3167,7 +3262,7 @@ class _PlansScreenState extends State<PlansScreen> {
                 'deadline': Timestamp.fromDate(DateTime(deadline.year, deadline.month, deadline.day)),
                 'materials': materials.text.split(',').map((v) => v.trim()).where((v) => v.isNotEmpty).toList(),
                 'costBreakdown': split, 'isCompleted': false,
-                'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+                'createdAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp(), 'createdBy': uid,
               });
               if (d.mounted) Navigator.pop(d);
               if (mounted) snack(context, 'Property plan saved.');
@@ -3226,8 +3321,12 @@ class _PlansScreenState extends State<PlansScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Scaffold(body: EmptyView('Please sign in to view your plans.'));
     return Scaffold(
-      appBar: AppBar(title: const Text('Plans and reminders'), actions: [
-        IconButton(tooltip: 'Add reminder', onPressed: _addReminder, icon: const Icon(Icons.notifications_active_outlined)),
+      appBar: AppBar(title: Text(_selectionMode ? '${_selectedPlanIds.length} selected' : 'Plans and reminders'), actions: [
+        if (_selectionMode) IconButton(tooltip: 'Delete selected', onPressed: () => _deleteSelected(_currentPlanDocs),
+          icon: const Icon(Icons.delete_outline)),
+        if (_selectionMode) IconButton(tooltip: 'Clear selection', onPressed: () => setState(() => _selectedPlanIds.clear()),
+          icon: const Icon(Icons.close)),
+        if (!_selectionMode) IconButton(tooltip: 'Add reminder', onPressed: _addReminder, icon: const Icon(Icons.notifications_active_outlined)),
       ]),
       floatingActionButton: FloatingActionButton.extended(onPressed: _addProject,
         icon: const Icon(Icons.add), label: const Text('New plan')),
@@ -3241,6 +3340,7 @@ class _PlansScreenState extends State<PlansScreen> {
             return (ad is Timestamp ? ad.toDate() : DateTime(9999))
               .compareTo(bd is Timestamp ? bd.toDate() : DateTime(9999));
           });
+          _currentPlanDocs = docs;
           if (docs.isEmpty) return const EmptyView('No plans or reminders yet. Tap New plan to begin.');
           final projects = docs.where((d) => d.data()['planType'] != null).toList();
           final totalBudget = projects.fold<double>(0, (v, d) => v + (d.data()['budget'] is num ? (d.data()['budget'] as num).toDouble() : 0));
@@ -3265,14 +3365,36 @@ class _PlansScreenState extends State<PlansScreen> {
               child: Text('Property projects', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
             ...docs.map((doc) {
               final d = doc.data();
-              if (d['planType'] == null) return Card(child: CheckboxListTile(
+              if (d['planType'] == null) return Card(
+                child: GestureDetector(
+                  onLongPress: () => setState(() => _selectedPlanIds.add(doc.id)),
+                  child: CheckboxListTile(
+                    selected: _selectedPlanIds.contains(doc.id),
+                    secondary: _selectionMode ? Checkbox(
+                      value: _selectedPlanIds.contains(doc.id),
+                      onChanged: (_) => setState(() {
+                        if (_selectedPlanIds.contains(doc.id)) { _selectedPlanIds.remove(doc.id); }
+                        else { _selectedPlanIds.add(doc.id); }
+                      }),
+                    ) : PopupMenuButton<String>(
+                      onSelected: (value) {
+                        if (value == 'edit') _editEntry(doc);
+                        if (value == 'delete') _deleteEntry(doc);
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'edit', child: Text('Edit')),
+                        PopupMenuItem(value: 'delete', child: Text('Delete')),
+                      ],
+                    ),
                 value: d['done'] == true, title: Text(d['title']?.toString() ?? 'Reminder'),
                 subtitle: Text(d['note']?.toString() ?? ''),
                 onChanged: (v) async {
                   try { await doc.reference.update({'done': v == true}); }
                   catch (e) { if (mounted) snack(context, 'Could not update reminder: $e'); }
                 },
-              ));
+                  ),
+                ),
+              );
               final type = d['planType']?.toString() ?? 'build';
               final budget = d['budget'] is num ? (d['budget'] as num).toDouble() : 0.0;
               final spent = d['spent'] is num ? (d['spent'] as num).toDouble() : 0.0;
@@ -3288,11 +3410,21 @@ class _PlansScreenState extends State<PlansScreen> {
               final split = rawSplit is Map ? rawSplit : <String, dynamic>{};
               final color = type == 'renovate' ? Colors.teal : type == 'expand' ? Colors.indigo : type == 'loanClear' ? Colors.deepPurple : Colors.orange;
               return Card(margin: const EdgeInsets.only(bottom: 12), clipBehavior: Clip.antiAlias,
-                child: ExpansionTile(
-                  leading: CircleAvatar(backgroundColor: color.withOpacity(0.14),
+                child: GestureDetector(
+                  onLongPress: () => setState(() => _selectedPlanIds.add(doc.id)),
+                  child: ExpansionTile(
+                  leading: _selectionMode ? Checkbox(
+                    value: _selectedPlanIds.contains(doc.id),
+                    onChanged: (_) => setState(() {
+                      if (_selectedPlanIds.contains(doc.id)) { _selectedPlanIds.remove(doc.id); }
+                      else { _selectedPlanIds.add(doc.id); }
+                    }),
+                  ) : CircleAvatar(backgroundColor: color.withOpacity(0.14),
                     child: Icon(Icons.home_work_outlined, color: color)),
+
                   title: Text(d['title']?.toString() ?? 'Property plan', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(_type(type) + (deadline == null ? '' : ' • ' + dateFormat.format(deadline))),
+                  subtitle: Text(_type(type) + (deadline == null ? '' : ' • ' + dateFormat.format(deadline)) +
+                    (d['createdAt'] is Timestamp ? ' • Added ' + dateFormat.format((d['createdAt'] as Timestamp).toDate()) : '')),
                   trailing: Icon(complete ? Icons.check_circle : Icons.expand_more, color: complete ? Colors.green : color),
                   childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
                   children: [
@@ -3319,6 +3451,10 @@ class _PlansScreenState extends State<PlansScreen> {
                       child: Padding(padding: const EdgeInsets.only(top: 8), child: Text(d['note'].toString()))),
                     const Divider(height: 22),
                     Wrap(spacing: 6, children: [
+                      TextButton.icon(onPressed: () => _editEntry(doc),
+                        icon: const Icon(Icons.edit_outlined), label: const Text('Edit')),
+                      TextButton.icon(onPressed: () => _deleteEntry(doc),
+                        icon: const Icon(Icons.delete_outline), label: const Text('Delete')),
                       TextButton.icon(onPressed: remaining > 0 ? () => _loanEstimate(remaining) : null,
                         icon: const Icon(Icons.calculate_outlined), label: const Text('Loan estimate')),
                       TextButton.icon(onPressed: () => _share(d),
@@ -3328,6 +3464,7 @@ class _PlansScreenState extends State<PlansScreen> {
                         label: Text(complete ? 'Reopen' : 'Complete')),
                     ]),
                   ],
+                  ),
                 ),
               );
             }),
