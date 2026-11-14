@@ -4775,7 +4775,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         if (mounted) snack(context, 'Choose a smaller image (under 700 KB after compression).');
         return;
       }
-      await _sendEncryptedPayload(EncryptedImageMessage.encodeImage(bytes));
+      await _sendEncryptedPayload(VoiceMessageBubble.encodeImage(bytes));
     } catch (error) {
       if (mounted) snack(context, 'Image could not be attached: $error');
     }
