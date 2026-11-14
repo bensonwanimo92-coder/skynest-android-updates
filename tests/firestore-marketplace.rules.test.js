@@ -168,3 +168,55 @@ test("public marketplace rules do not expose private SkyNest house records", asy
   const publicDb = env.unauthenticatedContext().firestore();
   await assertFails(getDoc(doc(publicDb, "houses", "private-house")));
 });
+
+
+test("private direct messages allow participant bootstrap and deny outsiders", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    for (const uid of ["alice", "bob", "eve"]) {
+      await setDoc(doc(db, "users", uid), {
+        displayName: uid,
+        role: "landlord",
+        status: "active"
+      });
+    }
+  });
+
+  const alice = env.authenticatedContext("alice").firestore();
+  const bob = env.authenticatedContext("bob").firestore();
+  const eve = env.authenticatedContext("eve").firestore();
+  const conversationId = "alice__bob";
+  const conversation = doc(alice, "directConversations", conversationId);
+
+  // The participant can safely check the deterministic document before it exists.
+  await assertSucceeds(getDoc(conversation));
+  await assertSucceeds(setDoc(conversation, {
+    participantIds: ["alice", "bob"],
+    participantNames: { alice: "Alice", bob: "Bob" },
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }));
+  await assertSucceeds(getDoc(doc(bob, "directConversations", conversationId)));
+  await assertFails(getDoc(doc(eve, "directConversations", conversationId)));
+
+  const encryptedMessage = {
+    encryptionVersion: 1,
+    encryptionAlgorithm: "X25519-HKDF-SHA256-AES-256-GCM",
+    senderPublicKey: "public-key",
+    nonce: "nonce",
+    ciphertext: "ciphertext",
+    mac: "mac",
+    keyEnvelopes: { alice: "wrapped-key-a", bob: "wrapped-key-b" },
+    senderId: "alice",
+    senderName: "Alice",
+    createdAt: serverTimestamp()
+  };
+  await assertSucceeds(setDoc(
+    doc(alice, "directConversations", conversationId, "messages", "message-1"),
+    encryptedMessage
+  ));
+  await assertFails(setDoc(
+    doc(eve, "directConversations", conversationId, "messages", "message-2"),
+    { ...encryptedMessage, senderId: "eve" }
+  ));
+});
