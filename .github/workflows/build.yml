@@ -559,6 +559,13 @@ jobs:
           dart run flutter_launcher_icons
           echo "Generated SkyNest launcher icons for Android."
 
+      - name: Install SkyNest notification sound resource
+        run: |
+          set -euo pipefail
+          mkdir -p android/app/src/main/res/raw
+          install -m 0644 assets/sounds/pop.wav android/app/src/main/res/raw/pop.wav
+          test -s android/app/src/main/res/raw/pop.wav
+
       - name: Align Flutter Android plugin compile SDK to API 36
         run: |
           set -euo pipefail
