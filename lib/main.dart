@@ -3,6 +3,7 @@ import 'calls/skynest_call_screen.dart';
 import 'security/message_encryption.dart';
 import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
+import 'social/elite_social_hub.dart';
 import 'messaging/direct_message_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -4600,173 +4601,14 @@ class TenantGroupsScreen extends StatefulWidget {
   State<TenantGroupsScreen> createState() => _TenantGroupsScreenState();
 }
 class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
-  final name = TextEditingController();
-  bool saving = false;
-  final Set<String> selectedGroupIds = <String>{};
   @override
-  void dispose() { name.dispose(); super.dispose(); }
-  Future<void> createGroup() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || name.text.trim().isEmpty) { snack(context, 'Enter a group name.'); return; }
-    setState(() => saving = true);
-    try {
-      final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      final p = profile.data() ?? {};
-      final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
-      if (landlordId == null) throw StateError('Your account is not linked to a property.');
-      final ref = FirebaseFirestore.instance.collection('groups').doc();
-      await ref.set({'name': name.text.trim(), 'createdBy': uid, 'landlordId': landlordId,
-        'createdAt': FieldValue.serverTimestamp(), 'memberIds': [uid]});
-      await ref.collection('members').doc(uid).set({'joinedAt': FieldValue.serverTimestamp(), 'role': p['role'] ?? 'tenant', 'displayName': (p['displayName'] ?? FirebaseAuth.instance.currentUser?.displayName ?? 'Member').toString()});
-      name.clear();
-      if (mounted) snack(context, 'Group created.');
-    } catch (e) { if (mounted) snack(context, 'Could not create group: ' + e.toString()); }
-    finally { if (mounted) setState(() => saving = false); }
-  }
-  @override
-  Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    return Scaffold(appBar: AppBar(title: const Text('Tenant-to-tenant groups')),
-      body: Column(children: [
-        Padding(padding: const EdgeInsets.all(12), child: Row(children: [
-          Expanded(child: TextField(controller: name, decoration: const InputDecoration(labelText: 'New group name'))),
-          IconButton(onPressed: saving ? null : createGroup, icon: const Icon(Icons.add_circle, size: 32)),
-        ])),
-        Expanded(child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          future: uid == null ? null : FirebaseFirestore.instance.collection('users').doc(uid).get(),
-          builder: (context, profile) {
-            if (!profile.hasData) return const Center(child: CircularProgressIndicator());
-            final p = profile.data?.data() ?? {};
-            final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
-            if (landlordId == null) return const EmptyView('Join a landlord property account first.');
-            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance.collection('groups').where('landlordId', isEqualTo: landlordId).snapshots(),
-              builder: (context, snap) {
-                if (snap.hasError) return errorView('Groups could not load.');
-                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                if (snap.data!.docs.isEmpty) return const EmptyView('No groups yet. Create the first group.');
-                return ListView(children: snap.data!.docs.map((doc) {
-                  final data = doc.data();
-                  final members = (data['memberIds'] as List?) ?? const [];
-                  final isMember = members.contains(uid);
-                  final selected = selectedGroupIds.contains(doc.id);
-                  final due = data['totalDue'];
-                  final hasUnread = (data['unreadCount'] as num?)?.toInt() ?? 0;
-                  final groupColor = data['colorValue'] is int
-                    ? Color(data['colorValue'] as int) : Theme.of(context).colorScheme.primary;
-                  final paid = (data['paidAmount'] as num?)?.toDouble();
-                  final expected = (data['expectedAmount'] as num?)?.toDouble();
-                  final rawProgress = (data['collectionProgress'] as num?)?.toDouble();
-                  final progress = (rawProgress ?? (paid != null && expected != null && expected > 0 ? paid / expected : 0.0)).clamp(0.0, 1.0).toDouble();
-                  final seenBy = data['seenBy'] is List ? (data['seenBy'] as List).length : ((data['seenCount'] as num?)?.toInt() ?? 0);
-                  final broadcastOnly = data['broadcastOnly'] == true;
-                  final highDue = due is num && due > 0;
-                  final tile = Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFF1F1F1)),
-                      boxShadow: const [BoxShadow(color: Color(0x0F000000), blurRadius: 20, offset: Offset(0, 4))]),
-                    child: ClipRRect(borderRadius: BorderRadius.circular(20), child: IntrinsicHeight(child: Row(children: [
-                      Container(width: 4, color: highDue ? const Color(0xFFEF4444) : groupColor),
-                      Expanded(child: Padding(padding: const EdgeInsets.fromLTRB(12, 12, 12, 11), child: Row(children: [
-                        SizedBox(width: 72, child: Stack(clipBehavior: Clip.none, children: [
-                          Row(children: [
-                            _GroupAvatar(seed: members.isNotEmpty ? members[0].toString() : 'empty', color: groupColor),
-                            Transform.translate(offset: const Offset(-11, 0), child: _GroupAvatar(seed: members.length > 1 ? members[1].toString() : 'member', color: groupColor.withOpacity(.82))),
-                            Transform.translate(offset: const Offset(-22, 0), child: _GroupAvatar(seed: members.length > 2 ? members[2].toString() : 'group', color: groupColor.withOpacity(.64))),
-                          ]),
-                          if (members.isNotEmpty) const Positioned(left: 25, bottom: 0, child: DecoratedBox(
-                            decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                            child: Padding(padding: EdgeInsets.all(1), child: CircleAvatar(radius: 4, backgroundColor: Color(0xFF22C55E))))),
-                          if (selected) const Positioned(left: 15, top: 7, child: CircleAvatar(radius: 13, backgroundColor: Colors.white,
-                            child: Icon(Icons.check_circle, color: Color(0xFF22C55E), size: 25))),
-                        ])),
-                        const SizedBox(width: 2),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Text(data['name']?.toString() ?? 'Group', maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
-                          const SizedBox(height: 7),
-                          Wrap(spacing: 6, runSpacing: 4, children: [
-                            _GroupInfoChip(icon: Icons.people_alt_outlined, label: members.length.toString() + ' members'),
-                            if (due is num) _GroupInfoChip(icon: Icons.payments_outlined, label: 'Due ' + currency.format(due), danger: highDue),
-                          ]),
-                          const SizedBox(height: 9),
-                          ClipRRect(borderRadius: BorderRadius.circular(10), child: LinearProgressIndicator(value: progress, minHeight: 3,
-                            backgroundColor: const Color(0xFFE5E7EB),
-                            valueColor: AlwaysStoppedAnimation<Color>(highDue ? const Color(0xFFEF4444) : const Color(0xFF3B82F6)))),
-                        ])),
-                        const SizedBox(width: 9),
-                        Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                          Stack(clipBehavior: Clip.none, children: [
-                            Container(width: 38, height: 38, decoration: const BoxDecoration(color: Color(0xFFEFF6FF), shape: BoxShape.circle),
-                              child: Icon(broadcastOnly ? Icons.lock_outline : Icons.campaign_rounded, color: const Color(0xFF2563EB), size: 20)),
-                            if (hasUnread > 0) const Positioned(right: -1, top: -1, child: CircleAvatar(radius: 4, backgroundColor: Color(0xFF2563EB))),
-                          ]),
-                          const SizedBox(height: 6),
-                          if (!isMember)
-                            TextButton(
-                              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                minimumSize: const Size(0, 28), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                              onPressed: () async {
-                                try {
-                                  final groupRef = FirebaseFirestore.instance.collection('groups').doc(doc.id);
-                                  await groupRef.update({'memberIds': FieldValue.arrayUnion([uid])});
-                                  await groupRef.collection('members').doc(uid).set({'joinedAt': FieldValue.serverTimestamp(), 'role': p['role'] ?? 'tenant', 'displayName': (p['displayName'] ?? FirebaseAuth.instance.currentUser?.displayName ?? 'Member').toString()});
-                                  if (context.mounted) snack(context, 'Joined group.');
-                                } catch (e) { if (context.mounted) snack(context, 'Could not join group: ' + e.toString()); }
-                              },
-                              child: const Text('JOIN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
-                            )
-                          else
-                            Text(seenBy > 0 ? 'Seen ' + seenBy.toString() + '/' + members.length.toString() : members.length.toString() + ' members',
-                              style: const TextStyle(fontSize: 9, color: Color(0xFF6B7280))),
-                        ]),
-                      ]))),
-                    ]))),
-                  );
-                  return Dismissible(
-                    key: ValueKey('group-tile-' + doc.id),
-                    direction: isMember ? DismissDirection.startToEnd : DismissDirection.none,
-                    confirmDismiss: (_) async {
-                      if (isMember) {
-                        HapticFeedback.selectionClick();
-                        await Navigator.push(context, MaterialPageRoute<void>(builder: (_) =>
-                          GroupChatScreen(groupId: doc.id, groupName: data['name']?.toString() ?? 'Group')));
-                      }
-                      return false;
-                    },
-                    background: Container(alignment: Alignment.centerLeft, margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                      padding: const EdgeInsets.only(left: 20),
-                      decoration: BoxDecoration(color: const Color(0xFF22C55E), borderRadius: BorderRadius.circular(20)),
-                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.campaign_rounded, color: Colors.white), SizedBox(width: 8),
-                        Text('Broadcast', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-                      ])),
-                    child: GestureDetector(
-                      onLongPress: () {
-                        HapticFeedback.selectionClick();
-                        setState(() { if (selected) { selectedGroupIds.remove(doc.id); } else { selectedGroupIds.add(doc.id); } });
-                      },
-                      onTap: () {
-                        if (selectedGroupIds.isNotEmpty) {
-                          setState(() { if (selected) { selectedGroupIds.remove(doc.id); } else { selectedGroupIds.add(doc.id); } });
-                          return;
-                        }
-                        if (!isMember) { snack(context, 'Join this group first.'); return; }
-                        Navigator.push(context, MaterialPageRoute<void>(builder: (_) =>
-                          GroupChatScreen(groupId: doc.id, groupName: data['name']?.toString() ?? 'Group')));
-                      },
-                      child: tile,
-                    ),
-                  );
-                }).toList());
-              },
-            );
-          },
-        )),
-      ]),
-    );
-  }
+  Widget build(BuildContext context) => EliteSocialHubScreen(
+    openGroup: (groupContext, groupId, groupName) {
+      Navigator.push(groupContext, MaterialPageRoute<void>(
+        builder: (_) => GroupChatScreen(groupId: groupId, groupName: groupName),
+      ));
+    },
+  );
 }
 
 class _GroupAvatar extends StatelessWidget {
