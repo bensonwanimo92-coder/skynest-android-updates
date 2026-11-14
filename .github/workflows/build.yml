@@ -12,9 +12,11 @@ on:
 permissions:
   contents: write
 
+# Shorebird release selection is global to the app and is not atomic. Serialize
+# release builds so parallel commits cannot select the same version number.
 concurrency:
-  group: skynest-release-${{ github.sha }}
-  cancel-in-progress: true
+  group: skynest-release-android
+  cancel-in-progress: false
 
 jobs:
   build:

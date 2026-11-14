@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,13 +6,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 const _biometricEnabledKey = 'skynest_biometric_app_lock';
 
 class SkyNestBiometrics {
-  SkyNestBiometrics._();
+  SkyNestBiometrics._() : _auth = LocalAuthentication();
+
+  @visibleForTesting
+  SkyNestBiometrics.forTesting(this._auth);
+
   static final SkyNestBiometrics instance = SkyNestBiometrics._();
-  final LocalAuthentication _auth = LocalAuthentication();
+  final LocalAuthentication _auth;
 
   Future<bool> get supported async {
     try {
-      return await _auth.isDeviceSupported() && await _auth.canCheckBiometrics;
+      // App Lock allows either biometrics or Android's secure device credential
+      // (PIN, pattern or password). Requiring both incorrectly disables the
+      // documented screen-lock fallback on credential-only devices.
+      return await _auth.canCheckBiometrics || await _auth.isDeviceSupported();
     } catch (_) {
       return false;
     }
