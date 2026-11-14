@@ -4,9 +4,9 @@ on:
   push:
     branches:
       - main
+      - 'test/arm64-apk-size'
     tags:
       - 'v*'
-      - 'test/arm64-apk-size'
   workflow_dispatch:
 
 permissions:
