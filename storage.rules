@@ -23,7 +23,6 @@ service firebase.storage {
       }
       allow create: if request.auth != null
         && request.auth.uid == ownerUid
-        &&
         && listingDoc().ownerUid == ownerUid
         && listingDoc().status in ['draft', 'pending', 'rejected']
         && request.resource.size <= 20 * 1024 * 1024
