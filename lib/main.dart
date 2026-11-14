@@ -771,7 +771,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(28),
                             image: widget.enableRemoteImages
@@ -783,59 +783,132 @@ class _LoginScreenState extends State<LoginScreen> {
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
-                              colors: [const Color(0xFF090D16).withOpacity(0.96), const Color(0xFF17243A).withOpacity(0.91)],
+                              colors: [
+                                const Color(0xFF080D18).withOpacity(0.97),
+                                const Color(0xFF14243A).withOpacity(0.95),
+                                const Color(0xFF1C3450).withOpacity(0.93),
+                              ],
                             ),
+                            border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.42), width: 1.1),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFFD4AF37).withOpacity(0.16),
-                                blurRadius: 24,
-                                offset: const Offset(0, 12),
+                                color: const Color(0xFF0B1B31).withOpacity(0.22),
+                                blurRadius: 30,
+                                offset: const Offset(0, 16),
+                              ),
+                              BoxShadow(
+                                color: const Color(0xFFD4AF37).withOpacity(0.10),
+                                blurRadius: 26,
+                                spreadRadius: 1,
                               ),
                             ],
                           ),
-                          child: Column(
+                          child: Stack(
+                            alignment: Alignment.center,
                             children: [
-                              Container(
-                                height: 76,
-                                width: 76,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.14),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white.withOpacity(0.35)),
-                                ),
-                                child: const Icon(Icons.apartment_rounded, size: 43, color: Color(0xFFF5D76E)),
-                              ),
-                              const SizedBox(height: 14),
-                              const Text(
-                                'SkyNest',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 34,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 0.4,
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: Center(
+                                    child: Transform.rotate(
+                                      angle: -0.18,
+                                      child: Text(
+                                        'BWB',
+                                        maxLines: 1,
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.075),
+                                          fontSize: 116,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 7,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'PROPERTY MANAGEMENT',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.88),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 2.1,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Manage properties. Connect people.\nMake renting simpler.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.94),
-                                  height: 1.4,
-                                  fontSize: 14,
-                                ),
+                              Column(
+                                children: [
+                                  Container(
+                                    height: 82,
+                                    width: 82,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFD4AF37).withOpacity(0.12),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: const Color(0xFFE7C96B).withOpacity(0.78), width: 1.4),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFFD4AF37).withOpacity(0.18),
+                                          blurRadius: 22,
+                                          spreadRadius: 1,
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Center(
+                                      child: Text(
+                                        'BWB',
+                                        style: TextStyle(
+                                          color: Color(0xFFF5D76E),
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  const Text(
+                                    'SkyNest',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 36,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.5,
+                                      shadows: [
+                                        Shadow(color: Color(0x66000000), blurRadius: 12, offset: Offset(0, 3)),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    'PROPERTY MANAGEMENT',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: const Color(0xFFF5D76E).withOpacity(0.96),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 2.4,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Text(
+                                    'Manage properties. Connect people.\nMake renting simpler.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.94),
+                                      height: 1.45,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.07),
+                                      borderRadius: BorderRadius.circular(30),
+                                      border: Border.all(color: Colors.white.withOpacity(0.16)),
+                                    ),
+                                    child: Text(
+                                      'BWB SIGNATURE',
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.78),
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 2.0,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
