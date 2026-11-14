@@ -106,7 +106,7 @@ jobs:
           # Pin the library plugin too; Flutter packages apply this plugin.
           library_decl = 'id("com.android.library") version "8.13.2" apply false'
           if 'id("com.android.library")' not in s:
-              s = s.replace(app_decl, app_decl + "\\n    " + library_decl, 1)
+              s = s.replace(app_decl, app_decl + "\n    " + library_decl, 1)
           else:
               s, count = re.subn(
                   r'id\("com\.android\.library"\)\s+version\s+"[^"]+"(?:\s+apply false)?',
