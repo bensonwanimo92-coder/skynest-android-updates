@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../settings/sound_settings.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 final GlobalKey<NavigatorState> skyNestNavigatorKey = GlobalKey<NavigatorState>();
@@ -71,7 +72,7 @@ class _IncomingCallHostState extends State<IncomingCallHost> {
     final isVideo = data['type'] == 'video';
     // Use the platform alert tone while the incoming-call prompt is visible.
     final incomingAlert = Timer.periodic(const Duration(seconds: 3), (_) {
-      unawaited(SystemSound.play(SystemSoundType.alert));
+      unawaited(SkyNestFeedback.playAlert());
     });
     final accepted = await navigator.push<bool>(
       DialogRoute<bool>(
