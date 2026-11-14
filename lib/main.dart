@@ -3787,6 +3787,63 @@ class _PamphletsScreenState extends State<PamphletsScreen> {
     }
   }
 
+  bool _addingStarterPamphlets = false;
+
+  Future<void> _addStarterPamphlets() async {
+    if (_addingStarterPamphlets) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() => _addingStarterPamphlets = true);
+    const templates = <Map<String, dynamic>>[
+      {
+        'title': 'Monthly Rent Reminder',
+        'type': 'rentNotice',
+        'message': 'Dear Tenant, this is a friendly reminder that monthly rent is due. Kindly make payment using the agreed method and share your payment confirmation. If you have already paid, please disregard this notice. Thank you.',
+        'swahiliMessage': 'Mpendwa Mpangaji, tunakukumbusha kwa upole kuwa kodi ya mwezi inapaswa kulipwa. Tafadhali lipa kwa njia tuliyokubaliana na utume uthibitisho wa malipo. Ikiwa tayari umelipa, puuza ujumbe huu. Asante.',
+      },
+      {
+        'title': 'Property House Rules',
+        'type': 'rules',
+        'message': 'Welcome. Please keep shared areas clean, dispose of waste responsibly, avoid excessive noise, protect shared property and report maintenance or safety concerns promptly. Respect the privacy and comfort of neighbours.',
+        'swahiliMessage': 'Karibu. Tafadhali weka maeneo ya pamoja katika hali ya usafi, tupa taka ipasavyo, epuka kelele nyingi, tunza mali ya pamoja na ripoti hitilafu au hatari mapema. Heshimu faragha na utulivu wa majirani.',
+      },
+      {
+        'title': 'Maintenance Notice',
+        'type': 'rentNotice',
+        'message': 'Dear Residents, maintenance work is scheduled at the property. There may be temporary noise or limited access to the affected area. We apologise for any inconvenience and appreciate your cooperation.',
+        'swahiliMessage': 'Wakazi wapendwa, kazi ya matengenezo imepangwa kufanyika katika nyumba. Kunaweza kuwa na kelele za muda au matumizi ya eneo husika yakapunguzwa. Tunaomba radhi kwa usumbufu na tunashukuru kwa ushirikiano wenu.',
+      },
+      {
+        'title': 'Tenant Appreciation',
+        'type': 'appreciation',
+        'message': 'Thank you for being a valued member of our residential community. Your cooperation in keeping the property safe, clean and respectful makes a positive difference. We appreciate you.',
+        'swahiliMessage': 'Asante kwa kuwa sehemu muhimu ya jumuiya yetu ya makazi. Ushirikiano wako katika kudumisha usalama, usafi na heshima unaleta tofauti nzuri. Tunakuthamini.',
+      },
+    ];
+    try {
+      final collection = FirebaseFirestore.instance.collection('pamphlets');
+      final batch = FirebaseFirestore.instance.batch();
+      for (final template in templates) {
+        final ref = collection.doc();
+        batch.set(ref, {
+          ...template,
+          'landlordId': user.uid,
+          'createdBy': user.uid,
+          'createdAt': FieldValue.serverTimestamp(),
+          'isPrinted': false,
+          'copies': 1,
+        });
+      }
+      await batch.commit();
+      await recordActivity(user.uid, 'Added four SkyNest starter pamphlet templates');
+      if (mounted) snack(context, 'Four starter pamphlets added. You can edit their wording before printing.');
+    } catch (error) {
+      if (mounted) snack(context, 'Starter pamphlets could not be added. Check your connection and permissions.');
+    } finally {
+      if (mounted) setState(() => _addingStarterPamphlets = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -3839,7 +3896,30 @@ class _PamphletsScreenState extends State<PamphletsScreen> {
               ]),
             ),
             Expanded(child: filtered.isEmpty
-              ? const EmptyView('No pamphlets yet. Create your first notice or guidance sheet.')
+              ? Center(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 76, height: 76,
+                      decoration: BoxDecoration(color: Theme.of(context).colorScheme.primaryContainer, shape: BoxShape.circle),
+                      child: Icon(Icons.menu_book_rounded, size: 38, color: Theme.of(context).colorScheme.onPrimaryContainer),
+                    ),
+                    const SizedBox(height: 16),
+                    Text('Your pamphlet shelf is ready', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800), textAlign: TextAlign.center),
+                    const SizedBox(height: 8),
+                    const Text('Start with four editable templates: rent reminder, house rules, maintenance notice and tenant appreciation. You can also create your own from scratch.', textAlign: TextAlign.center),
+                    const SizedBox(height: 18),
+                    FilledButton.icon(
+                      onPressed: _addingStarterPamphlets ? null : _addStarterPamphlets,
+                      icon: _addingStarterPamphlets
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.auto_awesome_rounded),
+                      label: Text(_addingStarterPamphlets ? 'Adding templates…' : 'Add 4 starter pamphlets'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(onPressed: _createPamphlet, icon: const Icon(Icons.add), label: const Text('Create a custom pamphlet')),
+                  ],
+                )))
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 90),
                   itemCount: filtered.length,
