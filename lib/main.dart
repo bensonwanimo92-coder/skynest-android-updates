@@ -1482,7 +1482,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         itemCount: filteredItems.length,
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 2,
-                          childAspectRatio: 1.12,
+                          childAspectRatio: 1.02,
                           crossAxisSpacing: 12,
                           mainAxisSpacing: 12,
                         ),
@@ -1541,8 +1541,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Container(
-                                          width: 54,
-                                          height: 54,
+                                          width: 58,
+                                          height: 58,
                                           decoration: BoxDecoration(
                                             color: Colors.white.withOpacity(0.20),
                                             border: Border.all(color: Colors.white.withOpacity(0.35)),
