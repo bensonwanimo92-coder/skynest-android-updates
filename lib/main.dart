@@ -1485,8 +1485,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     : GridView.builder(
                         padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
                         itemCount: filteredItems.length,
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
+                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 240,
                           childAspectRatio: 1.02,
                           crossAxisSpacing: 12,
                           mainAxisSpacing: 12,
