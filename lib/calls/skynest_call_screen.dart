@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../settings/sound_settings.dart';
+import '../services/sound_service.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 final GlobalKey<NavigatorState> skyNestNavigatorKey = GlobalKey<NavigatorState>();
@@ -69,10 +70,8 @@ class _IncomingCallHostState extends State<IncomingCallHost> {
     if (navigator == null) return;
     final callerName = (data['callerName'] ?? 'SkyNest member').toString();
     final isVideo = data['type'] == 'video';
-    // Use the platform alert tone while the incoming-call prompt is visible.
-    final incomingAlert = Timer.periodic(const Duration(seconds: 3), (_) {
-      unawaited(SkyNestFeedback.playAlert());
-    });
+    // Play the custom SkyNest ringtone while the incoming-call prompt is visible.
+    unawaited(SkyNestSoundService.startRingtone());
     final accepted = await navigator.push<bool>(
       DialogRoute<bool>(
       context: navigator.context,
@@ -103,8 +102,7 @@ class _IncomingCallHostState extends State<IncomingCallHost> {
       ),
       ),
     );
-    incomingAlert.cancel();
-
+    await SkyNestSoundService.stopRingtone();
     if (!mounted) return;
     final ref = FirebaseFirestore.instance.collection('calls').doc(callId);
     if (accepted == true) {
@@ -138,6 +136,7 @@ class _IncomingCallHostState extends State<IncomingCallHost> {
     skyNestFirebaseReady.removeListener(_onFirebaseReady);
     _authSub?.cancel();
     _callsSub?.cancel();
+    unawaited(SkyNestSoundService.stopRingtone());
     super.dispose();
   }
 
@@ -291,13 +290,9 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
           'status': 'ringing',
         });
         _ringTimeout?.cancel();
-        // A periodic platform alert gives the caller audible feedback until
-        // the peer answers or the call is otherwise terminated.
+        // Loop the SkyNest ringback sound until the call is answered or ended.
         _ringbackTimer?.cancel();
-        _ringbackTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-          if (!mounted || _ending || _released) return;
-          unawaited(SkyNestFeedback.playAlert());
-        });
+        unawaited(SkyNestSoundService.startRingtone());
         _ringTimeout = Timer(const Duration(seconds: 45), () async {
           if (!mounted || _ending) return;
           try {
@@ -332,6 +327,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
         if (widget.isCaller && call['answer'] is Map) {
           _ringTimeout?.cancel();
           _ringbackTimer?.cancel();
+          unawaited(SkyNestSoundService.stopRingtone());
           final answer = call['answer'] as Map;
           final current = await _peer?.getRemoteDescription();
           if (current == null) {
@@ -345,6 +341,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
         final state = call['status']?.toString();
         if (state == 'active' || state == 'declined' || state == 'ended' || state == 'missed') {
           _ringbackTimer?.cancel();
+          unawaited(SkyNestSoundService.stopRingtone());
         }
         if (state == 'declined' || state == 'ended' || state == 'missed') {
           if (mounted && !_ending) {
@@ -409,6 +406,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
     _released = true;
     _ringTimeout?.cancel();
     _ringbackTimer?.cancel();
+    await SkyNestSoundService.stopRingtone();
     await _callSub?.cancel();
     await _candidateSub?.cancel();
     for (final track in _localStream?.getTracks() ?? <MediaStreamTrack>[]) {
