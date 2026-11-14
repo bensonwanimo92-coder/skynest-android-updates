@@ -326,3 +326,46 @@ exports.changeAccountRole = onCall(async (request) => {
       "This account type cannot be changed through self-service. Contact your property administrator.");
   });
 });
+
+
+// One-time, identity-bound bootstrap for the SkyNest property marketplace administrator.
+// The UID and email are pinned server-side; callers cannot nominate another account.
+// This only sets a custom claim. It does not alter the user's existing SkyNest role/profile.
+exports.bootstrapMarketplaceAdmin = onCall(async (request) => {
+  const ADMIN_UID = "PN9bC3ZzgSaOK1JjG4TcjCU9Grx1";
+  const ADMIN_EMAIL = "bensonwanimo92@gmail.com";
+
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in to your SkyNest administrator account first.");
+  }
+  if (request.auth.uid !== ADMIN_UID ||
+      request.auth.token.email !== ADMIN_EMAIL ||
+      request.auth.token.email_verified !== true) {
+    throw new HttpsError("permission-denied",
+      "This account is not authorized for the initial marketplace administrator setup.");
+  }
+
+  const { getAuth } = require("firebase-admin/auth");
+  const auth = getAuth();
+  const user = await auth.getUser(ADMIN_UID);
+  if (user.email !== ADMIN_EMAIL || user.emailVerified !== true || user.disabled) {
+    throw new HttpsError("failed-precondition",
+      "The administrator account must have this exact verified email and be enabled.");
+  }
+
+  const existingClaims = user.customClaims || {};
+  if (existingClaims.marketplaceAdmin === true) {
+    return { success: true, alreadyConfigured: true };
+  }
+
+  await auth.setCustomUserClaims(ADMIN_UID, {
+    ...existingClaims,
+    marketplaceAdmin: true,
+  });
+
+  return {
+    success: true,
+    alreadyConfigured: false,
+    message: "Marketplace administrator access is configured. Refresh the ID token to receive the new claim.",
+  };
+});
