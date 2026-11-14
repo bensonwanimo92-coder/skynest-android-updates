@@ -1128,6 +1128,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Future<void> _previewModule(BuildContext context, _MenuItem item) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Theme.of(sheetContext).colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 25,
+                  backgroundColor: item.color.withOpacity(0.14),
+                  child: Icon(item.icon, color: item.color, size: 27),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    item.title,
+                    style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Preview this SkyNest section before opening it. Continue when you are ready to view its tools and records.',
+              style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 22),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(sheetContext);
+                  _open(context, item);
+                },
+                icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                label: const Text('Continue to section'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = <_MenuItem>[];
@@ -1438,7 +1508,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             clipBehavior: Clip.antiAlias,
                             child: InkWell(
-                              onTap: () => _open(context, item),
+                              onTap: () => _previewModule(context, item),
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [
