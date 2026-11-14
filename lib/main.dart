@@ -4657,6 +4657,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   final message = TextEditingController();
   bool sending = false;
   final AudioRecorder _voiceRecorder = AudioRecorder();
+  final ImagePicker _chatImagePicker = ImagePicker();
   bool _recordingVoice = false;
   Timer? _voiceLimit;
   bool _encryptionReady = false;
@@ -4759,6 +4760,24 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       await _sendEncryptedPayload(VoiceMessageBubble.encode(bytes));
     } catch (error) {
       if (mounted) snack(context, 'Voice note could not be sent: $error');
+    }
+  }
+
+  Future<void> _sendImageAttachment() async {
+    if (!_encryptionReady || sending) return;
+    try {
+      final picked = await _chatImagePicker.pickImage(
+        source: ImageSource.gallery, imageQuality: 78, maxWidth: 1280,
+      );
+      if (picked == null) return;
+      final bytes = await File(picked.path).readAsBytes();
+      if (bytes.length > 700 * 1024) {
+        if (mounted) snack(context, 'Choose a smaller image (under 700 KB after compression).');
+        return;
+      }
+      await _sendEncryptedPayload(EncryptedImageMessage.encodeImage(bytes));
+    } catch (error) {
+      if (mounted) snack(context, 'Image could not be attached: $error');
     }
   }
 
@@ -5015,9 +5034,13 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                             builder: (context, decrypted) {
                               if (decrypted.hasData) {
                                 final clear = decrypted.data!;
-                                return VoiceMessageBubble.isVoiceMessage(clear)
-                                    ? VoiceMessageBubble(payload: clear)
-                                    : Text(clear);
+                                if (VoiceMessageBubble.isVoiceMessage(clear)) {
+                                  return VoiceMessageBubble(payload: clear);
+                                }
+                                if (VoiceMessageBubble.isImageMessage(clear)) {
+                                  return EncryptedImageMessage(payload: clear);
+                                }
+                                return Text(clear);
                               }
                               return Text(decrypted.hasError
                                   ? 'Unable to decrypt this message on this device.'
@@ -5049,7 +5072,13 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           decoration: const InputDecoration(hintText: 'Write a message'),
           onSubmitted: (_) => send(),
         )),
-        const SizedBox(width: 4),
+        const SizedBox(width: 2),
+        IconButton(
+          tooltip: 'Attach encrypted photo',
+          onPressed: sending || !_encryptionReady ? null : _sendImageAttachment,
+          icon: const Icon(Icons.image_outlined, color: Color(0xFF58E5F2)),
+        ),
+        const SizedBox(width: 2),
         IconButton(
           tooltip: _recordingVoice ? 'Stop and send voice note' : 'Record voice note (30 seconds max)',
           onPressed: sending ? null : _toggleVoiceRecording,
