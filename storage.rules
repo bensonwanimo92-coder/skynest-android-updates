@@ -3,6 +3,17 @@ service firebase.storage {
   match /b/{bucket}/o {
     // Profile photos are visible to signed-in SkyNest members. Only the
     // account owner may replace or remove their own image.
+    // Community Moments and short video profiles. Uploads are owner-controlled;
+    // media reads require an authenticated SkyNest account.
+    match /social_media/{userId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 80 * 1024 * 1024
+        && request.resource.contentType.matches('(image/(jpeg|png|webp)|video/(mp4|quicktime))');
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
     match /profile_photos/{userId}/{fileName} {
       allow read: if request.auth != null;
       allow create, update: if request.auth != null
