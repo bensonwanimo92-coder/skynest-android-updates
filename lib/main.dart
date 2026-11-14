@@ -881,7 +881,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   const SizedBox(height: 14),
                                   Text(
-                                    'Manage properties. Connect people.\\nMake renting simpler.',
+                                    'Manage properties. Connect people.\nMake renting simpler.',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
                                       color: Colors.white.withOpacity(0.94),
