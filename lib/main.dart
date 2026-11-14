@@ -3318,7 +3318,7 @@ class _PlansScreenState extends State<PlansScreen> {
   }
 
   Future<void> _complete(DocumentReference<Map<String, dynamic>> ref, bool value) async {
-    try { await ref.update({'isCompleted': value, 'done': value}); }
+    try { await ref.update({'isCompleted': value, 'done': value, 'updatedAt': FieldValue.serverTimestamp()}); }
     catch (e) { if (mounted) snack(context, 'Could not update plan: $e'); }
   }
 
@@ -3396,9 +3396,13 @@ class _PlansScreenState extends State<PlansScreen> {
                       ],
                     ),
                 value: d['done'] == true, title: Text(d['title']?.toString() ?? 'Reminder'),
-                subtitle: Text(d['note']?.toString() ?? ''),
+                subtitle: Text([
+                  if ((d['note']?.toString() ?? '').isNotEmpty) d['note'].toString(),
+                  if (d['createdAt'] is Timestamp) 'Added ${dateFormat.format((d['createdAt'] as Timestamp).toDate())}',
+                  if (d['updatedAt'] is Timestamp) 'Updated ${dateFormat.format((d['updatedAt'] as Timestamp).toDate())}',
+                ].join(' • ')),
                 onChanged: (v) async {
-                  try { await doc.reference.update({'done': v == true}); }
+                  try { await doc.reference.update({'done': v == true, 'updatedAt': FieldValue.serverTimestamp()}); }
                   catch (e) { if (mounted) snack(context, 'Could not update reminder: $e'); }
                 },
                   ),
@@ -3433,7 +3437,8 @@ class _PlansScreenState extends State<PlansScreen> {
 
                   title: Text(d['title']?.toString() ?? 'Property plan', style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text(_type(type) + (deadline == null ? '' : ' • ' + dateFormat.format(deadline)) +
-                    (d['createdAt'] is Timestamp ? ' • Added ' + dateFormat.format((d['createdAt'] as Timestamp).toDate()) : '')),
+                    (d['createdAt'] is Timestamp ? ' • Added ' + dateFormat.format((d['createdAt'] as Timestamp).toDate()) : '') +
+                    (d['updatedAt'] is Timestamp ? ' • Updated ' + dateFormat.format((d['updatedAt'] as Timestamp).toDate()) : '')),
                   trailing: Icon(complete ? Icons.check_circle : Icons.expand_more, color: complete ? Colors.green : color),
                   childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
                   children: [
