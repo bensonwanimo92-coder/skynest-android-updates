@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -6,11 +7,14 @@ import 'package:flutter/material.dart';
 
 class VoiceMessageBubble extends StatefulWidget {
   static const prefix = 'SKYNEST_VOICE_V1:';
+  static const imagePrefix = 'SKYNEST_IMAGE_V1:';
   final String payload;
   const VoiceMessageBubble({super.key, required this.payload});
 
   static bool isVoiceMessage(String value) => value.startsWith(prefix);
   static String encode(Uint8List bytes) => '$prefix${base64Encode(bytes)}';
+  static bool isImageMessage(String value) => value.startsWith(imagePrefix);
+  static String encodeImage(Uint8List bytes) => '$imagePrefix${base64Encode(bytes)}';
 
   @override
   State<VoiceMessageBubble> createState() => _VoiceMessageBubbleState();
@@ -47,7 +51,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
 
   @override
   void dispose() {
-    _player.dispose();
+    unawaited(_player.dispose());
     super.dispose();
   }
 
@@ -65,4 +69,27 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
     Text(_failed ? 'Audio unavailable' : 'Voice message',
       style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
   ]);
+}
+
+
+class EncryptedImageMessage extends StatelessWidget {
+  final String payload;
+  const EncryptedImageMessage({super.key, required this.payload});
+
+  @override
+  Widget build(BuildContext context) {
+    try {
+      final encoded = payload.substring(VoiceMessageBubble.imagePrefix.length);
+      final bytes = base64Decode(encoded);
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.memory(bytes, width: 230, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Padding(
+            padding: EdgeInsets.all(12), child: Text('Image could not be displayed.')),
+        ),
+      );
+    } catch (_) {
+      return const Text('Image attachment is unavailable.');
+    }
+  }
 }
