@@ -29,7 +29,7 @@ service firebase.storage {
         && request.auth.uid == userId
         && request.resource.size <= 10 * 1024 * 1024
         && request.resource.contentType.matches(
-          'image/(jpeg|png|webp)|application/pdf|application/msword|application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          'image/(jpeg|png|webp)|application/pdf'
         );
       allow update: if false;
       allow delete: if isGroupMember() && request.auth.uid == userId;
