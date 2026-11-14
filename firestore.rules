@@ -525,7 +525,7 @@ service cloud.firestore {
         (signedIn() && resource.data.ownerUid == request.auth.uid) ||
         marketplaceAdmin();
 
-      allow create: if signedIn() &&
+      allow create: if signedIn() && request.auth.token.email_verified == true &&
         request.resource.data.ownerUid == request.auth.uid &&
         validListingFields(request.resource.data) &&
         request.resource.data.status == 'draft' &&
@@ -536,7 +536,7 @@ service cloud.firestore {
           'expiresAt', 'featured'
         ]);
 
-      allow update: if signedIn() &&
+      allow update: if signedIn() && request.auth.token.email_verified == true &&
         resource.data.ownerUid == request.auth.uid &&
         resource.data.status in ['draft', 'rejected'] &&
         request.resource.data.ownerUid == resource.data.ownerUid &&
