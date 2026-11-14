@@ -47,7 +47,7 @@ service cloud.firestore {
           request.resource.data.role == resource.data.role &&
           request.resource.data.status == resource.data.status &&
           request.resource.data.landlordId == resource.data.landlordId &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone', 'photoUrl', 'updatedAt'])
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone', 'photoUrl', 'photoPath', 'updatedAt'])
         ) ||
         // One-time, self-only migration for pre-role accounts with no tenant/caretaker linkage.
         (
