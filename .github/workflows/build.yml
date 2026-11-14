@@ -637,18 +637,21 @@ jobs:
               path.write_text(source)
 
           check = path.read_text()
-          if r"\\n    packaging {" in check or r"\\n" in check:
-              raise SystemExit("Invalid literal \\n sequence found in generated Kotlin Gradle file.")
+          # Detect a literal backslash+n (the prior failure) without relying on
+          # Python string-escape spelling inside this YAML-embedded script.
+          if chr(92) + "n" in check:
+              raise SystemExit("Invalid literal backslash-n sequence found in generated Kotlin Gradle file.")
           required = (
-              'android {\\n    packaging {',
-              'pickFirsts.add("lib/arm64-v8a/libapp.so")',
-              'excludes.add("**/armeabi-v7a/**")',
-              'excludes.add("**/x86/**")',
-              'excludes.add("**/x86_64/**")',
+              "pickFirsts.add(\"lib/arm64-v8a/libapp.so\")",
+              "excludes.add(\"**/armeabi-v7a/**\")",
+              "excludes.add(\"**/x86/**\")",
+              "excludes.add(\"**/x86_64/**\")",
           )
+          if "android {" + chr(10) + "    packaging {" not in check:
+              raise SystemExit("Packaging block is not nested directly inside the Android block.")
           missing = [item for item in required if item not in check]
           if missing:
-              raise SystemExit("Native packaging configuration incomplete or misplaced: " + ", ".join(missing))
+              raise SystemExit("Native packaging configuration incomplete: " + ", ".join(missing))
           print("PASS: valid Kotlin DSL packaging block; ARM64 libapp duplicate resolved; non-ARM64 ABIs excluded.")
           PY
 
