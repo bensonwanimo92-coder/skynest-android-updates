@@ -21,19 +21,16 @@ service firebase.storage {
       function listingDoc() {
         return firestore.get(/databases/(default)/documents/publicListings/$(listingId)).data;
       }
-      function listingExists() {
-        return firestore.exists(/databases/(default)/documents/publicListings/$(listingId));
-      }
       allow create: if request.auth != null
         && request.auth.uid == ownerUid
-        && listingExists()
+        &&
         && listingDoc().ownerUid == ownerUid
         && listingDoc().status in ['draft', 'pending', 'rejected']
         && request.resource.size <= 20 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp)|video/(mp4|webm|quicktime)');
       allow read: if request.auth != null && (
         request.auth.uid == ownerUid ||
-        (listingExists() && listingDoc().status == 'approved' &&
+        (listingDoc().status == 'approved' &&
           listingDoc().expiresAt > request.time)
       );
       allow update: if false;
