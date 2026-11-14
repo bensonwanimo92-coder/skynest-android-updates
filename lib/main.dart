@@ -5512,8 +5512,18 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFF07152F),
     appBar: AppBar(
-      title: Text(widget.groupName),
+      backgroundColor: const Color(0xFF07152F),
+      foregroundColor: Colors.white,
+      title: InkWell(onTap: _showGroupMembers, borderRadius: BorderRadius.circular(12), child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const CircleAvatar(radius: 17, backgroundColor: Color(0xFF173D6B), child: Icon(Icons.groups_rounded, color: Color(0xFF67E8F9), size: 19)),
+        const SizedBox(width: 9),
+        Flexible(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(widget.groupName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          const Text('Tap to view members', style: TextStyle(fontSize: 10, color: Color(0xFF67E8F9))),
+        ])),
+      ])),
       actions: [
         IconButton(
           tooltip: 'Private message',
@@ -5582,7 +5592,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
                   child: Card(
-                    color: mine ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerHighest,
+                    color: mine ? const Color(0xFF174A75) : const Color(0xFF142847),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(13, 9, 7, 8),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -5592,7 +5602,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                             const SizedBox(width: 6),
                           ],
                           Flexible(child: Text(mine ? 'You' : (data['senderName']?.toString() ?? 'Group member'),
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.primary))),
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF67E8F9)))),
                           if (mine) PopupMenuButton<String>(
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(minWidth: 44, minHeight: 36),
@@ -5615,10 +5625,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                   : decrypted.hasError
                                       ? 'Unable to decrypt this message on this device.'
                                       : 'Decrypting secure message…',
+                              style: const TextStyle(color: Colors.white, height: 1.35),
                             ),
                           )
                         else
-                          Text('Legacy message (not end-to-end encrypted): ${data['text']?.toString() ?? ''}'),
+                          Text('Legacy message (not end-to-end encrypted): ${data['text']?.toString() ?? ''}', style: const TextStyle(color: Colors.white)),
                         if (data['attachment'] is Map)
                           Builder(builder: (context) {
                             final attachment = Map<String, dynamic>.from(data['attachment'] as Map);
@@ -5653,7 +5664,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                         if (data['createdAt'] is Timestamp)
                           Align(alignment: Alignment.centerRight, child: Text(
                             DateFormat('HH:mm').format((data['createdAt'] as Timestamp).toDate()),
-                            style: Theme.of(context).textTheme.labelSmall,
+                            style: const TextStyle(color: Colors.white60, fontSize: 10),
                           )),
                       ]),
                     ),
@@ -5681,9 +5692,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         ),
         Expanded(child: TextField(
           controller: message,
+          style: const TextStyle(color: Colors.white),
           minLines: 1, maxLines: 4,
           textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(hintText: 'Write a message'),
+          decoration: InputDecoration(hintText: 'Write a message', hintStyle: TextStyle(color: Colors.white.withOpacity(.5)), filled: true, fillColor: const Color(0xFF10264A), border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none)),
           onSubmitted: (_) => send(),
         )),
         const SizedBox(width: 8),
