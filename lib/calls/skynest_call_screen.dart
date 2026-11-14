@@ -297,7 +297,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
         _ringbackTimer?.cancel();
         _ringbackTimer = Timer.periodic(const Duration(seconds: 3), (_) {
           if (!mounted || _ending || _released) return;
-          unawaited(SystemSound.play(SystemSoundType.alert));
+          unawaited(SkyNestFeedback.playAlert());
         });
         _ringTimeout = Timer(const Duration(seconds: 45), () async {
           if (!mounted || _ending) return;
