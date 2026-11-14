@@ -5,6 +5,7 @@ import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
 import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
+import 'services/sound_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -5168,11 +5169,21 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   bool sending = false;
   bool _encryptionReady = false;
   String? _encryptionSetupError;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _messageSoundSubscription;
+  bool _initialMessagesLoaded = false;
 
   @override
   void initState() {
     super.initState();
     _prepareEncryption();
+    _messageSoundSubscription = FirebaseFirestore.instance.collection('groups').doc(widget.groupId)
+        .collection('messages').snapshots().listen((snapshot) {
+      if (!_initialMessagesLoaded) { _initialMessagesLoaded = true; return; }
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (snapshot.docChanges.any((change) => change.type == DocumentChangeType.added && change.doc.data()?['senderId'] != uid)) {
+        SkyNestSoundService.playReceived();
+      }
+    }, onError: (_) {});
   }
 
   Future<void> _prepareEncryption() async {
@@ -5187,7 +5198,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   @override
-  void dispose() { message.dispose(); super.dispose(); }
+  void dispose() { _messageSoundSubscription?.cancel(); message.dispose(); super.dispose(); }
 
   Future<void> send() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -5222,6 +5233,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         'senderPhotoUrl': profile.data()?['photoUrl'] ?? user.photoURL,
         'createdAt': FieldValue.serverTimestamp(),
       });
+      await SkyNestSoundService.playSent();
     } catch (e) {
       if (mounted) snack(context, 'Message not sent: ' + e.toString());
       message.text = text;
@@ -5279,6 +5291,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         },
         'createdAt': FieldValue.serverTimestamp(),
       });
+      await SkyNestSoundService.playSent();
       if (mounted) snack(context, 'File shared with the group.');
     } catch (error) {
       if (uploadedRef != null) {
