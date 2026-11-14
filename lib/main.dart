@@ -1195,7 +1195,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ? 'Good afternoon'
             : 'Good evening';
     final firstName = displayName != null && displayName.trim().isNotEmpty
-        ? displayName.trim().split(RegExp(r'\\s+')).first
+        ? displayName.trim().split(RegExp(r'\s+')).first
         : 'there';
     final dailyMessage = userRole == 'landlord'
         ? 'Your properties, people and plans — all moving together.'
