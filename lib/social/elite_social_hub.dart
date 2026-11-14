@@ -304,7 +304,7 @@ class _EliteSocialHubScreenState extends State<EliteSocialHubScreen> {
                         style: const TextStyle(color: Colors.white60, fontSize: 12)),
                     ])),
                     if (isMember) const Icon(Icons.chevron_right_rounded, color: _cyan)
-                    else TextButton(onPressed: () => _joinGroup(doc.id, ids), child: const Text('JOIN')),
+                    else TextButton(onPressed: () => _joinGroup(doc.id), child: const Text('JOIN')),
                   ]),
                 ),
               ),
@@ -315,7 +315,7 @@ class _EliteSocialHubScreenState extends State<EliteSocialHubScreen> {
     )),
   ]);
 
-  Future<void> _joinGroup(String groupId, List<String> currentMembers) async {
+  Future<void> _joinGroup(String groupId) async {
     try {
       final profile = await FirebaseFirestore.instance.collection('users').doc(_uid).get();
       final group = FirebaseFirestore.instance.collection('groups').doc(groupId);
