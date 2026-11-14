@@ -1676,7 +1676,7 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
       final ref = FirebaseStorage.instance.ref()
           .child('profile_photos').child(user.uid).child('profile.jpg');
       final task = await ref.putFile(file, SettableMetadata(
-        contentType: 'image/jpeg',
+        contentType: picked.mimeType ?? 'image/jpeg',
         cacheControl: 'public,max-age=3600',
       ));
       final url = await task.ref.getDownloadURL();
