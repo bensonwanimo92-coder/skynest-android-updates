@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart' as pdf;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:path_provider/path_provider.dart';
+import 'reading_hub_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ReadingHubScreen extends StatefulWidget {
@@ -32,34 +32,19 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
   bool _loadingOfflineFiles = true;
   String? _offlineLoadError;
 
+  late final ReadingHubStorage _storage;
+
   @override
   void initState() {
     super.initState();
+    _storage = ReadingHubStorage(directoryProvider: widget.offlineDirectoryProvider);
     _refreshOfflineFiles();
-  }
-
-  Future<Directory> _offlineDirectory() async {
-    final injectedProvider = widget.offlineDirectoryProvider;
-    if (injectedProvider != null) {
-      final directory = await injectedProvider();
-      if (!await directory.exists()) await directory.create(recursive: true);
-      return directory;
-    }
-    final documents = await getApplicationDocumentsDirectory();
-    final directory = Directory('${documents.path}${Platform.pathSeparator}SkyNest Reading');
-    if (!await directory.exists()) await directory.create(recursive: true);
-    return directory;
   }
 
   Future<void> _refreshOfflineFiles() async {
     if (mounted && !_loadingOfflineFiles) setState(() => _loadingOfflineFiles = true);
     try {
-      final directory = await _offlineDirectory();
-      final files = directory.listSync(followLinks: false)
-          .whereType<File>()
-          .where((entry) => entry.path.toLowerCase().endsWith('.pdf'))
-          .toList();
-      files.sort((a, b) => b.path.compareTo(a.path));
+      final files = await _storage.listPdfs();
       if (!mounted) return;
       setState(() { _offlineFiles = files; _offlineLoadError = null; _loadingOfflineFiles = false; });
     } catch (error) {
@@ -368,9 +353,7 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
     setState(() => _downloading = true);
     try {
       final bytes = await _buildIssuePdf(issue);
-      final directory = await _offlineDirectory();
-      final localFile = File('${directory.path}${Platform.pathSeparator}${_fileName(issue)}.pdf');
-      await localFile.writeAsBytes(bytes, flush: true);
+      await _storage.savePdf(_fileName(issue), bytes);
       await _refreshOfflineFiles();
       var exportedToDownloads = false;
       try {
