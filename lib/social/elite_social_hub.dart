@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
 
 const _midnight = Color(0xFF071326);
 const _panel = Color(0xFF101F3C);
@@ -402,10 +403,7 @@ class _EliteSocialHubScreenState extends State<EliteSocialHubScreen> {
           const SizedBox(height: 12),
           Text(name, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
           const SizedBox(height: 12),
-          if (video != null) Container(width: double.infinity, padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: _midnight, borderRadius: BorderRadius.circular(16)),
-            child: const Row(children: [Icon(Icons.play_circle_fill_rounded, color: _cyan, size: 28), SizedBox(width: 10),
-              Expanded(child: Text('Video profile available. Open the video link from the profile viewer.', style: TextStyle(color: Colors.white70)))])),
+          if (video != null) _NetworkVideoCard(url: video),
           if (video == null) const Text('No video profile added yet.', style: TextStyle(color: Colors.white60)),
           if (userId == _uid) TextButton.icon(onPressed: () { Navigator.pop(context); _uploadProfileVideo(); },
             icon: const Icon(Icons.video_call_rounded), label: const Text('Update video profile')),
@@ -447,11 +445,7 @@ class _EliteSocialHubScreenState extends State<EliteSocialHubScreen> {
               ),
               if (!isVideo) Image.network(data['mediaUrl'].toString(), width: double.infinity, height: 240, fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => const SizedBox(height: 160, child: Center(child: Icon(Icons.broken_image_outlined, color: Colors.white54))))
-              else Container(height: 190, width: double.infinity, color: const Color(0xFF08152A),
-                child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.play_circle_fill_rounded, color: _cyan, size: 58),
-                  SizedBox(height: 8), Text('Video Moment', style: TextStyle(color: Colors.white70)),
-                ])),
+              else _NetworkVideoCard(url: data['mediaUrl'].toString()),
               if ((data['caption']?.toString().isNotEmpty ?? false))
                 Padding(padding: const EdgeInsets.fromLTRB(15, 11, 15, 15),
                   child: Text(data['caption'].toString(), style: const TextStyle(color: Colors.white, height: 1.35))),
@@ -479,4 +473,64 @@ class _SocialEmpty extends StatelessWidget {
       Text(subtitle, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white60, height: 1.4)),
     ]),
   ));
+}
+
+
+class _NetworkVideoCard extends StatefulWidget {
+  final String url;
+  const _NetworkVideoCard({required this.url});
+  @override
+  State<_NetworkVideoCard> createState() => _NetworkVideoCardState();
+}
+
+class _NetworkVideoCardState extends State<_NetworkVideoCard> {
+  late final VideoPlayerController _controller;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
+      ..initialize().then((_) {
+        if (mounted) setState(() {});
+      }).catchError((Object error) {
+        debugPrint('Community video playback failed: $error');
+        if (mounted) setState(() => _failed = true);
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_failed) return const SizedBox(height: 150, child: Center(
+      child: Text('This video could not be played.', style: TextStyle(color: Colors.white60))));
+    if (!_controller.value.isInitialized) return const SizedBox(height: 180,
+      child: Center(child: CircularProgressIndicator(color: _cyan)));
+    return AspectRatio(
+      aspectRatio: _controller.value.aspectRatio == 0 ? 16 / 9 : _controller.value.aspectRatio,
+      child: Stack(alignment: Alignment.center, children: [
+        VideoPlayer(_controller),
+        IconButton.filledTonal(
+          iconSize: 34,
+          onPressed: () => setState(() {
+            if (_controller.value.isPlaying) {
+              _controller.pause();
+            } else {
+              _controller.play();
+            }
+          }),
+          icon: Icon(_controller.value.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
+        ),
+        Positioned(left: 8, right: 8, bottom: 8, child: VideoProgressIndicator(
+          _controller, allowScrubbing: true, colors: const VideoProgressColors(
+            playedColor: _cyan, bufferedColor: Colors.white38, backgroundColor: Colors.white24),
+        )),
+      ]),
+    );
+  }
 }
