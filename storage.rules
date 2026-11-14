@@ -27,11 +27,8 @@ service firebase.storage {
         && listingDoc().status in ['draft', 'pending', 'rejected']
         && request.resource.size <= 20 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp)|video/(mp4|webm|quicktime)');
-      allow read: if request.auth != null && (
-        request.auth.uid == ownerUid ||
-        (listingDoc().status == 'approved' &&
-          listingDoc().expiresAt > request.time)
-      );
+      allow read: if (request.auth != null && request.auth.uid == ownerUid) ||
+        (listingDoc().status == 'approved' && listingDoc().expiresAt > request.time);
       allow update: if false;
       allow delete: if request.auth != null && request.auth.uid == ownerUid;
     }
