@@ -5026,7 +5026,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       final uniqueName = DateTime.now().millisecondsSinceEpoch.toString() + '_' + safeName;
       final storagePath = 'group_attachments/' + widget.groupId + '/' + user.uid + '/' + uniqueName;
       uploadedRef = FirebaseStorage.instance.ref().child(storagePath);
-      await uploadedRef!.putFile(file, SettableMetadata(
+      await uploadedRef.putFile(file, SettableMetadata(
         contentType: mimeType,
         cacheControl: 'private,max-age=3600',
       ));
@@ -5054,7 +5054,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       if (mounted) snack(context, 'File shared with the group.');
     } catch (error) {
       if (uploadedRef != null) {
-        try { await uploadedRef!.delete(); } catch (_) {}
+        try { await uploadedRef.delete(); } catch (_) {}
       }
       if (mounted) snack(context, 'Attachment not sent: ' + error.toString());
     } finally {
