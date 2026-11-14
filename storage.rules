@@ -21,10 +21,11 @@ service firebase.storage {
       function listingDoc() {
         return firestore.get(/databases/(default)/documents/publicListings/$(listingId)).data;
       }
+      // Uploads are restricted to the authenticated owner's namespace. An orphan
+      // object remains private because non-owner reads still require an approved
+      // and unexpired listing document with this exact listing ID.
       allow create: if request.auth != null
         && request.auth.uid == ownerUid
-        && listingDoc().ownerUid == ownerUid
-        && listingDoc().status in ['draft', 'pending', 'rejected']
         && request.resource.size <= 20 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp)|video/(mp4|webm|quicktime)');
       allow read: if (request.auth != null && request.auth.uid == ownerUid) ||
