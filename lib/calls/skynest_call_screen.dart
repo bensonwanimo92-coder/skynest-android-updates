@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import '../settings/sound_settings.dart';
 import '../services/sound_service.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
