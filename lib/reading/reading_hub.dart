@@ -55,9 +55,10 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
     if (mounted && !_loadingOfflineFiles) setState(() => _loadingOfflineFiles = true);
     try {
       final directory = await _offlineDirectory();
-      final files = await directory.list(followLinks: false)
-          .where((entry) => entry is File && entry.path.toLowerCase().endsWith('.pdf'))
-          .cast<File>().toList();
+      final files = directory.listSync(followLinks: false)
+          .whereType<File>()
+          .where((entry) => entry.path.toLowerCase().endsWith('.pdf'))
+          .toList();
       files.sort((a, b) => b.path.compareTo(a.path));
       if (!mounted) return;
       setState(() { _offlineFiles = files; _offlineLoadError = null; _loadingOfflineFiles = false; });

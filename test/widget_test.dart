@@ -35,11 +35,11 @@ void main() {
 
   testWidgets('Reading Hub exposes original booklets and an empty offline shelf', (tester) async {
     await tester.pumpWidget(readingHub());
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Reading & Media Hub'), findsOneWidget);
     expect(find.text('The Lighthouse Garden'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('My offline downloads'), 400);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('My offline downloads'), findsOneWidget);
     expect(find.text('No offline booklets yet'), findsOneWidget);
   });
@@ -47,18 +47,18 @@ void main() {
   testWidgets('Reading Hub lists a saved booklet for offline reading', (tester) async {
     await File('${offlineDirectory.path}${Platform.pathSeparator}the_lighthouse_garden.pdf').writeAsBytes(<int>[37, 80, 68, 70]);
     await tester.pumpWidget(readingHub());
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.scrollUntilVisible(find.text('My offline downloads'), 400);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('The Lighthouse Garden'), findsOneWidget);
     expect(find.text('Saved on this device · PDF'), findsOneWidget);
   });
 
   testWidgets('Reading Hub category chips filter the booklet shelf', (tester) async {
     await tester.pumpWidget(readingHub());
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.tap(find.widgetWithText(ChoiceChip, 'History'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('History: Reading the Past'), findsOneWidget);
     expect(find.text('The Lighthouse Garden'), findsNothing);
   });
