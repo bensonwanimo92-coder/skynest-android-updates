@@ -38,6 +38,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.47.0'
           cache: true
 
       - name: Generate Android project files
@@ -87,7 +88,7 @@ jobs:
 
           # Flutter currently warns that AGP 9 is not a supported baseline for
           # projects whose plugins still apply the Kotlin Gradle Plugin.
-          # Pin a compatible API-36 toolchain instead of inheriting moving defaults.
+          # Pin the Flutter 3.47-compatible Android toolchain instead of inheriting moving defaults.
           settings = Path("android/settings.gradle.kts")
           app = Path("android/app/build.gradle.kts")
           wrapper = Path("android/gradle/wrapper/gradle-wrapper.properties")
@@ -96,7 +97,7 @@ jobs:
                   raise SystemExit(f"Required generated Android build file missing: {path}")
 
           s = settings.read_text()
-          app_decl = 'id("com.android.application") version "8.13.2" apply false'
+          app_decl = 'id("com.android.application") version "8.11.1" apply false'
           s, count = re.subn(
               r'id\("com\.android\.application"\)\s+version\s+"[^"]+"(?:\s+apply false)?',
               app_decl, s, count=1)
@@ -104,7 +105,7 @@ jobs:
               raise SystemExit("Could not pin generated Android Gradle Plugin declaration.")
 
           # Pin the library plugin too; Flutter packages apply this plugin.
-          library_decl = 'id("com.android.library") version "8.13.2" apply false'
+          library_decl = 'id("com.android.library") version "8.11.1" apply false'
           if 'id("com.android.library")' not in s:
               s = s.replace(app_decl, app_decl + "\n    " + library_decl, 1)
           else:
@@ -123,8 +124,8 @@ jobs:
                   raise SystemExit("Could not pin Kotlin Gradle Plugin declaration.")
           else:
               s = s.replace(
-                  'id("com.android.application") version "8.13.2" apply false',
-                  'id("com.android.application") version "8.13.2" apply false\n    ' + kotlin_decl,
+                  'id("com.android.application") version "8.11.1" apply false',
+                  'id("com.android.application") version "8.11.1" apply false\n    ' + kotlin_decl,
                   1)
           settings.write_text(s)
 
@@ -142,14 +143,14 @@ jobs:
               'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-bin.zip',
               w, count=1)
           if count != 1:
-              raise SystemExit("Could not pin Gradle wrapper distribution to 8.13.")
+              raise SystemExit("Could not pin Gradle wrapper distribution to 8.14.3.")
           wrapper.write_text(w)
 
-          assert 'version "8.13.2"' in settings.read_text()
+          assert 'version "8.11.1"' in settings.read_text()
           assert 'version "2.2.20"' in settings.read_text()
           assert 'gradle-8.14.3-bin.zip' in wrapper.read_text()
           assert 'id("org.jetbrains.kotlin.android")' in app.read_text()
-          print("PASS: Android Gradle Plugin 8.13.2 / Gradle 8.14.3 / Kotlin Gradle Plugin 2.2.20 pinned.")
+          print("PASS: Flutter 3.47.0 + Android Gradle Plugin 8.11.1 / Gradle 8.14.3 / Kotlin Gradle Plugin 2.2.20 pinned.")
           PY
 
       - name: Enforce Android 15 edge-to-edge configuration and audit manifest
