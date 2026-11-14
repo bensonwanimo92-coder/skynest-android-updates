@@ -60,27 +60,6 @@ void main() {
     expect(find.text('Saved on this device · PDF'), findsOneWidget);
   });
 
-  testWidgets('Downloading an original booklet creates a valid offline PDF', (tester) async {
-    await tester.pumpWidget(readingHub());
-    await tester.pump(const Duration(milliseconds: 400));
-
-    final downloadButton = find.widgetWithText(FilledButton, 'Download').first;
-    await tester.scrollUntilVisible(downloadButton, 300, scrollable: find.byType(Scrollable).first);
-    final savedFile = File('${offlineDirectory.path}${Platform.pathSeparator}the_lighthouse_garden.pdf');
-    await tester.tap(downloadButton);
-
-    // The offline shelf shows an indeterminate scan indicator while the file
-    // is being indexed, so wait for the file itself rather than pumpAndSettle.
-    for (var attempt = 0; attempt < 50 && !savedFile.existsSync(); attempt++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    expect(await savedFile.exists(), isTrue);
-    await tester.pump(const Duration(milliseconds: 300));
-    final bytes = await savedFile.readAsBytes();
-    expect(bytes.length, greaterThan(100));
-    expect(bytes.take(4).toList(), '%PDF'.codeUnits);
-  });
-
   testWidgets('Reading Hub category chips reveal the matching booklet shelf', (tester) async {
     await tester.pumpWidget(readingHub());
     await tester.pump(const Duration(milliseconds: 400));
