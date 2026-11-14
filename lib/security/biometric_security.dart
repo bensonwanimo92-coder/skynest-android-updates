@@ -68,6 +68,7 @@ class _BiometricLockGateState extends State<BiometricLockGate> with WidgetsBindi
   bool _checking = true;
   bool _locked = false;
   bool _authenticating = false;
+  bool _wentToBackground = false;
 
   @override
   void initState() {
@@ -79,26 +80,46 @@ class _BiometricLockGateState extends State<BiometricLockGate> with WidgetsBindi
   Future<void> _load() async {
     final enabled = await SkyNestBiometrics.instance.enabled;
     if (!mounted) return;
-    setState(() { _locked = enabled; _checking = false; });
+    setState(() {
+      _locked = enabled;
+      _checking = false;
+    });
     if (enabled) await _unlock();
   }
 
   Future<void> _unlock() async {
-    if (_authenticating) return;
+    if (_authenticating || !_locked) return;
     _authenticating = true;
-    final ok = await SkyNestBiometrics.instance.authenticate();
-    _authenticating = false;
-    if (mounted && ok) setState(() => _locked = false);
+    var ok = false;
+    try {
+      ok = await SkyNestBiometrics.instance.authenticate();
+    } finally {
+      _authenticating = false;
+    }
+    if (!mounted) return;
+    if (ok) {
+      setState(() => _locked = false);
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && !_checking) {
+    // local_auth itself temporarily backgrounds/resumes the app while its
+    // system prompt is shown. Do not interpret that transition as the user
+    // leaving SkyNest, or a successful scan can immediately re-lock the gate.
+    if (_authenticating) return;
+
+    if (state == AppLifecycleState.paused) {
+      _wentToBackground = true;
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed && _wentToBackground && !_checking) {
+      _wentToBackground = false;
       SkyNestBiometrics.instance.enabled.then((enabled) {
-        if (mounted && enabled) {
-          setState(() => _locked = true);
-          _unlock();
-        }
+        if (!mounted || !enabled) return;
+        setState(() => _locked = true);
+        _unlock();
       });
     }
   }
@@ -111,8 +132,11 @@ class _BiometricLockGateState extends State<BiometricLockGate> with WidgetsBindi
 
   @override
   Widget build(BuildContext context) {
-    if (_checking) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_checking) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     if (!_locked) return widget.child;
+
     return Scaffold(
       body: Center(
         child: Padding(
@@ -159,7 +183,11 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       SkyNestBiometrics.instance.supported,
     ]);
     if (!mounted) return;
-    setState(() { _enabled = values[0]; _supported = values[1]; _loading = false; });
+    setState(() {
+      _enabled = values[0];
+      _supported = values[1];
+      _loading = false;
+    });
   }
 
   Future<void> _toggle(bool value) async {
@@ -176,9 +204,11 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
         await SkyNestBiometrics.instance.disable();
       }
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Authentication failed. App Lock remains enabled.')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Authentication failed. App Lock remains enabled.')),
+        );
+      }
     }
     await _refresh();
   }
