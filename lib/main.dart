@@ -10,6 +10,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -5000,6 +5002,119 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
+  Future<void> _sendGroupAttachment(File file, String fileName, String mimeType) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || sending) return;
+    setState(() => sending = true);
+    Reference? uploadedRef;
+    try {
+      final size = await file.length();
+      if (size <= 0 || size > 10 * 1024 * 1024) {
+        throw StateError('Choose a file smaller than 10 MB.');
+      }
+      final groupRef = FirebaseFirestore.instance.collection('groups').doc(widget.groupId);
+      final groupSnapshot = await groupRef.get();
+      final groupData = groupSnapshot.data();
+      if (groupData == null) throw StateError('This group is no longer available.');
+      final rawMemberIds = groupData['memberIds'];
+      final memberIds = rawMemberIds is List
+          ? rawMemberIds.map((value) => value.toString()).where((value) => value.isNotEmpty).toList()
+          : <String>[];
+      if (!memberIds.contains(user.uid)) throw StateError('You are no longer a member of this group.');
+
+      final safeName = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      final uniqueName = DateTime.now().millisecondsSinceEpoch.toString() + '_' + safeName;
+      final storagePath = 'group_attachments/' + widget.groupId + '/' + user.uid + '/' + uniqueName;
+      uploadedRef = FirebaseStorage.instance.ref().child(storagePath);
+      await uploadedRef!.putFile(file, SettableMetadata(
+        contentType: mimeType,
+        cacheControl: 'private,max-age=3600',
+      ));
+      final downloadUrl = await uploadedRef!.getDownloadURL();
+      final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final senderName = (profile.data()?['displayName'] ?? user.displayName ?? 'Member').toString();
+      final encrypted = await SkyNestMessageEncryption.instance.encryptGroupMessage(
+        groupId: widget.groupId,
+        senderId: user.uid,
+        plaintext: 'Shared attachment: ' + fileName,
+        memberIds: memberIds,
+      );
+      await groupRef.collection('messages').add({
+        ...encrypted,
+        'senderId': user.uid,
+        'senderName': senderName,
+        'senderPhotoUrl': profile.data()?['photoUrl'] ?? user.photoURL,
+        'attachment': {
+          'name': fileName,
+          'mimeType': mimeType,
+          'downloadUrl': downloadUrl,
+          'storagePath': storagePath,
+          'size': size,
+        },
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      if (mounted) snack(context, 'File shared with the group.');
+    } catch (error) {
+      if (uploadedRef != null) {
+        try { await uploadedRef!.delete(); } catch (_) {}
+      }
+      if (mounted) snack(context, 'Attachment not sent: ' + error.toString());
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
+
+  Future<void> _pickGroupImage() async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 82,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+      if (picked == null) return;
+      await _sendGroupAttachment(File(picked.path), picked.name, picked.mimeType ?? 'image/jpeg');
+    } catch (error) {
+      if (mounted) snack(context, 'Could not select image: ' + error.toString());
+    }
+  }
+
+  Future<void> _pickGroupDocument() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx'],
+        allowMultiple: false,
+      );
+      final selected = result?.files.single;
+      if (selected == null || selected.path == null) return;
+      final extension = selected.extension?.toLowerCase();
+      final mimeType = extension == 'pdf'
+          ? 'application/pdf'
+          : extension == 'doc'
+              ? 'application/msword'
+              : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      await _sendGroupAttachment(File(selected.path!), selected.name, mimeType);
+    } catch (error) {
+      if (mounted) snack(context, 'Could not select document: ' + error.toString());
+    }
+  }
+
+  Future<void> _openGroupAttachment(Map<String, dynamic> attachment) async {
+    final url = attachment['downloadUrl']?.toString() ?? '';
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme) {
+      snack(context, 'This attachment link is invalid.');
+      return;
+    }
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) snack(context, 'No app could open this attachment.');
+    } catch (error) {
+      if (mounted) snack(context, 'Could not open attachment: ' + error.toString());
+    }
+  }
+
   Future<void> deleteMessage(DocumentSnapshot<Map<String, dynamic>> doc) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || doc.data()?['senderId'] != uid) return;
@@ -5257,6 +5372,37 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                           )
                         else
                           Text('Legacy message (not end-to-end encrypted): ${data['text']?.toString() ?? ''}'),
+                        if (data['attachment'] is Map)
+                          Builder(builder: (context) {
+                            final attachment = Map<String, dynamic>.from(data['attachment'] as Map);
+                            final mime = attachment['mimeType']?.toString() ?? '';
+                            final isImage = mime.startsWith('image/');
+                            return InkWell(
+                              onTap: () => _openGroupAttachment(attachment),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                width: 220,
+                                margin: const EdgeInsets.only(top: 8),
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: Theme.of(context).colorScheme.surface.withOpacity(.65),
+                                ),
+                                child: Row(children: [
+                                  Icon(isImage ? Icons.image_rounded : Icons.picture_as_pdf_rounded, size: 28),
+                                  const SizedBox(width: 9),
+                                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Text(attachment['name']?.toString() ?? 'Shared file',
+                                      maxLines: 2, overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                                    Text('${((attachment['size'] as num?)?.toInt() ?? 0) ~/ 1024} KB · Tap to open',
+                                      style: Theme.of(context).textTheme.labelSmall),
+                                  ])),
+                                  const Icon(Icons.open_in_new_rounded, size: 17),
+                                ]),
+                              ),
+                            );
+                          }),
                         if (data['createdAt'] is Timestamp)
                           Align(alignment: Alignment.centerRight, child: Text(
                             DateFormat('HH:mm').format((data['createdAt'] as Timestamp).toDate()),
@@ -5273,6 +5419,19 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         },
       )),
       SafeArea(child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [
+        PopupMenuButton<String>(
+          enabled: !sending,
+          tooltip: 'Attach image or document',
+          icon: const Icon(Icons.attach_file_rounded),
+          onSelected: (value) {
+            if (value == 'image') _pickGroupImage();
+            if (value == 'document') _pickGroupDocument();
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'image', child: ListTile(leading: Icon(Icons.image_outlined), title: Text('Photo'))),
+            PopupMenuItem(value: 'document', child: ListTile(leading: Icon(Icons.picture_as_pdf_outlined), title: Text('PDF / Word document'))),
+          ],
+        ),
         Expanded(child: TextField(
           controller: message,
           minLines: 1, maxLines: 4,
