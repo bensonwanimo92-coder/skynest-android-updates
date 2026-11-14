@@ -1,8 +1,14 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../security/message_encryption.dart';
+import 'voice_message_bubble.dart';
 
 class SkyNestDirectMessageScreen extends StatefulWidget {
   final String peerId;
@@ -23,6 +29,9 @@ class SkyNestDirectMessageScreen extends StatefulWidget {
 class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen> {
   final TextEditingController _message = TextEditingController();
   bool _sending = false;
+  final AudioRecorder _voiceRecorder = AudioRecorder();
+  bool _recordingVoice = false;
+  Timer? _voiceLimit;
   bool _ready = false;
   String? _setupError;
 
@@ -73,13 +82,18 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
   Future<void> _send() async {
     final text = _message.text.trim();
     if (text.isEmpty || _sending || !_ready) return;
-    setState(() => _sending = true);
     _message.clear();
+    await _sendEncryptedPayload(text, restoreText: text);
+  }
+
+  Future<void> _sendEncryptedPayload(String payload, {String? restoreText}) async {
+    if (payload.isEmpty || _sending || !_ready) return;
+    setState(() => _sending = true);
     try {
       final encrypted = await SkyNestMessageEncryption.instance.encryptGroupMessage(
         groupId: _conversationId,
         senderId: _uid,
-        plaintext: text,
+        plaintext: payload,
         memberIds: <String>[_uid, widget.peerId],
       );
       final profile = await FirebaseFirestore.instance.collection('users').doc(_uid).get();
@@ -92,12 +106,58 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
       });
       await _conversation.set({'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
     } catch (error) {
-      _message.text = text;
+      if (restoreText != null) _message.text = restoreText;
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Message not sent: $error')),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _toggleVoiceRecording() async {
+    if (_recordingVoice) {
+      await _finishVoiceRecording();
+      return;
+    }
+    if (!_ready || _sending) return;
+    try {
+      if (!await _voiceRecorder.hasPermission()) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Microphone permission is required for voice notes.')),
+        );
+        return;
+      }
+      final directory = await getTemporaryDirectory();
+      final path = '${directory.path}/skynest_private_voice_${DateTime.now().microsecondsSinceEpoch}.m4a';
+      await _voiceRecorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 64000, sampleRate: 22050),
+        path: path,
+      );
+      if (mounted) setState(() => _recordingVoice = true);
+      _voiceLimit?.cancel();
+      _voiceLimit = Timer(const Duration(seconds: 30), _finishVoiceRecording);
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not start voice recording: $error')),
+      );
+    }
+  }
+
+  Future<void> _finishVoiceRecording() async {
+    if (!_recordingVoice) return;
+    _voiceLimit?.cancel();
+    final path = await _voiceRecorder.stop();
+    if (mounted) setState(() => _recordingVoice = false);
+    if (path == null) return;
+    try {
+      final bytes = await File(path).readAsBytes();
+      if (bytes.length > 700 * 1024) throw StateError('Voice note is too large. Keep recordings shorter.');
+      await _sendEncryptedPayload(VoiceMessageBubble.encode(bytes));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Voice note could not be sent: $error')),
+      );
     }
   }
 
@@ -112,7 +172,9 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
 
   @override
   void dispose() {
+    _voiceLimit?.cancel();
     _message.dispose();
+    unawaited(_voiceRecorder.dispose());
     super.dispose();
   }
 
@@ -176,10 +238,16 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
                         padding: const EdgeInsets.all(12),
                         child: FutureBuilder<String>(
                           future: _decrypt(data),
-                          builder: (context, decrypted) => Text(
-                            decrypted.hasError ? 'Unable to decrypt this message on this device.'
-                                : (decrypted.data ?? 'Decrypting…'),
-                          ),
+                          builder: (context, decrypted) {
+                            if (decrypted.hasData) {
+                              final clear = decrypted.data!;
+                              return VoiceMessageBubble.isVoiceMessage(clear)
+                                  ? VoiceMessageBubble(payload: clear)
+                                  : Text(clear, style: const TextStyle(color: Colors.white));
+                            }
+                            return Text(decrypted.hasError ? 'Unable to decrypt this message on this device.' : 'Decrypting…',
+                              style: const TextStyle(color: Colors.white70));
+                          },
                         ),
                       ),
                     ),
@@ -208,7 +276,14 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
               ),
               onSubmitted: (_) => _send(),
             )),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: _recordingVoice ? 'Stop and send voice note' : 'Record voice note (30 seconds max)',
+              onPressed: _ready && !_sending ? _toggleVoiceRecording : null,
+              icon: Icon(_recordingVoice ? Icons.stop_circle_rounded : Icons.mic_rounded,
+                color: _recordingVoice ? Colors.redAccent : const Color(0xFF58E5F2)),
+            ),
+            const SizedBox(width: 4),
             IconButton.filled(
               tooltip: 'Send private message',
               onPressed: _ready && !_sending ? _send : null,
