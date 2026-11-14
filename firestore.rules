@@ -582,12 +582,12 @@ service cloud.firestore {
           'estate', 'price', 'currency', 'description', 'contactPhone',
           'photoUrls', 'bedrooms', 'bathrooms', 'status', 'createdAt',
           'updatedAt', 'submittedAt', 'reviewedAt', 'reviewedBy',
-          'rejectionReason', 'expiresAt', 'featured'
+          'rejectionReason', 'expiresAt', 'featured', 'media', 'details', 'advertiserTier', 'videoUrls', 'coverImagePath', 'businessName', 'websiteUrl', 'latitude', 'longitude'
         ]) &&
         data.ownerUid is string && data.title is string &&
         data.title.size() >= 8 && data.title.size() <= 120 &&
-        data.category in ['Residential', 'Commercial', 'Land', 'Development'] &&
-        data.advertType in ['For rent', 'For sale', 'Commercial lease', 'Property development'] &&
+        data.category in ['Residential', 'Commercial', 'Land', 'Development', 'Vehicles', 'Restaurants', 'Hospitality', 'Products', 'Services', 'Luxury'] &&
+        data.advertType is string && data.advertType.size() > 0 && data.advertType.size() <= 60 &&
         data.county is string && data.county.size() > 0 && data.county.size() <= 80 &&
         data.town is string && data.town.size() > 0 && data.town.size() <= 120 &&
         (!data.keys().hasAny(['estate']) || (data.estate is string && data.estate.size() <= 120)) &&
@@ -599,7 +599,16 @@ service cloud.firestore {
         data.description.size() <= 5000 &&
         data.contactPhone is string && data.contactPhone.size() >= 7 &&
         data.contactPhone.size() <= 20 &&
-        data.photoUrls is list && data.photoUrls.size() <= 12 &&
+        data.photoUrls is list && data.photoUrls.size() <= 20 &&
+        (!data.keys().hasAny(['media']) || (data.media is list && data.media.size() <= 20)) &&
+        (!data.keys().hasAny(['videoUrls']) || (data.videoUrls is list && data.videoUrls.size() <= 5)) &&
+        (!data.keys().hasAny(['details']) || (data.details is map && data.details.size() <= 30)) &&
+        (!data.keys().hasAny(['advertiserTier']) || data.advertiserTier in ['basic', 'standard', 'premium']) &&
+        (!data.keys().hasAny(['businessName']) || (data.businessName is string && data.businessName.size() <= 120)) &&
+        (!data.keys().hasAny(['websiteUrl']) || (data.websiteUrl is string && data.websiteUrl.size() <= 300)) &&
+        (!data.keys().hasAny(['latitude']) || data.latitude is number) &&
+        (!data.keys().hasAny(['longitude']) || data.longitude is number) &&
+        (!data.keys().hasAny(['coverImagePath']) || (data.coverImagePath is string && data.coverImagePath.size() <= 500)) &&
         data.status in ['draft', 'pending', 'approved', 'rejected', 'paused', 'expired'] &&
         data.createdAt is timestamp && data.updatedAt is timestamp;
       }
@@ -630,7 +639,7 @@ service cloud.firestore {
         request.resource.data.status in ['draft', 'pending'] &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'title', 'category', 'advertType', 'county', 'town', 'estate',
-          'price', 'currency', 'description', 'contactPhone', 'photoUrls',
+          'price', 'currency', 'description', 'contactPhone', 'photoUrls', 'media', 'videoUrls', 'details', 'businessName', 'websiteUrl', 'latitude', 'longitude', 'coverImagePath',
           'bedrooms', 'bathrooms', 'status', 'updatedAt'
         ]) &&
         request.resource.data.updatedAt == request.time &&
@@ -640,7 +649,7 @@ service cloud.firestore {
         request.resource.data.ownerUid == resource.data.ownerUid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status', 'reviewedAt', 'reviewedBy', 'rejectionReason',
-          'expiresAt', 'featured', 'updatedAt'
+          'expiresAt', 'featured', 'advertiserTier', 'updatedAt'
         ]) &&
         request.resource.data.status in ['approved', 'rejected', 'paused', 'expired'] &&
         (request.resource.data.status != 'approved' ||
