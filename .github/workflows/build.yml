@@ -72,7 +72,7 @@ jobs:
           for permission_name in ("INTERNET", "RECORD_AUDIO"):
               permission = f'    <uses-permission android:name="android.permission.{permission_name}"/>'
               if f"android.permission.{permission_name}" not in s:
-                  s, count = re.subn(r"(?m)^(\\s*)<application\\b", lambda m: permission + "\\n" + m.group(1) + "<application", s, count=1)
+                  s, count = re.subn(r"(?m)^(\s*)<application\b", lambda m: permission + "\n" + m.group(1) + "<application", s, count=1)
                   if count != 1:
                       raise SystemExit(f"Could not find application tag to insert {permission_name} permission.")
           p.write_text(s)
