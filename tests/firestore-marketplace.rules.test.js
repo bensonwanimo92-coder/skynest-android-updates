@@ -281,3 +281,29 @@ test("admin can request changes and assign a premium tier only during approval",
     expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 86400000))
   }));
 });
+
+test("moderation audit log is append-only and administrator-only", async () => {
+  const uid = "PN9bC3ZzgSaOK1JjG4TcjCU9Grx1";
+  const entry = {
+    listingId: "listing-1",
+    ownerUid: "advertiser-1",
+    action: "approved",
+    reason: "Verified details and media.",
+    advertiserTier: "premium",
+    actorUid: uid,
+    actorEmail: "bensonwanimo92@gmail.com",
+    createdAt: serverTimestamp()
+  };
+  const admin = env.authenticatedContext(uid, {
+    email: "bensonwanimo92@gmail.com",
+    email_verified: true
+  }).firestore();
+  const advertiser = env.authenticatedContext("advertiser-1", { email_verified: true }).firestore();
+  await assertSucceeds(setDoc(doc(admin, "marketplaceModerationLogs", "audit-1"), entry));
+  await assertFails(setDoc(doc(advertiser, "marketplaceModerationLogs", "audit-2"), {
+    ...entry, actorUid: "advertiser-1"
+  }));
+  await assertFails(updateDoc(doc(admin, "marketplaceModerationLogs", "audit-1"), {
+    reason: "Changed after the fact."
+  }));
+});
