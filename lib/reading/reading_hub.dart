@@ -436,18 +436,6 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
             ]),
           ),
           const SizedBox(height: 22),
-          Text('Explore the shelf', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: categories.map((category) => ChoiceChip(
-              label: Text(category),
-              selected: _category == category,
-              onSelected: (_) => setState(() => _category = category),
-            )).toList(),
-          ),
-          const SizedBox(height: 12),
           const SizedBox(height: 20),
           Row(children: <Widget>[
             Expanded(child: Text('My offline downloads', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold))),
@@ -467,6 +455,18 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
               trailing: IconButton(tooltip: 'Remove offline booklet', onPressed: () => _deleteOfflineFile(file), icon: const Icon(Icons.delete_outline_rounded)),
               onTap: () => _readOfflineFile(file),
             ))),
+          Text('Explore the shelf', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: categories.map((category) => ChoiceChip(
+              label: Text(category),
+              selected: _category == category,
+              onSelected: (_) => setState(() => _category = category),
+            )).toList(),
+          ),
+          const SizedBox(height: 12),
           const SizedBox(height: 20),
           ...issues.map((issue) => Card(
             key: ValueKey<String>(issue.id),
