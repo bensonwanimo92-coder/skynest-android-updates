@@ -1298,10 +1298,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: CircleAvatar(
                 radius: 17,
                 backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                child: Text(initial, style: TextStyle(
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  fontWeight: FontWeight.w800,
-                )),
+                backgroundImage: FirebaseAuth.instance.currentUser?.photoURL != null
+                    ? NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!)
+                    : null,
+                child: FirebaseAuth.instance.currentUser?.photoURL == null
+                    ? Text(initial, style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.w800,
+                      ))
+                    : null,
               ),
             ),
           ),
@@ -4834,6 +4839,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         ...encrypted,
         'senderId': user.uid,
         'senderName': senderName,
+        'senderPhotoUrl': profile.data()?['photoUrl'] ?? user.photoURL,
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -5015,6 +5021,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                       padding: const EdgeInsets.fromLTRB(13, 9, 7, 8),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(mainAxisSize: MainAxisSize.min, children: [
+                          if (!mine && (data['senderPhotoUrl']?.toString().isNotEmpty ?? false)) ...[
+                            CircleAvatar(radius: 11, backgroundImage: NetworkImage(data['senderPhotoUrl'].toString())),
+                            const SizedBox(width: 6),
+                          ],
                           Flexible(child: Text(mine ? 'You' : (data['senderName']?.toString() ?? 'Group member'),
                             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.primary))),
                           if (mine) PopupMenuButton<String>(
