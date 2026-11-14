@@ -1257,6 +1257,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ]);
     }
 
+    items.add(_MenuItem('Discovery', Icons.explore_rounded, const Color(0xFF06B6D4), const MarketDiscoveryScreen()));
     items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
     items.add(_MenuItem('Security & fingerprint', Icons.fingerprint_rounded, Colors.blueGrey, const SecuritySettingsScreen()));
 
@@ -1611,6 +1612,119 @@ class _DashboardScreenState extends State<DashboardScreen> {
           : null,
     );
   }
+}
+
+class MarketDiscoveryScreen extends StatelessWidget {
+  const MarketDiscoveryScreen({super.key});
+
+  static final Uri _marketUri = Uri.parse('https://bensonwanimo92-coder.github.io/');
+
+  Future<void> _openMarket(BuildContext context) async {
+    try {
+      final opened = await launchUrl(_marketUri, mode: LaunchMode.externalApplication);
+      if (!opened && context.mounted) {
+        snack(context, 'SkyNest Market could not be opened. Please try again.');
+      }
+    } catch (error) {
+      if (context.mounted) snack(context, 'Could not open SkyNest Market: $error');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const navy = Color(0xFF07152F);
+    const cyan = Color(0xFF22D3EE);
+    return Scaffold(
+      backgroundColor: navy,
+      appBar: AppBar(
+        title: const Text('SkyNest Discovery'),
+        backgroundColor: navy,
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF07152F), Color(0xFF102B55), Color(0xFF241B4B)],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 62,
+                  height: 62,
+                  decoration: BoxDecoration(
+                    color: cyan.withOpacity(.13),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: cyan.withOpacity(.48)),
+                    boxShadow: [BoxShadow(color: cyan.withOpacity(.16), blurRadius: 24)],
+                  ),
+                  child: const Icon(Icons.travel_explore_rounded, color: cyan, size: 32),
+                ),
+                const SizedBox(height: 22),
+                const Text('Discover more with SkyNest.',
+                  style: TextStyle(color: Colors.white, fontSize: 27, height: 1.15, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 10),
+                Text('Explore opportunities across Kenya — from homes and land to vehicles, careers, restaurants and local services.',
+                  style: TextStyle(color: Colors.white.withOpacity(.76), fontSize: 15, height: 1.5)),
+                const SizedBox(height: 24),
+                _marketCategoryCard(Icons.home_work_outlined, 'Homes & Property', 'Homes · Apartments · Offices'),
+                _marketCategoryCard(Icons.landscape_outlined, 'Land & Farms', 'Plots · Farms · Agricultural land'),
+                _marketCategoryCard(Icons.directions_car_filled_outlined, 'Cars & Vehicles', 'Cars · Motorbikes · Commercial'),
+                _marketCategoryCard(Icons.work_outline_rounded, 'Jobs & Careers', 'Vacancies · Gigs · Opportunities'),
+                _marketCategoryCard(Icons.restaurant_outlined, 'Restaurants & Dining', 'Restaurants · Cafés · Catering'),
+                _marketCategoryCard(Icons.storefront_outlined, 'Business & Services', 'Companies · Services · Retail'),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: cyan,
+                      foregroundColor: navy,
+                      padding: const EdgeInsets.symmetric(vertical: 17),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    onPressed: () => _openMarket(context),
+                    icon: const Icon(Icons.open_in_new_rounded),
+                    label: const Text('Explore SkyNest Market', style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Center(child: Text('Discover · Advertise · Connect',
+                  style: TextStyle(color: Colors.white.withOpacity(.55), fontSize: 11, letterSpacing: 1.1))),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _marketCategoryCard(IconData icon, String title, String subtitle) => Container(
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: Colors.white.withOpacity(.07),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Colors.white.withOpacity(.12)),
+    ),
+    child: Row(children: [
+      Icon(icon, color: const Color(0xFF67E8F9), size: 23),
+      const SizedBox(width: 13),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 3),
+        Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(.62), fontSize: 11)),
+      ])),
+      Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withOpacity(.55), size: 14),
+    ]),
+  );
 }
 
 class AccountRoleScreen extends StatefulWidget {
@@ -6337,6 +6451,7 @@ String _modulePreviewDescription(String title) {
     'Caretakers & invitations': 'Create time-limited invitations, manage linked caretakers and control property access.',
     'Complaints': 'Receive, prioritise, respond to and track property or maintenance complaints.',
     'Tenant groups': 'Communicate with tenant groups, share updates and follow group activity.',
+    'Discovery': 'Explore SkyNest Market for property, land, vehicles, jobs, restaurants and services across Kenya.',
     'Notices': 'Publish notices, choose urgency and templates, and track tenant acknowledgements.',
     'Electricity': 'Register meters, allocate usage and keep electricity billing records.',
     'Activity log': 'Review important account and property actions with timestamps.',
