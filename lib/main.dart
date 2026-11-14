@@ -1656,6 +1656,21 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
     }
   }
 
+  Future<void> _syncGroupMemberPhoto(String uid, String? photoUrl) async {
+    final groups = await FirebaseFirestore.instance.collection('groups')
+        .where('memberIds', arrayContains: uid).get();
+    for (var start = 0; start < groups.docs.length; start += 400) {
+      final batch = FirebaseFirestore.instance.batch();
+      final chunk = groups.docs.skip(start).take(400);
+      for (final group in chunk) {
+        batch.set(group.reference.collection('members').doc(uid), {
+          'photoUrl': photoUrl,
+        }, SetOptions(merge: true));
+      }
+      await batch.commit();
+    }
+  }
+
   Future<void> _changeProfilePhoto() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || photoBusy) return;
@@ -1686,6 +1701,7 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       await user.updatePhotoURL(url);
+      await _syncGroupMemberPhoto(user.uid, url);
       await user.reload();
       if (mounted) snack(context, 'Profile photo updated.');
     } catch (error) {
@@ -1723,6 +1739,7 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       await user.updatePhotoURL(null);
+      await _syncGroupMemberPhoto(user.uid, null);
       await user.reload();
       if (mounted) snack(context, 'Profile photo removed.');
     } catch (error) {
