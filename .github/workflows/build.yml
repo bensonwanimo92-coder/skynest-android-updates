@@ -587,7 +587,9 @@ jobs:
           SKYNEST_TURN_USERNAME: ${{ secrets.SKYNEST_TURN_USERNAME }}
           SKYNEST_TURN_CREDENTIAL: ${{ secrets.SKYNEST_TURN_CREDENTIAL }}
         run: |
-          shorebird release android --artifact apk -- --no-shrink --no-obfuscate \
+          # Ship only arm64 native libraries for modern Android phones; this avoids bundling
+          # three CPU architectures into one oversized universal APK.
+          shorebird release android --artifact apk -- --target-platform=android-arm64 \
             --build-name=1.1.3 --build-number="$BUILD_NUMBER" \
             --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" \
             --dart-define=SKYNEST_TURN_USERNAME="$SKYNEST_TURN_USERNAME" \
@@ -631,6 +633,19 @@ jobs:
         run: |
           set -euo pipefail
           APK="build/app/outputs/flutter-apk/app-release.apk"
+          APK_BYTES="$(stat -c '%s' "$APK")"
+          APK_MB="$((APK_BYTES / 1024 / 1024))"
+          echo "Arm64 release APK size: ${APK_MB} MB"
+          if [ "$APK_BYTES" -gt $((85 * 1024 * 1024)) ]; then
+            echo "::error::APK exceeds the 85 MB size ceiling. Inspect native libraries and assets before publishing."
+            exit 1
+          fi
+          ABIS="$(unzip -Z1 "$APK" | sed -n 's#^lib/\([^/]*\)/.*#\1#p' | sort -u | tr '\n' ' ')"
+          echo "Native ABIs in APK: $ABIS"
+          if [ "$ABIS" != "arm64-v8a " ] && [ "$ABIS" != "arm64-v8a" ]; then
+            echo "::error::Expected an arm64-only APK but found: $ABIS"
+            exit 1
+          fi
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/skynest-apk-signature.txt
           package="$("$BUILD_TOOLS/aapt" dump badging "$APK" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
