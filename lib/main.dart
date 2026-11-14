@@ -2496,8 +2496,14 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
 }
 
 
-class PaymentSubmissionsScreen extends StatelessWidget {
+class PaymentSubmissionsScreen extends StatefulWidget {
   const PaymentSubmissionsScreen({super.key});
+  @override
+  State<PaymentSubmissionsScreen> createState() => _PaymentSubmissionsScreenState();
+}
+
+class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
+  final Set<String> selectedSubmissionIds = {};
   Future<void> assignCaretaker(BuildContext context, String id, Map<String, dynamic> data) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -2564,10 +2570,72 @@ class PaymentSubmissionsScreen extends StatelessWidget {
       if (context.mounted) snack(context, 'Payment added to the landlord ledger.');
     } catch (e) { if (context.mounted) snack(context, 'Could not verify payment: ' + e.toString()); }
   }
+  Future<void> _bulkVerifySelected() async {
+    if (selectedSubmissionIds.isEmpty) return;
+    final ids = selectedSubmissionIds.take(5).toList();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Verify ${ids.length} submissions?'),
+        content: const Text('Only continue after confirming that the money has actually reached the correct account. Each verified submission will create a payment ledger record.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('CANCEL')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('VERIFY SELECTED')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final collection = FirebaseFirestore.instance.collection('paymentSubmissions');
+      final snapshots = await Future.wait(ids.map((id) => collection.doc(id).get()));
+      final batch = FirebaseFirestore.instance.batch();
+      var count = 0;
+      for (final snapshot in snapshots) {
+        final data = snapshot.data();
+        if (!snapshot.exists || data == null || data['status'] != 'pending') continue;
+        final paymentRef = FirebaseFirestore.instance.collection('payments').doc();
+        batch.set(paymentRef, {
+          'tenantName': data['tenantName'] ?? 'Tenant',
+          'houseNo': data['houseNo'] ?? '',
+          'amount': data['amount'] ?? 0,
+          'method': data['method'] ?? 'Manual',
+          'status': 'Received (landlord verified)',
+          'createdAt': FieldValue.serverTimestamp(),
+          'createdBy': FirebaseAuth.instance.currentUser?.uid,
+          'landlordId': FirebaseAuth.instance.currentUser?.uid,
+          'tenantId': data['tenantId'],
+        });
+        batch.update(snapshot.reference, {
+          'status': 'received',
+          'ledgerPaymentId': paymentRef.id,
+          'reviewedAt': FieldValue.serverTimestamp(),
+        });
+        count++;
+      }
+      if (count == 0) throw StateError('No selected submissions are still pending.');
+      await batch.commit();
+      if (mounted) {
+        setState(() => selectedSubmissionIds.clear());
+        snack(context, '$count payment submission(s) verified and added to the ledger.');
+      }
+    } catch (error) {
+      if (mounted) snack(context, 'Bulk verification failed: ' + error.toString());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    return Scaffold(appBar: AppBar(title: const Text('Tenant payment submissions')),
+    return Scaffold(appBar: AppBar(
+      title: const Text('Tenant payment submissions'),
+      actions: selectedSubmissionIds.isEmpty ? [] : [
+        TextButton.icon(
+          onPressed: _bulkVerifySelected,
+          icon: const Icon(Icons.verified_outlined),
+          label: Text('Verify ${selectedSubmissionIds.length.clamp(0, 5)}'),
+        ),
+      ],
+    ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance.collection('paymentSubmissions').where('landlordId', isEqualTo: uid).snapshots(),
         builder: (context, snap) {
@@ -2612,10 +2680,31 @@ class PaymentSubmissionsScreen extends StatelessWidget {
               child: Card(
                 margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: status == 'received' ? Colors.green.withOpacity(0.12) : status == 'rejected' ? Colors.red.withOpacity(0.12) : Colors.orange.withOpacity(0.12),
-                    child: Icon(status == 'received' ? Icons.verified : status == 'rejected' ? Icons.cancel_outlined : Icons.receipt_long,
-                      color: status == 'received' ? Colors.green : status == 'rejected' ? Colors.red : Colors.orange),
+                  leading: SizedBox(
+                    width: 78,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Checkbox(
+                        visualDensity: VisualDensity.compact,
+                        value: selectedSubmissionIds.contains(doc.id),
+                        onChanged: status != 'pending' ? null : (checked) {
+                          setState(() {
+                            if (checked == true) {
+                              if (selectedSubmissionIds.length < 5) selectedSubmissionIds.add(doc.id);
+                              else snack(context, 'You can bulk-verify up to 5 submissions at a time.');
+                            } else {
+                              selectedSubmissionIds.remove(doc.id);
+                            }
+                          });
+                        },
+                      ),
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: status == 'received' ? Colors.green.withOpacity(0.12) : status == 'rejected' ? Colors.red.withOpacity(0.12) : Colors.orange.withOpacity(0.12),
+                        child: Icon(status == 'received' ? Icons.verified : status == 'rejected' ? Icons.cancel_outlined : Icons.receipt_long,
+                          size: 18,
+                          color: status == 'received' ? Colors.green : status == 'rejected' ? Colors.red : Colors.orange),
+                      ),
+                    ]),
                   ),
                   title: Text(d['tenantName']?.toString() ?? 'Tenant'),
                   subtitle: Text('Queue #$queueIndex • House ' + (d['houseNo'] ?? '').toString() + ' • ' +
