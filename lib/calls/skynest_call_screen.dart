@@ -68,6 +68,10 @@ class _IncomingCallHostState extends State<IncomingCallHost> {
     if (navigator == null) return;
     final callerName = (data['callerName'] ?? 'SkyNest member').toString();
     final isVideo = data['type'] == 'video';
+    // Use the platform alert tone while the incoming-call prompt is visible.
+    final incomingAlert = Timer.periodic(const Duration(seconds: 3), (_) {
+      unawaited(SystemSound.play(SystemSoundType.alert));
+    });
     final accepted = await navigator.push<bool>(
       DialogRoute<bool>(
       context: navigator.context,
@@ -98,6 +102,7 @@ class _IncomingCallHostState extends State<IncomingCallHost> {
       ),
       ),
     );
+    incomingAlert.cancel();
 
     if (!mounted) return;
     final ref = FirebaseFirestore.instance.collection('calls').doc(callId);
@@ -167,6 +172,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
   bool _released = false;
   bool _renderersInitialized = false;
   Timer? _ringTimeout;
+  Timer? _ringbackTimer;
   final List<RTCIceCandidate> _pendingCandidates = <RTCIceCandidate>[];
   String _status = 'Connecting…';
   String _peerName = 'SkyNest member';
@@ -284,6 +290,13 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
           'status': 'ringing',
         });
         _ringTimeout?.cancel();
+        // A periodic platform alert gives the caller audible feedback until
+        // the peer answers or the call is otherwise terminated.
+        _ringbackTimer?.cancel();
+        _ringbackTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+          if (!mounted || _ending || _released) return;
+          unawaited(SystemSound.play(SystemSoundType.alert));
+        });
         _ringTimeout = Timer(const Duration(seconds: 45), () async {
           if (!mounted || _ending) return;
           try {
@@ -317,6 +330,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
         if (call == null) return;
         if (widget.isCaller && call['answer'] is Map) {
           _ringTimeout?.cancel();
+          _ringbackTimer?.cancel();
           final answer = call['answer'] as Map;
           final current = await _peer?.getRemoteDescription();
           if (current == null) {
@@ -328,6 +342,9 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
           }
         }
         final state = call['status']?.toString();
+        if (state == 'active' || state == 'declined' || state == 'ended' || state == 'missed') {
+          _ringbackTimer?.cancel();
+        }
         if (state == 'declined' || state == 'ended' || state == 'missed') {
           if (mounted && !_ending) {
             setState(() => _status = state == 'declined' ? 'Call declined' : 'Call ended');
@@ -390,6 +407,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
     if (_released) return;
     _released = true;
     _ringTimeout?.cancel();
+    _ringbackTimer?.cancel();
     await _callSub?.cancel();
     await _candidateSub?.cancel();
     for (final track in _localStream?.getTracks() ?? <MediaStreamTrack>[]) {
