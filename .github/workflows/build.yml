@@ -153,6 +153,69 @@ jobs:
           print("PASS: Flutter 3.47.0 + Android Gradle Plugin 8.11.1 / Gradle 8.14.3 / Kotlin Gradle Plugin 2.2.20 pinned.")
           PY
 
+      - name: Enable core library desugaring for local notifications
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("android/app/build.gradle.kts")
+          if not path.is_file():
+              raise SystemExit("Generated Android app Gradle Kotlin file is missing.")
+          source = path.read_text()
+
+          def ensure_in_block(text, block_name, statement):
+              match = re.search(r"(?m)^(?P<indent>[ \\t]*)" + re.escape(block_name) + r"\\s*\\{", text)
+              if not match:
+                  raise SystemExit(f"Could not find {block_name} {{ }} block in {path}.")
+              opening = text.find("{", match.start())
+              depth = 0
+              closing = None
+              for index in range(opening, len(text)):
+                  if text[index] == "{":
+                      depth += 1
+                  elif text[index] == "}":
+                      depth -= 1
+                      if depth == 0:
+                          closing = index
+                          break
+              if closing is None:
+                  raise SystemExit(f"Unclosed {block_name} block in {path}.")
+              body = text[opening + 1:closing]
+              if statement not in body:
+                  indent = match.group("indent") + "    "
+                  text = text[:closing] + indent + statement + "\\n" + text[closing:]
+              return text
+
+          source = ensure_in_block(
+              source,
+              "compileOptions",
+              "isCoreLibraryDesugaringEnabled = true"
+          )
+          if not re.search(r"(?m)^\\s*dependencies\\s*\\{", source):
+              source += (
+                  "\\n\\ndependencies {\\n"
+                  "    coreLibraryDesugaring(\\"com.android.tools:desugar_jdk_libs:2.1.4\\")\\n"
+                  "}\\n"
+              )
+          else:
+              source = ensure_in_block(
+                  source,
+                  "dependencies",
+                  'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")'
+              )
+
+          path.write_text(source)
+          verified = path.read_text()
+          if "isCoreLibraryDesugaringEnabled = true" not in verified:
+              raise SystemExit("Core library desugaring flag verification failed.")
+          if 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")' not in verified:
+              raise SystemExit("desugar_jdk_libs dependency verification failed.")
+          print("PASS: core library desugaring enabled for the app.")
+          print("PASS: desugar_jdk_libs 2.1.4 added to app dependencies.")
+          PY
+
       - name: Enforce Android 15 edge-to-edge configuration and audit manifest
         run: |
           set -euo pipefail
