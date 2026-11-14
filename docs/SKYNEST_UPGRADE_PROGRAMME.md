@@ -20,8 +20,8 @@ Baseline: `ae0359d36bbfe8b868f9133e49eed6d988f17a8a` (`integration/roles-on-curr
 - [ ] Create separate Benson Wanimo signature identity; do not confuse it with SkyNest branding.
 
 ### 2. Dashboard and navigation
-- [ ] Enlarge dashboard tiles moderately and improve responsive arrangement.
-- [ ] Tile interaction: tap opens compact preview with brief details and a clear downward arrow/Continue action; Continue opens the full module.
+- [x] Enlarge dashboard tiles moderately (grid ratio adjusted from 1.12 to 1.02; icon container increased from 54 to 58 logical pixels). Responsive verification remains pending.
+- [x] Tile interaction now opens a compact bottom-sheet preview with a downward Continue control; Continue opens the full module. Accessibility/responsive verification remains pending.
 - [ ] Keep the interaction accessible, keyboard/screen-reader friendly, and responsive across screen sizes.
 
 ### 3. Plans and flexible module fields
@@ -45,7 +45,7 @@ Baseline: `ae0359d36bbfe8b868f9133e49eed6d988f17a8a` (`integration/roles-on-curr
 - [ ] Keep public listing data separate from private tenant, landlord, payment, and account records.
 
 ### 6. Sound and interaction feedback
-- [ ] Add subtle configurable tap/navigation feedback sounds.
+- [ ] Add configurable tap/navigation sounds (a basic system click sound is now triggered on dashboard tile taps; settings and coverage across other navigation controls remain pending).
 - [ ] Add outgoing-call ringback and incoming-call ringtone.
 - [ ] Add mute and vibration preferences.
 - [ ] Stop/release audio cleanly on answer, decline, hang-up, navigation, and app lifecycle changes.
@@ -78,4 +78,4 @@ Baseline: `ae0359d36bbfe8b868f9133e49eed6d988f17a8a` (`integration/roles-on-curr
 - [ ] Apply storage and Firestore security rules so users can update permitted profile fields without changing another user's identity.
 
 ## Status
-Most items remain pending implementation/review. The video-call source has been incrementally improved with a front/rear camera switch in commit `774ca0153563e9bc6b6c9e0e0e752e49d6ea9286`; this change has not yet been built or tested on a physical device. Existing camera capture and mute/speaker controls were confirmed by source inspection, not by device testing. This document does not claim that the overall upgrade programme is complete, released, or delivered.
+The rapid sprint has committed the following source changes on this feature branch: front/rear camera switch (`774ca015`); dashboard preview-before-open interaction (`4ec92703`); moderately larger dashboard tiles (`48e60973`); and dashboard tile click feedback (`0e463f37`). Existing camera capture and mute/speaker controls were confirmed by source inspection, not device testing. The dashboard and call changes have not yet been compiled or tested on a physical device. All other backlog items remain pending. This document does not claim that the overall upgrade programme is complete, released, or delivered.
