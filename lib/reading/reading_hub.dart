@@ -8,11 +8,13 @@ import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart' as pdf;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:path_provider/path_provider.dart';
+import 'reading_hub_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ReadingHubScreen extends StatefulWidget {
-  const ReadingHubScreen({super.key});
+  const ReadingHubScreen({super.key, this.offlineDirectoryProvider});
+
+  final Future<Directory> Function()? offlineDirectoryProvider;
 
   @override
   State<ReadingHubScreen> createState() => _ReadingHubScreenState();
@@ -26,100 +28,78 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
   bool _downloading = false;
   String? _searchError;
   String _category = 'All';
+  List<File> _offlineFiles = <File>[];
+  bool _loadingOfflineFiles = true;
+  String? _offlineLoadError;
 
-  Future<Directory> _offlineDirectory() async {
-    final root = await getApplicationDocumentsDirectory();
-    final directory = Directory(root.path + '/skynest_reading');
-    if (!await directory.exists()) await directory.create(recursive: true);
-    return directory;
+  late final ReadingHubStorage _storage;
+
+  @override
+  void initState() {
+    super.initState();
+    _storage = ReadingHubStorage(directoryProvider: widget.offlineDirectoryProvider);
+    _refreshOfflineFiles();
   }
 
-  Future<List<File>> _savedReadingFiles() async {
-    final directory = await _offlineDirectory();
-    final files = directory.listSync().whereType<File>()
-        .where((file) => file.path.toLowerCase().endsWith('.pdf')).toList();
-    files.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
-    return files;
+  Future<void> _refreshOfflineFiles() async {
+    if (mounted && !_loadingOfflineFiles) setState(() => _loadingOfflineFiles = true);
+    try {
+      final files = await _storage.listPdfs();
+      if (!mounted) return;
+      setState(() { _offlineFiles = files; _offlineLoadError = null; _loadingOfflineFiles = false; });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _offlineLoadError = 'Offline storage could not be opened. Check device storage and try again.';
+        _loadingOfflineFiles = false;
+      });
+    }
   }
 
-  String _savedTitle(File file) => file.uri.pathSegments.last
-      .replaceFirst(RegExp(r'\.pdf$', caseSensitive: false), '')
-      .replaceAll('_', ' ')
-      .split(' ').map((word) => word.isEmpty ? word : word.substring(0, 1).toUpperCase() + word.substring(1)).join(' ');
+  String _offlineTitle(File file) {
+    final name = file.uri.pathSegments.last;
+    final stem = name.toLowerCase().endsWith('.pdf') ? name.substring(0, name.length - 4) : name;
+    for (final issue in _issues) { if (_fileName(issue) == stem) return issue.title; }
+    return stem.replaceAll('_', ' ');
+  }
 
-  Future<void> _openSavedFile(File file) async {
-    final bytes = await file.readAsBytes();
-    if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => Scaffold(
-        appBar: AppBar(title: Text(_savedTitle(file))),
-        body: PdfPreview(
-          build: (_) async => bytes,
-          pdfFileName: file.uri.pathSegments.last,
-          allowPrinting: true,
-          allowSharing: true,
-          canChangePageFormat: false,
-          canChangeOrientation: false,
+  Future<void> _readOfflineFile(File file) async {
+    try {
+      if (!await file.exists()) {
+        await _refreshOfflineFiles();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This offline file is no longer available.')));
+        return;
+      }
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: Text(_offlineTitle(file))),
+          body: PdfPreview(build: (_) => file.readAsBytes(), pdfFileName: file.uri.pathSegments.last,
+            allowPrinting: true, allowSharing: true, canChangePageFormat: false, canChangeOrientation: false),
         ),
-      ),
-    ));
+      ));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open this offline booklet.')));
+    }
   }
 
-  Future<void> _showOfflineShelf() async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (shelfContext) => Scaffold(
-        appBar: AppBar(title: const Text('My Offline Reading')),
-        body: FutureBuilder<List<File>>(
-          future: _savedReadingFiles(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final files = snapshot.data ?? <File>[];
-            if (files.isEmpty) return const Center(child: Padding(
-              padding: EdgeInsets.all(28),
-              child: Text('No offline books yet. Download a SkyNest reading item and it will appear here.'),
-            ));
-            return ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: files.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final file = files[index];
-                return ListTile(
-                  leading: const CircleAvatar(child: Icon(Icons.picture_as_pdf_rounded)),
-                  title: Text(_savedTitle(file)),
-                  subtitle: Text((file.lengthSync() / 1024).toStringAsFixed(0) + ' KB · Available offline'),
-                  onTap: () => _openSavedFile(file),
-                  trailing: IconButton(
-                    tooltip: 'Delete download',
-                    icon: const Icon(Icons.delete_outline_rounded),
-                    onPressed: () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (dialogContext) => AlertDialog(
-                          title: const Text('Delete offline copy?'),
-                          content: Text('Remove ' + _savedTitle(file) + ' from this device?'),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-                            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
-                          ],
-                        ),
-                      );
-                      if (confirm == true) {
-                        await file.delete();
-                        if (shelfContext.mounted) Navigator.of(shelfContext).pop();
-                        if (mounted) _showOfflineShelf();
-                      }
-                    },
-                  ),
-                );
-              },
-            );
-          },
-        ),
+  Future<void> _deleteOfflineFile(File file) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove offline booklet?'),
+        content: Text('Remove "${_offlineTitle(file)}" from this device?'),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Remove')),
+        ],
       ),
-    ));
+    );
+    if (!mounted || confirmed != true) return;
+    try { await file.delete(); await _refreshOfflineFiles(); }
+    catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not remove this offline booklet.')));
+    }
   }
 
   static const List<_ReadingIssue> _issues = <_ReadingIssue>[
@@ -313,13 +293,13 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
       header: (context) => pw.Container(
         alignment: pw.Alignment.centerRight,
         padding: const pw.EdgeInsets.only(bottom: 12),
-        child: pw.Text(_pdfSafe('SKYNEST READING  •  ${issue.category.toUpperCase()}'),
+        child: pw.Text(_pdfSafe('SKYNEST READING / ${issue.category.toUpperCase()}'),
           style: pw.TextStyle(fontSize: 8, color: pdf.PdfColor.fromInt(0xFF64748B))),
       ),
       footer: (context) => pw.Container(
         alignment: pw.Alignment.center,
         padding: const pw.EdgeInsets.only(top: 12),
-        child: pw.Text('SkyNest Reading  •  ${context.pageNumber}',
+        child: pw.Text('SkyNest Reading - ${context.pageNumber}',
           style: pw.TextStyle(fontSize: 8, color: pdf.PdfColor.fromInt(0xFF64748B))),
       ),
       build: (context) => <pw.Widget>[
@@ -373,36 +353,24 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
     setState(() => _downloading = true);
     try {
       final bytes = await _buildIssuePdf(issue);
-      final offlineDirectory = await _offlineDirectory();
-      final offlineFile = File(offlineDirectory.path + '/' + _fileName(issue) + '.pdf');
-      await offlineFile.writeAsBytes(bytes, flush: true);
-      var externalSaved = false;
+      await _storage.savePdf(_fileName(issue), bytes);
+      await _refreshOfflineFiles();
+      var exportedToDownloads = false;
       try {
-        await FileSaver.instance.saveToDownloads(
-          name: _fileName(issue),
-          bytes: bytes,
-          fileExtension: 'pdf',
-          mimeType: MimeType.pdf,
-          subfolder: 'SkyNest Reading',
-        );
-        externalSaved = true;
-      } catch (_) {
-        // The app-private offline copy remains available even if public Downloads is restricted.
+        await FileSaver.instance.saveToDownloads(name: _fileName(issue), bytes: bytes, fileExtension: 'pdf',
+          mimeType: MimeType.pdf, subfolder: 'SkyNest Reading');
+        exportedToDownloads = true;
+      } catch (error) { debugPrint('SkyNest Reading: public Downloads export failed: $error'); }
+      if (mounted) {
+        final message = exportedToDownloads
+            ? '${issue.title} is saved for offline reading and copied to Downloads / SkyNest Reading.'
+            : '${issue.title} is saved for offline reading inside Reading Hub. The Downloads copy could not be created.';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       }
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(externalSaved
-            ? issue.title + ' saved. Find it in My Offline Reading and Downloads.'
-            : issue.title + ' saved in My Offline Reading for offline access.')),
-      );
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PDF could not be saved. Please check storage space and try again.')),
-      );
-    } finally {
-      if (mounted) setState(() => _downloading = false);
-    }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF could not be saved to this device. Check available storage and try again.')));
+    } finally { if (mounted) setState(() => _downloading = false); }
   }
-
   @override
   void dispose() {
     _search.dispose();
@@ -420,11 +388,6 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
       appBar: AppBar(
         title: const Text('Reading & Media Hub'),
         actions: <Widget>[
-          IconButton(
-            tooltip: 'My Offline Reading',
-            icon: const Icon(Icons.download_for_offline_rounded),
-            onPressed: _showOfflineShelf,
-          ),
           IconButton(
             tooltip: 'Reading sources',
             icon: const Icon(Icons.public_rounded),
@@ -456,6 +419,25 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
             ]),
           ),
           const SizedBox(height: 22),
+          const SizedBox(height: 20),
+          Row(children: <Widget>[
+            Expanded(child: Text('My offline downloads', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold))),
+            IconButton(tooltip: 'Refresh offline downloads', onPressed: _refreshOfflineFiles, icon: const Icon(Icons.refresh_rounded)),
+          ]),
+          if (_loadingOfflineFiles) const LinearProgressIndicator()
+          else if (_offlineLoadError != null)
+            Card(child: ListTile(leading: const Icon(Icons.folder_off_outlined), title: const Text('Offline library unavailable'),
+              subtitle: Text(_offlineLoadError!), trailing: IconButton(tooltip: 'Try again', onPressed: _refreshOfflineFiles, icon: const Icon(Icons.refresh_rounded))))
+          else if (_offlineFiles.isEmpty)
+            const Card(child: ListTile(leading: Icon(Icons.download_for_offline_outlined), title: Text('No offline booklets yet'),
+              subtitle: Text('Download any original SkyNest booklet above. It will stay available here without an internet connection.')))
+          else
+            ..._offlineFiles.map((file) => Card(margin: const EdgeInsets.only(bottom: 8), child: ListTile(
+              leading: const Icon(Icons.picture_as_pdf_rounded), title: Text(_offlineTitle(file), maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: const Text('Saved on this device · PDF'),
+              trailing: IconButton(tooltip: 'Remove offline booklet', onPressed: () => _deleteOfflineFile(file), icon: const Icon(Icons.delete_outline_rounded)),
+              onTap: () => _readOfflineFile(file),
+            ))),
           Text('Explore the shelf', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           Wrap(
@@ -468,6 +450,7 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
             )).toList(),
           ),
           const SizedBox(height: 12),
+          const SizedBox(height: 20),
           ...issues.map((issue) => Card(
             key: ValueKey<String>(issue.id),
             margin: const EdgeInsets.only(bottom: 10),
@@ -499,13 +482,14 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
                 ),
                 FilledButton.tonalIcon(
                   onPressed: _downloading ? null : () => _downloadIssue(issue),
-                  icon: const Icon(Icons.download_rounded, size: 18),
-                  label: const Text('Download'),
+                  icon: _downloading
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.download_rounded, size: 18),
+                  label: Text(_downloading ? 'Saving…' : 'Download'),
                 ),
               ]),
             ),
           )),
-          const SizedBox(height: 20),
           Text('Search books live', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
           Text('Search the Open Library catalogue by book name, author or subject. Availability and download rights depend on each title.',
