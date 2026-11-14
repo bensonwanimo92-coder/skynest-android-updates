@@ -125,7 +125,7 @@ jobs:
           w = wrapper.read_text()
           w, count = re.subn(
               r'(?m)^distributionUrl=.*$',
-              'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip',
+              'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-bin.zip',
               w, count=1)
           if count != 1:
               raise SystemExit("Could not pin Gradle wrapper distribution to 8.13.")
@@ -133,9 +133,9 @@ jobs:
 
           assert 'version "8.13.2"' in settings.read_text()
           assert 'version "2.2.20"' in settings.read_text()
-          assert 'gradle-8.13-bin.zip' in wrapper.read_text()
+          assert 'gradle-8.14.3-bin.zip' in wrapper.read_text()
           assert 'id("org.jetbrains.kotlin.android")' in app.read_text()
-          print("PASS: Android Gradle Plugin 8.13.2 / Gradle 8.13 / Kotlin Gradle Plugin 2.2.20 pinned.")
+          print("PASS: Android Gradle Plugin 8.13.2 / Gradle 8.14.3 / Kotlin Gradle Plugin 2.2.20 pinned.")
           PY
 
       - name: Enforce Android 15 edge-to-edge configuration and audit manifest
