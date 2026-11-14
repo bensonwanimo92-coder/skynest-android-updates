@@ -4945,10 +4945,11 @@ class TenantGroupsScreen extends StatefulWidget {
 }
 class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
   final name = TextEditingController();
+  final search = TextEditingController();
   bool saving = false;
   final Set<String> selectedGroupIds = <String>{};
   @override
-  void dispose() { name.dispose(); super.dispose(); }
+  void dispose() { name.dispose(); search.dispose(); super.dispose(); }
   Future<void> createGroup() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || name.text.trim().isEmpty) { snack(context, 'Enter a group name.'); return; }
@@ -4970,10 +4971,19 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    return Scaffold(appBar: AppBar(title: const Text('Tenant-to-tenant groups')),
+    final filter = search.text.trim().toLowerCase();
+    return Scaffold(backgroundColor: const Color(0xFF07152F),
+      appBar: AppBar(title: const Text('Tenant Groups'), backgroundColor: const Color(0xFF07152F), foregroundColor: Colors.white),
       body: Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 8), child: TextField(
+          controller: search, style: const TextStyle(color: Colors.white), onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(hintText: 'Search groups...', hintStyle: TextStyle(color: Colors.white.withOpacity(.55)),
+            prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF67E8F9)), filled: true, fillColor: const Color(0xFF10264A),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.white.withOpacity(.10))),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF22D3EE)))),
+        )),
         Padding(padding: const EdgeInsets.all(12), child: Row(children: [
-          Expanded(child: TextField(controller: name, decoration: const InputDecoration(labelText: 'New group name'))),
+          Expanded(child: TextField(controller: name, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: 'New group name', labelStyle: const TextStyle(color: Colors.white70), filled: true, fillColor: const Color(0xFF10264A), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14))))),
           IconButton(onPressed: saving ? null : createGroup, icon: const Icon(Icons.add_circle, size: 32)),
         ])),
         Expanded(child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -4988,8 +4998,9 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
               builder: (context, snap) {
                 if (snap.hasError) return errorView('Groups could not load.');
                 if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                if (snap.data!.docs.isEmpty) return const EmptyView('No groups yet. Create the first group.');
-                return ListView(children: snap.data!.docs.map((doc) {
+                final visibleGroups = snap.data!.docs.where((doc) => (doc.data()['name']?.toString() ?? '').toLowerCase().contains(filter)).toList();
+                if (visibleGroups.isEmpty) return Center(child: Text(filter.isEmpty ? 'No groups yet. Create the first group.' : 'No groups match your search.', style: const TextStyle(color: Colors.white70)));
+                return ListView(children: visibleGroups.map((doc) {
                   final data = doc.data();
                   final members = (data['memberIds'] as List?) ?? const [];
                   final isMember = members.contains(uid);
@@ -5007,9 +5018,9 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                   final highDue = due is num && due > 0;
                   final tile = Container(
                     margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFF1F1F1)),
-                      boxShadow: const [BoxShadow(color: Color(0x0F000000), blurRadius: 20, offset: Offset(0, 4))]),
+                    decoration: BoxDecoration(color: const Color(0xFF10264A), borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: groupColor.withOpacity(.38)),
+                      boxShadow: [BoxShadow(color: groupColor.withOpacity(.12), blurRadius: 20, offset: const Offset(0, 4))]),
                     child: ClipRRect(borderRadius: BorderRadius.circular(20), child: IntrinsicHeight(child: Row(children: [
                       Container(width: 4, color: highDue ? const Color(0xFFEF4444) : groupColor),
                       Expanded(child: Padding(padding: const EdgeInsets.fromLTRB(12, 12, 12, 11), child: Row(children: [
@@ -5028,7 +5039,7 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                         const SizedBox(width: 2),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
                           Text(data['name']?.toString() ?? 'Group', maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
                           const SizedBox(height: 7),
                           Wrap(spacing: 6, runSpacing: 4, children: [
                             _GroupInfoChip(icon: Icons.people_alt_outlined, label: members.length.toString() + ' members'),
