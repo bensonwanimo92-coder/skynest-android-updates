@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
@@ -30,6 +31,7 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
   final TextEditingController _message = TextEditingController();
   bool _sending = false;
   final AudioRecorder _voiceRecorder = AudioRecorder();
+  final ImagePicker _chatImagePicker = ImagePicker();
   bool _recordingVoice = false;
   Timer? _voiceLimit;
   bool _ready = false;
@@ -161,6 +163,28 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
     }
   }
 
+  Future<void> _sendImageAttachment() async {
+    if (!_ready || _sending) return;
+    try {
+      final picked = await _chatImagePicker.pickImage(
+        source: ImageSource.gallery, imageQuality: 78, maxWidth: 1280,
+      );
+      if (picked == null) return;
+      final bytes = await File(picked.path).readAsBytes();
+      if (bytes.length > 700 * 1024) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Choose a smaller image (under 700 KB after compression).')),
+        );
+        return;
+      }
+      await _sendEncryptedPayload(EncryptedImageMessage.encodeImage(bytes));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Image could not be attached: $error')),
+      );
+    }
+  }
+
   Future<String> _decrypt(Map<String, dynamic> data) {
     return SkyNestMessageEncryption.instance.decryptGroupMessage(
       groupId: _conversationId,
@@ -241,9 +265,13 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
                           builder: (context, decrypted) {
                             if (decrypted.hasData) {
                               final clear = decrypted.data!;
-                              return VoiceMessageBubble.isVoiceMessage(clear)
-                                  ? VoiceMessageBubble(payload: clear)
-                                  : Text(clear, style: const TextStyle(color: Colors.white));
+                              if (VoiceMessageBubble.isVoiceMessage(clear)) {
+                                return VoiceMessageBubble(payload: clear);
+                              }
+                              if (VoiceMessageBubble.isImageMessage(clear)) {
+                                return EncryptedImageMessage(payload: clear);
+                              }
+                              return Text(clear, style: const TextStyle(color: Colors.white));
                             }
                             return Text(decrypted.hasError ? 'Unable to decrypt this message on this device.' : 'Decrypting…',
                               style: const TextStyle(color: Colors.white70));
@@ -276,7 +304,13 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
               ),
               onSubmitted: (_) => _send(),
             )),
-            const SizedBox(width: 4),
+            const SizedBox(width: 2),
+            IconButton(
+              tooltip: 'Attach encrypted photo',
+              onPressed: _ready && !_sending ? _sendImageAttachment : null,
+              icon: const Icon(Icons.image_outlined, color: Color(0xFF58E5F2)),
+            ),
+            const SizedBox(width: 2),
             IconButton(
               tooltip: _recordingVoice ? 'Stop and send voice note' : 'Record voice note (30 seconds max)',
               onPressed: _ready && !_sending ? _toggleVoiceRecording : null,
