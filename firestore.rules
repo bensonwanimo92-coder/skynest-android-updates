@@ -664,6 +664,25 @@ service cloud.firestore {
          resource.data.status in ['draft', 'rejected']);
     }
 
+    match /marketplaceModerationLogs/{logId} {
+      allow create: if marketplaceAdmin() &&
+        request.resource.data.keys().hasOnly([
+          'listingId', 'ownerUid', 'action', 'reason', 'advertiserTier',
+          'actorUid', 'actorEmail', 'createdAt'
+        ]) &&
+        request.resource.data.listingId is string &&
+        request.resource.data.ownerUid is string &&
+        request.resource.data.action in ['approved', 'rejected', 'changes_requested', 'paused', 'tier_changed'] &&
+        request.resource.data.reason is string &&
+        request.resource.data.reason.size() <= 1000 &&
+        request.resource.data.advertiserTier in ['basic', 'standard', 'premium'] &&
+        request.resource.data.actorUid == request.auth.uid &&
+        request.resource.data.actorEmail is string &&
+        request.resource.data.createdAt == request.time;
+      allow get, list: if marketplaceAdmin();
+      allow update, delete: if false;
+    }
+
     match /marketplaceListingReports/{reportId} {
       allow create: if signedIn() &&
         request.resource.data.keys().hasOnly([
