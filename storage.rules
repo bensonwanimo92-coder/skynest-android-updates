@@ -6,7 +6,8 @@ service firebase.storage {
     // Community Moments and short video profiles. Uploads are owner-controlled;
     // media reads require an authenticated SkyNest account.
     match /social_media/{userId}/{allPaths=**} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null &&
+        (request.auth.uid == userId || communityId(request.auth.uid) == communityId(userId));
       allow create, update: if request.auth != null
         && request.auth.uid == userId
         && request.resource.size < 80 * 1024 * 1024
