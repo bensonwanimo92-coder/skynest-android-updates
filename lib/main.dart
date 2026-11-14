@@ -11,7 +11,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:file_saver/file_saver.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -5030,7 +5030,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         contentType: mimeType,
         cacheControl: 'private,max-age=3600',
       ));
-      final downloadUrl = await uploadedRef!.getDownloadURL();
       final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       final senderName = (profile.data()?['displayName'] ?? user.displayName ?? 'Member').toString();
       final encrypted = await SkyNestMessageEncryption.instance.encryptGroupMessage(
