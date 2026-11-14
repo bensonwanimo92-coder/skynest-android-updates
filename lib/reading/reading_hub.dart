@@ -12,7 +12,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ReadingHubScreen extends StatefulWidget {
-  const ReadingHubScreen({super.key});
+  const ReadingHubScreen({super.key, this.offlineDirectoryProvider});
+
+  final Future<Directory> Function()? offlineDirectoryProvider;
 
   @override
   State<ReadingHubScreen> createState() => _ReadingHubScreenState();
@@ -37,6 +39,12 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
   }
 
   Future<Directory> _offlineDirectory() async {
+    final injectedProvider = widget.offlineDirectoryProvider;
+    if (injectedProvider != null) {
+      final directory = await injectedProvider();
+      if (!await directory.exists()) await directory.create(recursive: true);
+      return directory;
+    }
     final documents = await getApplicationDocumentsDirectory();
     final directory = Directory('${documents.path}${Platform.pathSeparator}SkyNest Reading');
     if (!await directory.exists()) await directory.create(recursive: true);
