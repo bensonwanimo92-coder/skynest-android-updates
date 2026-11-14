@@ -1188,6 +1188,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final initial = displayName != null && displayName.isNotEmpty
         ? displayName.characters.first.toUpperCase()
         : 'S';
+    final now = DateTime.now();
+    final greeting = now.hour < 12
+        ? 'Good morning'
+        : now.hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
+    final firstName = displayName != null && displayName.trim().isNotEmpty
+        ? displayName.trim().split(RegExp(r'\\s+')).first
+        : 'there';
+    final dailyMessage = userRole == 'landlord'
+        ? 'Your properties, people and plans — all moving together.'
+        : userRole == 'caretaker'
+            ? 'Your daily property tasks, organised in one place.'
+            : 'Your home updates and helpful tools, all in one place.';
 
     return Scaffold(
       appBar: AppBar(
@@ -1258,7 +1272,101 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Theme.of(context).colorScheme.primary,
+                        Color.lerp(
+                          Theme.of(context).colorScheme.primary,
+                          Theme.of(context).colorScheme.tertiary,
+                          0.52,
+                        )!,
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.20),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$greeting, $firstName',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.35,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              dailyMessage,
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.88),
+                                fontSize: 12.5,
+                                height: 1.35,
+                              ),
+                            ),
+                            const SizedBox(height: 11),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.calendar_today_rounded,
+                                  size: 13,
+                                  color: Colors.white.withOpacity(0.88),
+                                ),
+                                const SizedBox(width: 7),
+                                Text(
+                                  DateFormat('EEEE, d MMMM').format(now),
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.92),
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.16),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.white.withOpacity(0.22)),
+                        ),
+                        child: const Icon(
+                          Icons.auto_awesome_rounded,
+                          color: Colors.white,
+                          size: 25,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
                 child: TextField(
                   onChanged: (value) => setState(() => searchQuery = value),
                   decoration: InputDecoration(
