@@ -29,7 +29,7 @@ Baseline: `ae0359d36bbfe8b868f9133e49eed6d988f17a8a` (`integration/roles-on-curr
 - [ ] Improve inner Plans tiles/cards (not the semi-main Plans tile).
 - [x] Add edit and delete actions for individual plan entries and reminders.
 - [x] Add long-press/selection mode and confirmation-protected bulk deletion for plan entries.
-- [ ] Show created and last-updated timestamps consistently (created date is now shown on project cards; last-updated display and reminder timestamps remain to finish).
+- [x] Show created and last-updated timestamps on plan/reminder cards; updates now refresh the timestamp.
 - [ ] Audit other modules for similarly rigid fields and missing add/edit/delete, bulk actions, timestamps, filters, and responsive layouts.
 - [ ] Preserve role permissions and existing records; avoid destructive schema changes.
 
@@ -79,4 +79,4 @@ Baseline: `ae0359d36bbfe8b868f9133e49eed6d988f17a8a` (`integration/roles-on-curr
 - [ ] Apply storage and Firestore security rules so users can update permitted profile fields without changing another user's identity.
 
 ## Status
-The rapid sprint has committed these source changes on this feature branch: front/rear camera switch (`774ca015`); dashboard preview-before-open interaction (`4ec92703`); moderately larger dashboard tiles (`48e60973`); dashboard tile click feedback (`0e463f37`); Plans edit/delete/multi-select and timestamps (`07fb6cec`, `98a84e3a`); profile-photo display/propagation where a Firebase photo URL already exists (`f56f7456`); and a graphite-and-gold login visual refinement (`527a3230`). These changes have not yet been compiled or tested on a physical device. Profile photo upload, group attachments, private DMs, persistent offline downloads, public property discovery, ringback/ringtones, and remaining responsive/accessibility work are still pending. This document does not claim that the overall upgrade programme is complete, released, or delivered.
+The rapid sprint has committed these source changes on this feature branch: front/rear camera switch (`774ca015`); dashboard preview-before-open interaction (`4ec92703`); moderately larger dashboard tiles (`48e60973`); dashboard tile click feedback (`0e463f37`); Plans edit/delete/multi-select and timestamps (`07fb6cec`, `98a84e3a`, `b39befaf`); profile-photo display/propagation where a Firebase photo URL already exists (`f56f7456`); a graphite-and-gold login visual refinement (`527a3230`); and a dedicated branch CI workflow (`c1b47f57`) to run Flutter analysis/tests. The first CI run is currently in progress. These changes have not yet been confirmed by a completed CI run or tested on a physical device. Profile photo upload, group attachments, private DMs, persistent offline downloads, public property discovery, ringback/ringtones, and remaining responsive/accessibility work are still pending. This document does not claim that the overall upgrade programme is complete, released, or delivered.
