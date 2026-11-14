@@ -38,7 +38,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Reading & Media Hub'), findsOneWidget);
     expect(find.text('The Lighthouse Garden'), findsOneWidget);
-    await tester.drag(find.byType(ListView).first, const Offset(0, -2200));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('My offline downloads'), findsOneWidget);
     expect(find.text('No offline booklets yet'), findsOneWidget);
@@ -50,7 +49,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.drag(find.byType(ListView).first, const Offset(0, -2200));
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('The Lighthouse Garden'), findsOneWidget);
+    expect(find.widgetWithText(ListTile, 'The Lighthouse Garden'), findsOneWidget);
     expect(find.text('Saved on this device · PDF'), findsOneWidget);
   });
 

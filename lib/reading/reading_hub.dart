@@ -448,6 +448,26 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
             )).toList(),
           ),
           const SizedBox(height: 12),
+          const SizedBox(height: 20),
+          Row(children: <Widget>[
+            Expanded(child: Text('My offline downloads', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold))),
+            IconButton(tooltip: 'Refresh offline downloads', onPressed: _refreshOfflineFiles, icon: const Icon(Icons.refresh_rounded)),
+          ]),
+          if (_loadingOfflineFiles) const LinearProgressIndicator()
+          else if (_offlineLoadError != null)
+            Card(child: ListTile(leading: const Icon(Icons.folder_off_outlined), title: const Text('Offline library unavailable'),
+              subtitle: Text(_offlineLoadError!), trailing: IconButton(tooltip: 'Try again', onPressed: _refreshOfflineFiles, icon: const Icon(Icons.refresh_rounded))))
+          else if (_offlineFiles.isEmpty)
+            const Card(child: ListTile(leading: Icon(Icons.download_for_offline_outlined), title: Text('No offline booklets yet'),
+              subtitle: Text('Download any original SkyNest booklet above. It will stay available here without an internet connection.')))
+          else
+            ..._offlineFiles.map((file) => Card(margin: const EdgeInsets.only(bottom: 8), child: ListTile(
+              leading: const Icon(Icons.picture_as_pdf_rounded), title: Text(_offlineTitle(file), maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: const Text('Saved on this device · PDF'),
+              trailing: IconButton(tooltip: 'Remove offline booklet', onPressed: () => _deleteOfflineFile(file), icon: const Icon(Icons.delete_outline_rounded)),
+              onTap: () => _readOfflineFile(file),
+            ))),
+          const SizedBox(height: 20),
           ...issues.map((issue) => Card(
             key: ValueKey<String>(issue.id),
             margin: const EdgeInsets.only(bottom: 10),
@@ -485,26 +505,6 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
               ]),
             ),
           )),
-          const SizedBox(height: 20),
-          Row(children: <Widget>[
-            Expanded(child: Text('My offline downloads', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold))),
-            IconButton(tooltip: 'Refresh offline downloads', onPressed: _refreshOfflineFiles, icon: const Icon(Icons.refresh_rounded)),
-          ]),
-          if (_loadingOfflineFiles) const LinearProgressIndicator()
-          else if (_offlineLoadError != null)
-            Card(child: ListTile(leading: const Icon(Icons.folder_off_outlined), title: const Text('Offline library unavailable'),
-              subtitle: Text(_offlineLoadError!), trailing: IconButton(tooltip: 'Try again', onPressed: _refreshOfflineFiles, icon: const Icon(Icons.refresh_rounded))))
-          else if (_offlineFiles.isEmpty)
-            const Card(child: ListTile(leading: Icon(Icons.download_for_offline_outlined), title: Text('No offline booklets yet'),
-              subtitle: Text('Download any original SkyNest booklet above. It will stay available here without an internet connection.')))
-          else
-            ..._offlineFiles.map((file) => Card(margin: const EdgeInsets.only(bottom: 8), child: ListTile(
-              leading: const Icon(Icons.picture_as_pdf_rounded), title: Text(_offlineTitle(file), maxLines: 2, overflow: TextOverflow.ellipsis),
-              subtitle: const Text('Saved on this device · PDF'),
-              trailing: IconButton(tooltip: 'Remove offline booklet', onPressed: () => _deleteOfflineFile(file), icon: const Icon(Icons.delete_outline_rounded)),
-              onTap: () => _readOfflineFile(file),
-            ))),
-          const SizedBox(height: 20),
           Text('Search books live', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
           Text('Search the Open Library catalogue by book name, author or subject. Availability and download rights depend on each title.',
