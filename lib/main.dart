@@ -5047,7 +5047,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         'attachment': {
           'name': fileName,
           'mimeType': mimeType,
-          'downloadUrl': downloadUrl,
           'storagePath': storagePath,
           'size': size,
         },
@@ -5083,7 +5082,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf', 'doc', 'docx'],
+        allowedExtensions: ['pdf'],
         allowMultiple: false,
       );
       final selected = result?.files.single;
@@ -5091,9 +5090,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       final extension = selected.extension?.toLowerCase();
       final mimeType = extension == 'pdf'
           ? 'application/pdf'
-          : extension == 'doc'
-              ? 'application/msword'
-              : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          : 'application/pdf';
       await _sendGroupAttachment(File(selected.path!), selected.name, mimeType);
     } catch (error) {
       if (mounted) snack(context, 'Could not select document: ' + error.toString());
@@ -5101,15 +5098,38 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   Future<void> _openGroupAttachment(Map<String, dynamic> attachment) async {
-    final url = attachment['downloadUrl']?.toString() ?? '';
-    final uri = Uri.tryParse(url);
-    if (uri == null || !uri.hasScheme) {
-      snack(context, 'This attachment link is invalid.');
+    final path = attachment['storagePath']?.toString() ?? '';
+    final expectedPrefix = 'group_attachments/' + widget.groupId + '/';
+    if (!path.startsWith(expectedPrefix)) {
+      snack(context, 'This attachment does not belong to the current group.');
       return;
     }
     try {
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!opened && mounted) snack(context, 'No app could open this attachment.');
+      final bytes = await FirebaseStorage.instance.ref(path).getData(10 * 1024 * 1024);
+      if (bytes == null || bytes.isEmpty) throw StateError('The file is unavailable.');
+      final mime = attachment['mimeType']?.toString() ?? '';
+      if (mime.startsWith('image/')) {
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => Dialog(
+            child: InteractiveViewer(
+              child: Image.memory(bytes, fit: BoxFit.contain),
+            ),
+          ),
+        );
+      } else if (mime == 'application/pdf') {
+        await FileSaver.instance.saveToDownloads(
+          name: attachment['name']?.toString() ?? 'SkyNest attachment',
+          bytes: bytes,
+          fileExtension: 'pdf',
+          mimeType: MimeType.pdf,
+          subfolder: 'SkyNest Group Files',
+        );
+        if (mounted) snack(context, 'PDF saved to Downloads.');
+      } else {
+        throw StateError('This file type is not supported.');
+      }
     } catch (error) {
       if (mounted) snack(context, 'Could not open attachment: ' + error.toString());
     }
@@ -5429,7 +5449,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           },
           itemBuilder: (_) => const [
             PopupMenuItem(value: 'image', child: ListTile(leading: Icon(Icons.image_outlined), title: Text('Photo'))),
-            PopupMenuItem(value: 'document', child: ListTile(leading: Icon(Icons.picture_as_pdf_outlined), title: Text('PDF / Word document'))),
+            PopupMenuItem(value: 'document', child: ListTile(leading: Icon(Icons.picture_as_pdf_outlined), title: Text('PDF document'))),
           ],
         ),
         Expanded(child: TextField(
