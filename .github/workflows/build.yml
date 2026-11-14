@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - integration/roles-on-current-main
+      - test/arm64-current-integration
     tags:
       - 'v*'
   workflow_dispatch:
@@ -585,7 +586,7 @@ jobs:
           SKYNEST_TURN_USERNAME: ${{ secrets.SKYNEST_TURN_USERNAME }}
           SKYNEST_TURN_CREDENTIAL: ${{ secrets.SKYNEST_TURN_CREDENTIAL }}
         run: |
-          shorebird release android --artifact apk -- --no-shrink --no-obfuscate \
+          shorebird release android --artifact apk --target-platform android-arm64 -- --no-shrink --no-obfuscate \
             --build-name=1.1.3 --build-number="$BUILD_NUMBER" \
             --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" \
             --dart-define=SKYNEST_TURN_USERNAME="$SKYNEST_TURN_USERNAME" \
