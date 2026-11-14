@@ -605,6 +605,55 @@ jobs:
               print(f"Patched: {file}")
           PY
 
+      - name: Restrict APK native packaging to ARM64 and resolve Flutter libapp duplicate
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("android/app/build.gradle.kts")
+          if not path.is_file():
+              raise SystemExit("Generated Android Kotlin Gradle file is missing.")
+
+          source = path.read_text()
+          marker = "dependencies {"
+          if marker not in source:
+              raise SystemExit("Could not locate dependencies block for packaging configuration.")
+
+          config = '''android {
+              packaging {
+                  jniLibs {
+                      // Shorebird/Flutter currently contributes duplicate copies
+                      // of the ARM64 app library. Resolve only that exact entry.
+                      pickFirsts += "lib/arm64-v8a/libapp.so"
+                      // SkyNest distributes an ARM64-only APK.
+                      excludes += setOf(
+                          "**/armeabi-v7a/**",
+                          "**/x86/**",
+                          "**/x86_64/**"
+                      )
+                  }
+              }
+          }
+
+          '''
+          if "pickFirsts += \"lib/arm64-v8a/libapp.so\"" not in source:
+              source = source.replace(marker, config + marker, 1)
+              path.write_text(source)
+
+          check = path.read_text()
+          required = (
+              'pickFirsts += "lib/arm64-v8a/libapp.so"',
+              '"**/armeabi-v7a/**"',
+              '"**/x86/**"',
+              '"**/x86_64/**"',
+          )
+          missing = [item for item in required if item not in check]
+          if missing:
+              raise SystemExit("Native packaging configuration incomplete: " + ", ".join(missing))
+          print("PASS: only duplicate ARM64 libapp.so is pick-first; non-ARM64 native ABIs are excluded.")
+          PY
+
       - name: Set up Shorebird
         uses: shorebirdtech/setup-shorebird@v1
         with:
