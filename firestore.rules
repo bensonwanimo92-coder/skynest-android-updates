@@ -609,7 +609,7 @@ service cloud.firestore {
         (!data.keys().hasAny(['latitude']) || data.latitude is number) &&
         (!data.keys().hasAny(['longitude']) || data.longitude is number) &&
         (!data.keys().hasAny(['coverImagePath']) || (data.coverImagePath is string && data.coverImagePath.size() <= 500)) &&
-        data.status in ['draft', 'pending', 'approved', 'rejected', 'paused', 'expired'] &&
+        data.status in ['draft', 'pending', 'approved', 'rejected', 'changes_requested', 'paused', 'expired'] &&
         data.createdAt is timestamp && data.updatedAt is timestamp;
       }
 
@@ -633,7 +633,7 @@ service cloud.firestore {
 
       allow update: if signedIn() && request.auth.token.email_verified == true &&
         resource.data.ownerUid == request.auth.uid &&
-        resource.data.status in ['draft', 'rejected'] &&
+        resource.data.status in ['draft', 'rejected', 'changes_requested'] &&
         request.resource.data.ownerUid == resource.data.ownerUid &&
         request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.status in ['draft', 'pending'] &&
@@ -651,7 +651,7 @@ service cloud.firestore {
           'status', 'reviewedAt', 'reviewedBy', 'rejectionReason',
           'expiresAt', 'featured', 'advertiserTier', 'updatedAt'
         ]) &&
-        request.resource.data.status in ['approved', 'rejected', 'paused', 'expired'] &&
+        request.resource.data.status in ['approved', 'rejected', 'changes_requested', 'paused', 'expired'] &&
         (request.resource.data.status != 'approved' ||
           (request.resource.data.expiresAt is timestamp && request.resource.data.expiresAt > request.time)) &&
         (!request.resource.data.keys().hasAny(['featured']) || request.resource.data.featured is bool) &&
