@@ -166,7 +166,7 @@ jobs:
           source = path.read_text()
 
           def ensure_in_block(text, block_name, statement):
-              match = re.search(r"(?m)^(?P<indent>[ \\t]*)" + re.escape(block_name) + r"\\s*\\{", text)
+              match = re.search(r"(?m)^(?P<indent> *)" + re.escape(block_name) + r"\s*\{", text)
               if not match:
                   raise SystemExit(f"Could not find {block_name} {{ }} block in {path}.")
               opening = text.find("{", match.start())
@@ -185,7 +185,7 @@ jobs:
               body = text[opening + 1:closing]
               if statement not in body:
                   indent = match.group("indent") + "    "
-                  text = text[:closing] + indent + statement + "\\n" + text[closing:]
+                  text = text[:closing] + indent + statement + "\n" + text[closing:]
               return text
 
           source = ensure_in_block(
@@ -193,11 +193,11 @@ jobs:
               "compileOptions",
               "isCoreLibraryDesugaringEnabled = true"
           )
-          if not re.search(r"(?m)^\\s*dependencies\\s*\\{", source):
+          if not re.search(r"(?m)^[ ]*dependencies\s*\{", source):
               source += (
-                  "\\n\\ndependencies {\\n"
-                  "    coreLibraryDesugaring(\\"com.android.tools:desugar_jdk_libs:2.1.4\\")\\n"
-                  "}\\n"
+                  "\n\ndependencies {\n"
+                  '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
+                  "}\n"
               )
           else:
               source = ensure_in_block(
