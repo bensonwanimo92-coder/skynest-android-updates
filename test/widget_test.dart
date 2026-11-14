@@ -9,14 +9,14 @@ void main() {
   late Directory documentsDirectory;
   late Directory offlineDirectory;
 
-  setUp(() async {
-    documentsDirectory = await Directory.systemTemp.createTemp('skynest-reading-hub-');
+  setUp(() {
+    documentsDirectory = Directory.systemTemp.createTempSync('skynest-reading-hub-');
     offlineDirectory = Directory('${documentsDirectory.path}${Platform.pathSeparator}SkyNest Reading');
-    await offlineDirectory.create(recursive: true);
+    offlineDirectory.createSync(recursive: true);
   });
 
-  tearDown(() async {
-    if (await documentsDirectory.exists()) await documentsDirectory.delete(recursive: true);
+  tearDown(() {
+    if (documentsDirectory.existsSync()) documentsDirectory.deleteSync(recursive: true);
   });
 
   Widget readingHub() => MaterialApp(
@@ -38,17 +38,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Reading & Media Hub'), findsOneWidget);
     expect(find.text('The Lighthouse Garden'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('My offline downloads'), 400);
+    await tester.drag(find.byType(ListView).first, const Offset(0, -2200));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('My offline downloads'), findsOneWidget);
     expect(find.text('No offline booklets yet'), findsOneWidget);
   });
 
   testWidgets('Reading Hub lists a saved booklet for offline reading', (tester) async {
-    await File('${offlineDirectory.path}${Platform.pathSeparator}the_lighthouse_garden.pdf').writeAsBytes(<int>[37, 80, 68, 70]);
+    File('${offlineDirectory.path}${Platform.pathSeparator}the_lighthouse_garden.pdf').writeAsBytesSync(<int>[37, 80, 68, 70]);
     await tester.pumpWidget(readingHub());
     await tester.pump(const Duration(milliseconds: 400));
-    await tester.scrollUntilVisible(find.text('My offline downloads'), 400);
+    await tester.drag(find.byType(ListView).first, const Offset(0, -2200));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('The Lighthouse Garden'), findsOneWidget);
     expect(find.text('Saved on this device · PDF'), findsOneWidget);
