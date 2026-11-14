@@ -587,10 +587,11 @@ jobs:
           SKYNEST_TURN_USERNAME: ${{ secrets.SKYNEST_TURN_USERNAME }}
           SKYNEST_TURN_CREDENTIAL: ${{ secrets.SKYNEST_TURN_CREDENTIAL }}
         run: |
-          # Ship only arm64 native libraries for modern Android phones; this avoids bundling
-          # three CPU architectures into one oversized universal APK.
-          # --target-platform is a Shorebird option and must precede the -- separator.
+          # Configure Shorebird's release target and Flutter's APK target explicitly.
+          # Shorebird's option selects the release ABI; Flutter's forwarded option
+          # constrains the Gradle APK packaging task to arm64-v8a as well.
           shorebird release android --artifact apk --target-platform android-arm64 -- \
+            --target-platform=android-arm64 \
             --build-name=1.1.3 --build-number="$BUILD_NUMBER" \
             --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" \
             --dart-define=SKYNEST_TURN_USERNAME="$SKYNEST_TURN_USERNAME" \
