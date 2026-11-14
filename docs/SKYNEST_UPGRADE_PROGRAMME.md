@@ -52,8 +52,9 @@ Baseline: `ae0359d36bbfe8b868f9133e49eed6d988f17a8a` (`integration/roles-on-curr
 
 ### 7. Calls: real camera and audio/video controls
 - [ ] Verify outgoing and incoming audio call flow and audible ringback/ringtone.
-- [ ] Implement/verify real device camera capture for video calls using WebRTC camera tracks and runtime permissions.
-- [ ] Add front/rear camera switch, camera enable/disable, microphone mute, and speaker controls.
+- [x] Existing source already requests real device camera capture for video calls using WebRTC camera tracks; device-level verification remains pending.
+- [x] Add front/rear camera switch control (committed; device test pending).
+- [x] Existing source includes camera enable/disable, microphone mute, and speaker controls; device-level verification remains pending.
 - [ ] Handle permissions denied/revoked, camera unavailable, call termination, and resource disposal safely.
 - [ ] Test on physical Android devices; do not equate a successful build with working camera/audio.
 
@@ -77,4 +78,4 @@ Baseline: `ae0359d36bbfe8b868f9133e49eed6d988f17a8a` (`integration/roles-on-curr
 - [ ] Apply storage and Firestore security rules so users can update permitted profile fields without changing another user's identity.
 
 ## Status
-All items above are requested and pending implementation/review. This document records scope; it does not claim that these upgrades are implemented, tested, released, or delivered.
+Most items remain pending implementation/review. The video-call source has been incrementally improved with a front/rear camera switch in commit `774ca0153563e9bc6b6c9e0e0e752e49d6ea9286`; this change has not yet been built or tested on a physical device. Existing camera capture and mute/speaker controls were confirmed by source inspection, not by device testing. This document does not claim that the overall upgrade programme is complete, released, or delivered.
