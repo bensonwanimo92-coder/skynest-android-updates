@@ -3,6 +3,7 @@ import 'calls/skynest_call_screen.dart';
 import 'security/message_encryption.dart';
 import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
+import 'messaging/direct_message_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -4929,6 +4930,55 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
+  Future<void> startPrivateMessage() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final members = await FirebaseFirestore.instance
+          .collection('groups').doc(widget.groupId).collection('members').get();
+      final peers = members.docs.where((doc) => doc.id != uid).toList();
+      if (peers.isEmpty) {
+        snack(context, 'No other group members are available for a private chat.');
+        return;
+      }
+      final selected = await showModalBottomSheet<QueryDocumentSnapshot<Map<String, dynamic>>>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: ListView(shrinkWrap: true, children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Start a private conversation',
+                style: Theme.of(sheetContext).textTheme.titleLarge),
+            ),
+            ...peers.map((peer) => ListTile(
+              leading: CircleAvatar(
+                backgroundImage: (peer.data()['photoUrl']?.toString().isNotEmpty ?? false)
+                    ? NetworkImage(peer.data()['photoUrl'].toString()) : null,
+                child: (peer.data()['photoUrl']?.toString().isNotEmpty ?? false)
+                    ? null : const Icon(Icons.person_outline_rounded),
+              ),
+              title: Text((peer.data()['displayName'] ?? 'Group member').toString()),
+              subtitle: Text('Private · only you and this member'),
+              trailing: const Icon(Icons.lock_outline_rounded),
+              onTap: () => Navigator.pop(sheetContext, peer),
+            )),
+          ]),
+        ),
+      );
+      if (selected == null || !mounted) return;
+      await Navigator.push(context, MaterialPageRoute<void>(
+        builder: (_) => SkyNestDirectMessageScreen(
+          peerId: selected.id,
+          peerName: (selected.data()['displayName'] ?? 'Group member').toString(),
+          peerPhotoUrl: selected.data()['photoUrl']?.toString(),
+        ),
+      ));
+    } catch (error) {
+      if (mounted) snack(context, 'Could not open private messaging: $error');
+    }
+  }
+
   Future<void> leaveGroup() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -4959,6 +5009,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     appBar: AppBar(
       title: Text(widget.groupName),
       actions: [
+        IconButton(
+          tooltip: 'Private message',
+          onPressed: startPrivateMessage,
+          icon: const Icon(Icons.mark_chat_unread_rounded),
+        ),
         IconButton(
           tooltip: 'Voice call',
           onPressed: () => startGroupCall('voice'),
