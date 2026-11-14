@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../settings/sound_settings.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 final GlobalKey<NavigatorState> skyNestNavigatorKey = GlobalKey<NavigatorState>();
@@ -68,6 +69,10 @@ class _IncomingCallHostState extends State<IncomingCallHost> {
     if (navigator == null) return;
     final callerName = (data['callerName'] ?? 'SkyNest member').toString();
     final isVideo = data['type'] == 'video';
+    // Use the platform alert tone while the incoming-call prompt is visible.
+    final incomingAlert = Timer.periodic(const Duration(seconds: 3), (_) {
+      unawaited(SkyNestFeedback.playAlert());
+    });
     final accepted = await navigator.push<bool>(
       DialogRoute<bool>(
       context: navigator.context,
@@ -98,6 +103,7 @@ class _IncomingCallHostState extends State<IncomingCallHost> {
       ),
       ),
     );
+    incomingAlert.cancel();
 
     if (!mounted) return;
     final ref = FirebaseFirestore.instance.collection('calls').doc(callId);
@@ -167,6 +173,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
   bool _released = false;
   bool _renderersInitialized = false;
   Timer? _ringTimeout;
+  Timer? _ringbackTimer;
   final List<RTCIceCandidate> _pendingCandidates = <RTCIceCandidate>[];
   String _status = 'Connecting…';
   String _peerName = 'SkyNest member';
@@ -284,6 +291,13 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
           'status': 'ringing',
         });
         _ringTimeout?.cancel();
+        // A periodic platform alert gives the caller audible feedback until
+        // the peer answers or the call is otherwise terminated.
+        _ringbackTimer?.cancel();
+        _ringbackTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+          if (!mounted || _ending || _released) return;
+          unawaited(SkyNestFeedback.playAlert());
+        });
         _ringTimeout = Timer(const Duration(seconds: 45), () async {
           if (!mounted || _ending) return;
           try {
@@ -317,6 +331,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
         if (call == null) return;
         if (widget.isCaller && call['answer'] is Map) {
           _ringTimeout?.cancel();
+          _ringbackTimer?.cancel();
           final answer = call['answer'] as Map;
           final current = await _peer?.getRemoteDescription();
           if (current == null) {
@@ -328,6 +343,9 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
           }
         }
         final state = call['status']?.toString();
+        if (state == 'active' || state == 'declined' || state == 'ended' || state == 'missed') {
+          _ringbackTimer?.cancel();
+        }
         if (state == 'declined' || state == 'ended' || state == 'missed') {
           if (mounted && !_ending) {
             setState(() => _status = state == 'declined' ? 'Call declined' : 'Call ended');
@@ -390,6 +408,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
     if (_released) return;
     _released = true;
     _ringTimeout?.cancel();
+    _ringbackTimer?.cancel();
     await _callSub?.cancel();
     await _candidateSub?.cancel();
     for (final track in _localStream?.getTracks() ?? <MediaStreamTrack>[]) {
@@ -459,7 +478,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
                 track.enabled = !_muted;
               }
             }),
-          if (_isVideo)
+          if (_isVideo) ...[
             _CallControl(icon: _cameraOff ? Icons.videocam_off : Icons.videocam, label: 'Camera', active: _cameraOff,
               onTap: () {
                 setState(() => _cameraOff = !_cameraOff);
@@ -467,6 +486,22 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
                   track.enabled = !_cameraOff;
                 }
               }),
+            _CallControl(icon: Icons.cameraswitch_rounded, label: 'Flip',
+              onTap: () async {
+                final tracks = _localStream?.getVideoTracks() ?? <MediaStreamTrack>[];
+                if (tracks.isEmpty || _released) return;
+                try {
+                  await Helper.switchCamera(tracks.first);
+                } catch (error) {
+                  debugPrint('Camera switch failed: $error');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Could not switch camera: $error')),
+                    );
+                  }
+                }
+              }),
+          ],
           _CallControl(icon: _speakerOn ? Icons.volume_up : Icons.hearing, label: 'Speaker', active: _speakerOn,
             onTap: () async {
               setState(() => _speakerOn = !_speakerOn);

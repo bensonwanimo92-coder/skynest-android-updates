@@ -3,9 +3,15 @@ import 'calls/skynest_call_screen.dart';
 import 'security/message_encryption.dart';
 import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
+import 'messaging/direct_message_screen.dart';
+import 'settings/sound_settings.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:file_saver/file_saver.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -776,11 +782,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
-                              colors: [const Color(0xFF10365F).withOpacity(0.86), const Color(0xFF2476C8).withOpacity(0.70)],
+                              colors: [const Color(0xFF090D16).withOpacity(0.96), const Color(0xFF17243A).withOpacity(0.91)],
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF174D83).withOpacity(0.20),
+                                color: const Color(0xFFD4AF37).withOpacity(0.16),
                                 blurRadius: 24,
                                 offset: const Offset(0, 12),
                               ),
@@ -796,7 +802,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   shape: BoxShape.circle,
                                   border: Border.all(color: Colors.white.withOpacity(0.35)),
                                 ),
-                                child: const Icon(Icons.apartment_rounded, size: 43, color: Colors.white),
+                                child: const Icon(Icons.apartment_rounded, size: 43, color: Color(0xFFF5D76E)),
                               ),
                               const SizedBox(height: 14),
                               const Text(
@@ -900,7 +906,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: FilledButton(
                             onPressed: busy ? null : signIn,
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF174D83),
+                              backgroundColor: const Color(0xFF101827),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                             ),
                             child: busy
@@ -910,7 +916,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     children: [
                                       Icon(Icons.login_rounded),
                                       SizedBox(width: 10),
-                                      Text('SIGN IN', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+                                      Text('SIGN IN', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.8, color: Color(0xFFF5D76E))),
                                     ],
                                   ),
                           ),
@@ -1128,6 +1134,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Future<void> _previewModule(BuildContext context, _MenuItem item) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Theme.of(sheetContext).colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 25,
+                  backgroundColor: item.color.withOpacity(0.14),
+                  child: Icon(item.icon, color: item.color, size: 27),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    item.title,
+                    style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Preview this SkyNest section before opening it. Continue when you are ready to view its tools and records.',
+              style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 22),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(sheetContext);
+                  _open(context, item);
+                },
+                icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                label: const Text('Continue to section'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = <_MenuItem>[];
@@ -1180,6 +1256,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ]);
     }
 
+    items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
     items.add(_MenuItem('Security & fingerprint', Icons.fingerprint_rounded, Colors.blueGrey, const SecuritySettingsScreen()));
 
     final query = searchQuery.trim().toLowerCase();
@@ -1228,10 +1305,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: CircleAvatar(
                 radius: 17,
                 backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                child: Text(initial, style: TextStyle(
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  fontWeight: FontWeight.w800,
-                )),
+                backgroundImage: FirebaseAuth.instance.currentUser?.photoURL != null
+                    ? NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!)
+                    : null,
+                child: FirebaseAuth.instance.currentUser?.photoURL == null
+                    ? Text(initial, style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.w800,
+                      ))
+                    : null,
               ),
             ),
           ),
@@ -1410,9 +1492,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     : GridView.builder(
                         padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
                         itemCount: filteredItems.length,
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          childAspectRatio: 1.12,
+                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 240,
+                          childAspectRatio: 1.02,
                           crossAxisSpacing: 12,
                           mainAxisSpacing: 12,
                         ),
@@ -1438,7 +1520,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             clipBehavior: Clip.antiAlias,
                             child: InkWell(
-                              onTap: () => _open(context, item),
+                              onTap: () async {
+                                await SkyNestFeedback.playTap();
+                                if (!context.mounted) return;
+                                await _previewModule(context, item);
+                              },
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [
@@ -1471,8 +1557,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Container(
-                                          width: 54,
-                                          height: 54,
+                                          width: 58,
+                                          height: 58,
                                           decoration: BoxDecoration(
                                             color: Colors.white.withOpacity(0.20),
                                             border: Border.all(color: Colors.white.withOpacity(0.35)),
@@ -1538,6 +1624,7 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
   String status = '';
   bool loading = true;
   bool saving = false;
+  bool photoBusy = false;
 
   @override
   void initState() {
@@ -1570,6 +1657,99 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
         setState(() => loading = false);
         snack(context, 'Could not load account details: ' + error.toString());
       }
+    }
+  }
+
+  Future<void> _syncGroupMemberPhoto(String uid, String? photoUrl) async {
+    final groups = await FirebaseFirestore.instance.collection('groups')
+        .where('memberIds', arrayContains: uid).get();
+    for (var start = 0; start < groups.docs.length; start += 400) {
+      final batch = FirebaseFirestore.instance.batch();
+      final chunk = groups.docs.skip(start).take(400);
+      for (final group in chunk) {
+        batch.set(group.reference.collection('members').doc(uid), {
+          'photoUrl': photoUrl,
+        }, SetOptions(merge: true));
+      }
+      await batch.commit();
+    }
+  }
+
+  Future<void> _changeProfilePhoto() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || photoBusy) return;
+    setState(() => photoBusy = true);
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 84,
+        maxWidth: 1400,
+        maxHeight: 1400,
+      );
+      if (picked == null) return;
+      final file = File(picked.path);
+      final length = await file.length();
+      if (length > 5 * 1024 * 1024) {
+        throw StateError('Choose an image smaller than 5 MB.');
+      }
+      final ref = FirebaseStorage.instance.ref()
+          .child('profile_photos').child(user.uid).child('profile.jpg');
+      final task = await ref.putFile(file, SettableMetadata(
+        contentType: picked.mimeType ?? 'image/jpeg',
+        cacheControl: 'private,max-age=3600',
+      ));
+      final url = await task.ref.getDownloadURL();
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'photoUrl': url,
+        'photoPath': ref.fullPath,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      await user.updatePhotoURL(url);
+      await _syncGroupMemberPhoto(user.uid, url);
+      await user.reload();
+      if (mounted) snack(context, 'Profile photo updated.');
+    } catch (error) {
+      if (mounted) snack(context, 'Photo upload failed: ' + error.toString());
+    } finally {
+      if (mounted) setState(() => photoBusy = false);
+    }
+  }
+
+  Future<void> _removeProfilePhoto() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || photoBusy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove profile photo?'),
+        content: const Text('Your account will return to its initials avatar.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('CANCEL')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('REMOVE')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => photoBusy = true);
+    try {
+      final ref = FirebaseStorage.instance.ref()
+          .child('profile_photos').child(user.uid).child('profile.jpg');
+      try { await ref.delete(); } on FirebaseException catch (error) {
+        if (error.code != 'object-not-found') rethrow;
+      }
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'photoUrl': FieldValue.delete(),
+        'photoPath': FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      await user.updatePhotoURL(null);
+      await _syncGroupMemberPhoto(user.uid, null);
+      await user.reload();
+      if (mounted) snack(context, 'Profile photo removed.');
+    } catch (error) {
+      if (mounted) snack(context, 'Could not remove photo: ' + error.toString());
+    } finally {
+      if (mounted) setState(() => photoBusy = false);
     }
   }
 
@@ -1670,6 +1850,52 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
                 style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text('Account status: ' + (status.isEmpty ? 'unknown' : status)),
             )),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(children: [
+                  StreamBuilder<User?>(
+                    stream: FirebaseAuth.instance.userChanges(),
+                    initialData: FirebaseAuth.instance.currentUser,
+                    builder: (context, snapshot) {
+                      final user = snapshot.data;
+                      final photo = user?.photoURL;
+                      final name = user?.displayName?.trim() ?? '';
+                      return CircleAvatar(
+                        radius: 34,
+                        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                        backgroundImage: photo != null && photo.isNotEmpty ? NetworkImage(photo) : null,
+                        child: photo == null || photo.isEmpty
+                          ? Text(name.isEmpty ? 'S' : name.characters.first.toUpperCase(),
+                              style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800))
+                          : null,
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('Profile photo', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                    const SizedBox(height: 4),
+                    const Text('Add a clear photo so people recognise you in groups and private chats.',
+                      style: TextStyle(fontSize: 12)),
+                    const SizedBox(height: 9),
+                    Wrap(spacing: 8, children: [
+                      OutlinedButton.icon(
+                        onPressed: photoBusy ? null : _changeProfilePhoto,
+                        icon: photoBusy
+                          ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.photo_camera_outlined, size: 17),
+                        label: Text(photoBusy ? 'Please wait…' : 'Change photo'),
+                      ),
+                      TextButton(
+                        onPressed: photoBusy ? null : _removeProfilePhoto,
+                        child: const Text('Remove'),
+                      ),
+                    ]),
+                  ])),
+                ]),
+              ),
+            ),
             if (role == 'landlord') ...[
               Card(child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -2200,7 +2426,7 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
         final paymentRef = await FirebaseFirestore.instance.collection('payments').add({
           'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(), 'amount': value,
           'method': paymentMethod.toUpperCase(), 'transactionCode': paymentMethod == 'mpesa' ? code : '', 'status': 'Pending verification',
-          'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+          'createdAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp(), 'createdBy': uid,
         });
         final matchingHouse = await FirebaseFirestore.instance.collection('houses')
           .where('createdBy', isEqualTo: uid).where('houseNo', isEqualTo: house.text.trim()).limit(1).get();
@@ -2988,10 +3214,106 @@ class PlansScreen extends StatefulWidget {
 }
 
 class _PlansScreenState extends State<PlansScreen> {
+  final Set<String> _selectedPlanIds = <String>{};
+  bool _selectionEnabled = false;
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _currentPlanDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+  bool get _selectionMode => _selectionEnabled || _selectedPlanIds.isNotEmpty;
+
   String _type(String value) => const {
     'build': 'New build', 'renovate': 'Renovation',
     'expand': 'Expansion', 'loanClear': 'Loan clearance',
   }[value] ?? 'Property project';
+
+  Future<void> _editEntry(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final data = doc.data();
+    final title = TextEditingController(text: data['title']?.toString() ?? '');
+    final note = TextEditingController(text: data['note']?.toString() ?? '');
+    final budget = TextEditingController(text: data['budget']?.toString() ?? '');
+    final spent = TextEditingController(text: data['spent']?.toString() ?? '0');
+    final progress = TextEditingController(text: data['progress']?.toString() ?? '0');
+    final isProject = data['planType'] != null;
+    await showDialog<void>(context: context, builder: (d) => AlertDialog(
+      title: const Text('Edit plan or reminder'),
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: title, decoration: const InputDecoration(labelText: 'Title')),
+        TextField(controller: note, maxLines: 3, decoration: const InputDecoration(labelText: 'Notes')),
+        if (isProject) ...[
+          TextField(controller: budget, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Budget (KES)')),
+          TextField(controller: spent, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Spent (KES)')),
+          TextField(controller: progress, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Progress (0–100)')),
+        ],
+      ])),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
+        FilledButton(onPressed: () async {
+          final b = double.tryParse(budget.text.trim());
+          final sp = double.tryParse(spent.text.trim());
+          final pr = int.tryParse(progress.text.trim());
+          if (title.text.trim().isEmpty ||
+              (isProject && (b == null || b <= 0 || sp == null || sp < 0 || pr == null || pr < 0 || pr > 100))) {
+            snack(d, 'Check the title, budget, spending and progress values.');
+            return;
+          }
+          try {
+            final changes = <String, dynamic>{
+              'title': title.text.trim(), 'note': note.text.trim(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            };
+            if (isProject) {
+              changes.addAll({'budget': b, 'spent': sp, 'progress': pr});
+            }
+            await doc.reference.update(changes);
+            if (d.mounted) Navigator.pop(d);
+            if (mounted) snack(context, 'Updated successfully.');
+          } catch (error) {
+            if (d.mounted) snack(d, 'Could not update: $error');
+          }
+        }, child: const Text('Save changes')),
+      ],
+    ));
+    title.dispose(); note.dispose(); budget.dispose(); spent.dispose(); progress.dispose();
+  }
+
+  Future<void> _deleteEntry(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final confirmed = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
+      title: const Text('Delete this item?'),
+      content: Text('“${doc.data()['title'] ?? 'Plan'}” will be permanently deleted.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete')),
+      ],
+    ));
+    if (confirmed != true) return;
+    try {
+      await doc.reference.delete();
+      if (mounted) snack(context, 'Item deleted.');
+    } catch (error) {
+      if (mounted) snack(context, 'Could not delete item: $error');
+    }
+  }
+
+  Future<void> _deleteSelected(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
+    final selected = docs.where((doc) => _selectedPlanIds.contains(doc.id)).toList();
+    if (selected.isEmpty) return;
+    final confirmed = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
+      title: Text('Delete ${selected.length} selected items?'),
+      content: const Text('This action cannot be undone.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete all')),
+      ],
+    ));
+    if (confirmed != true) return;
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in selected) { batch.delete(doc.reference); }
+      await batch.commit();
+      if (mounted) setState(() { _selectedPlanIds.clear(); _selectionEnabled = false; });
+      if (mounted) snack(context, '${selected.length} items deleted.');
+    } catch (error) {
+      if (mounted) snack(context, 'Bulk delete failed: $error');
+    }
+  }
 
   Future<void> _addReminder() async {
     final title = TextEditingController(), note = TextEditingController();
@@ -3010,7 +3332,7 @@ class _PlansScreenState extends State<PlansScreen> {
           try {
             await FirebaseFirestore.instance.collection('plans').add({
               'title': title.text.trim(), 'note': note.text.trim(), 'done': false,
-              'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+              'createdAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp(), 'createdBy': uid,
             });
             if (d.mounted) Navigator.pop(d);
           } catch (e) { if (d.mounted) snack(d, 'Could not save reminder: $e'); }
@@ -3093,7 +3415,7 @@ class _PlansScreenState extends State<PlansScreen> {
                 'deadline': Timestamp.fromDate(DateTime(deadline.year, deadline.month, deadline.day)),
                 'materials': materials.text.split(',').map((v) => v.trim()).where((v) => v.isNotEmpty).toList(),
                 'costBreakdown': split, 'isCompleted': false,
-                'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+                'createdAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp(), 'createdBy': uid,
               });
               if (d.mounted) Navigator.pop(d);
               if (mounted) snack(context, 'Property plan saved.');
@@ -3143,7 +3465,7 @@ class _PlansScreenState extends State<PlansScreen> {
   }
 
   Future<void> _complete(DocumentReference<Map<String, dynamic>> ref, bool value) async {
-    try { await ref.update({'isCompleted': value, 'done': value}); }
+    try { await ref.update({'isCompleted': value, 'done': value, 'updatedAt': FieldValue.serverTimestamp()}); }
     catch (e) { if (mounted) snack(context, 'Could not update plan: $e'); }
   }
 
@@ -3152,8 +3474,15 @@ class _PlansScreenState extends State<PlansScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Scaffold(body: EmptyView('Please sign in to view your plans.'));
     return Scaffold(
-      appBar: AppBar(title: const Text('Plans and reminders'), actions: [
-        IconButton(tooltip: 'Add reminder', onPressed: _addReminder, icon: const Icon(Icons.notifications_active_outlined)),
+      appBar: AppBar(title: Text(_selectionMode ? '${_selectedPlanIds.length} selected' : 'Plans and reminders'), actions: [
+        if (_selectionMode) IconButton(tooltip: 'Delete selected', onPressed: () => _deleteSelected(_currentPlanDocs),
+          icon: const Icon(Icons.delete_outline)),
+        if (_selectionMode) IconButton(tooltip: 'Clear selection', onPressed: () => setState(() {
+          _selectedPlanIds.clear(); _selectionEnabled = false;
+        }), icon: const Icon(Icons.close)),
+        if (!_selectionMode) IconButton(tooltip: 'Select plans', onPressed: () => setState(() => _selectionEnabled = true),
+          icon: const Icon(Icons.checklist_rounded)),
+        if (!_selectionMode) IconButton(tooltip: 'Add reminder', onPressed: _addReminder, icon: const Icon(Icons.notifications_active_outlined)),
       ]),
       floatingActionButton: FloatingActionButton.extended(onPressed: _addProject,
         icon: const Icon(Icons.add), label: const Text('New plan')),
@@ -3167,6 +3496,7 @@ class _PlansScreenState extends State<PlansScreen> {
             return (ad is Timestamp ? ad.toDate() : DateTime(9999))
               .compareTo(bd is Timestamp ? bd.toDate() : DateTime(9999));
           });
+          _currentPlanDocs = docs;
           if (docs.isEmpty) return const EmptyView('No plans or reminders yet. Tap New plan to begin.');
           final projects = docs.where((d) => d.data()['planType'] != null).toList();
           final totalBudget = projects.fold<double>(0, (v, d) => v + (d.data()['budget'] is num ? (d.data()['budget'] as num).toDouble() : 0));
@@ -3191,14 +3521,40 @@ class _PlansScreenState extends State<PlansScreen> {
               child: Text('Property projects', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
             ...docs.map((doc) {
               final d = doc.data();
-              if (d['planType'] == null) return Card(child: CheckboxListTile(
+              if (d['planType'] == null) return Card(
+                child: GestureDetector(
+                  onLongPress: () => setState(() { _selectionEnabled = true; _selectedPlanIds.add(doc.id); }),
+                  child: CheckboxListTile(
+                    selected: _selectedPlanIds.contains(doc.id),
+                    secondary: _selectionMode ? Checkbox(
+                      value: _selectedPlanIds.contains(doc.id),
+                      onChanged: (_) => setState(() {
+                        if (_selectedPlanIds.contains(doc.id)) { _selectedPlanIds.remove(doc.id); }
+                        else { _selectedPlanIds.add(doc.id); }
+                      }),
+                    ) : PopupMenuButton<String>(
+                      onSelected: (value) {
+                        if (value == 'edit') _editEntry(doc);
+                        if (value == 'delete') _deleteEntry(doc);
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'edit', child: Text('Edit')),
+                        PopupMenuItem(value: 'delete', child: Text('Delete')),
+                      ],
+                    ),
                 value: d['done'] == true, title: Text(d['title']?.toString() ?? 'Reminder'),
-                subtitle: Text(d['note']?.toString() ?? ''),
+                subtitle: Text([
+                  if ((d['note']?.toString() ?? '').isNotEmpty) d['note'].toString(),
+                  if (d['createdAt'] is Timestamp) 'Added ${dateFormat.format((d['createdAt'] as Timestamp).toDate())}',
+                  if (d['updatedAt'] is Timestamp) 'Updated ${dateFormat.format((d['updatedAt'] as Timestamp).toDate())}',
+                ].join(' • ')),
                 onChanged: (v) async {
-                  try { await doc.reference.update({'done': v == true}); }
+                  try { await doc.reference.update({'done': v == true, 'updatedAt': FieldValue.serverTimestamp()}); }
                   catch (e) { if (mounted) snack(context, 'Could not update reminder: $e'); }
                 },
-              ));
+                  ),
+                ),
+              );
               final type = d['planType']?.toString() ?? 'build';
               final budget = d['budget'] is num ? (d['budget'] as num).toDouble() : 0.0;
               final spent = d['spent'] is num ? (d['spent'] as num).toDouble() : 0.0;
@@ -3214,11 +3570,22 @@ class _PlansScreenState extends State<PlansScreen> {
               final split = rawSplit is Map ? rawSplit : <String, dynamic>{};
               final color = type == 'renovate' ? Colors.teal : type == 'expand' ? Colors.indigo : type == 'loanClear' ? Colors.deepPurple : Colors.orange;
               return Card(margin: const EdgeInsets.only(bottom: 12), clipBehavior: Clip.antiAlias,
-                child: ExpansionTile(
-                  leading: CircleAvatar(backgroundColor: color.withOpacity(0.14),
+                child: GestureDetector(
+                  onLongPress: () => setState(() { _selectionEnabled = true; _selectedPlanIds.add(doc.id); }),
+                  child: ExpansionTile(
+                  leading: _selectionMode ? Checkbox(
+                    value: _selectedPlanIds.contains(doc.id),
+                    onChanged: (_) => setState(() {
+                      if (_selectedPlanIds.contains(doc.id)) { _selectedPlanIds.remove(doc.id); }
+                      else { _selectedPlanIds.add(doc.id); }
+                    }),
+                  ) : CircleAvatar(backgroundColor: color.withOpacity(0.14),
                     child: Icon(Icons.home_work_outlined, color: color)),
+
                   title: Text(d['title']?.toString() ?? 'Property plan', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(_type(type) + (deadline == null ? '' : ' • ' + dateFormat.format(deadline))),
+                  subtitle: Text(_type(type) + (deadline == null ? '' : ' • ' + dateFormat.format(deadline)) +
+                    (d['createdAt'] is Timestamp ? ' • Added ' + dateFormat.format((d['createdAt'] as Timestamp).toDate()) : '') +
+                    (d['updatedAt'] is Timestamp ? ' • Updated ' + dateFormat.format((d['updatedAt'] as Timestamp).toDate()) : '')),
                   trailing: Icon(complete ? Icons.check_circle : Icons.expand_more, color: complete ? Colors.green : color),
                   childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
                   children: [
@@ -3245,6 +3612,10 @@ class _PlansScreenState extends State<PlansScreen> {
                       child: Padding(padding: const EdgeInsets.only(top: 8), child: Text(d['note'].toString()))),
                     const Divider(height: 22),
                     Wrap(spacing: 6, children: [
+                      TextButton.icon(onPressed: () => _editEntry(doc),
+                        icon: const Icon(Icons.edit_outlined), label: const Text('Edit')),
+                      TextButton.icon(onPressed: () => _deleteEntry(doc),
+                        icon: const Icon(Icons.delete_outline), label: const Text('Delete')),
                       TextButton.icon(onPressed: remaining > 0 ? () => _loanEstimate(remaining) : null,
                         icon: const Icon(Icons.calculate_outlined), label: const Text('Loan estimate')),
                       TextButton.icon(onPressed: () => _share(d),
@@ -3254,6 +3625,7 @@ class _PlansScreenState extends State<PlansScreen> {
                         label: Text(complete ? 'Reopen' : 'Complete')),
                     ]),
                   ],
+                  ),
                 ),
               );
             }),
@@ -4619,6 +4991,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         ...encrypted,
         'senderId': user.uid,
         'senderName': senderName,
+        'senderPhotoUrl': profile.data()?['photoUrl'] ?? user.photoURL,
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -4626,6 +4999,138 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       message.text = text;
     } finally {
       if (mounted) setState(() => sending = false);
+    }
+  }
+
+  Future<void> _sendGroupAttachment(File file, String fileName, String mimeType) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || sending) return;
+    setState(() => sending = true);
+    Reference? uploadedRef;
+    try {
+      final size = await file.length();
+      if (size <= 0 || size > 10 * 1024 * 1024) {
+        throw StateError('Choose a file smaller than 10 MB.');
+      }
+      final groupRef = FirebaseFirestore.instance.collection('groups').doc(widget.groupId);
+      final groupSnapshot = await groupRef.get();
+      final groupData = groupSnapshot.data();
+      if (groupData == null) throw StateError('This group is no longer available.');
+      final rawMemberIds = groupData['memberIds'];
+      final memberIds = rawMemberIds is List
+          ? rawMemberIds.map((value) => value.toString()).where((value) => value.isNotEmpty).toList()
+          : <String>[];
+      if (!memberIds.contains(user.uid)) throw StateError('You are no longer a member of this group.');
+
+      final safeName = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      final uniqueName = DateTime.now().millisecondsSinceEpoch.toString() + '_' + safeName;
+      final storagePath = 'group_attachments/' + widget.groupId + '/' + user.uid + '/' + uniqueName;
+      uploadedRef = FirebaseStorage.instance.ref().child(storagePath);
+      await uploadedRef.putFile(file, SettableMetadata(
+        contentType: mimeType,
+        cacheControl: 'private,max-age=3600',
+      ));
+      final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final senderName = (profile.data()?['displayName'] ?? user.displayName ?? 'Member').toString();
+      final encrypted = await SkyNestMessageEncryption.instance.encryptGroupMessage(
+        groupId: widget.groupId,
+        senderId: user.uid,
+        plaintext: 'Shared attachment: ' + fileName,
+        memberIds: memberIds,
+      );
+      await groupRef.collection('messages').add({
+        ...encrypted,
+        'senderId': user.uid,
+        'senderName': senderName,
+        'senderPhotoUrl': profile.data()?['photoUrl'] ?? user.photoURL,
+        'attachment': {
+          'name': fileName,
+          'mimeType': mimeType,
+          'storagePath': storagePath,
+          'size': size,
+        },
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      if (mounted) snack(context, 'File shared with the group.');
+    } catch (error) {
+      if (uploadedRef != null) {
+        try { await uploadedRef.delete(); } catch (_) {}
+      }
+      if (mounted) snack(context, 'Attachment not sent: ' + error.toString());
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
+
+  Future<void> _pickGroupImage() async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 82,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+      if (picked == null) return;
+      await _sendGroupAttachment(File(picked.path), picked.name, picked.mimeType ?? 'image/jpeg');
+    } catch (error) {
+      if (mounted) snack(context, 'Could not select image: ' + error.toString());
+    }
+  }
+
+  Future<void> _pickGroupDocument() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        allowMultiple: false,
+      );
+      final selected = result?.files.single;
+      if (selected == null || selected.path == null) return;
+      final extension = selected.extension?.toLowerCase();
+      final mimeType = extension == 'pdf'
+          ? 'application/pdf'
+          : 'application/pdf';
+      await _sendGroupAttachment(File(selected.path!), selected.name, mimeType);
+    } catch (error) {
+      if (mounted) snack(context, 'Could not select document: ' + error.toString());
+    }
+  }
+
+  Future<void> _openGroupAttachment(Map<String, dynamic> attachment) async {
+    final path = attachment['storagePath']?.toString() ?? '';
+    final expectedPrefix = 'group_attachments/' + widget.groupId + '/';
+    if (!path.startsWith(expectedPrefix)) {
+      snack(context, 'This attachment does not belong to the current group.');
+      return;
+    }
+    try {
+      final bytes = await FirebaseStorage.instance.ref(path).getData(10 * 1024 * 1024);
+      if (bytes == null || bytes.isEmpty) throw StateError('The file is unavailable.');
+      final mime = attachment['mimeType']?.toString() ?? '';
+      if (mime.startsWith('image/')) {
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => Dialog(
+            child: InteractiveViewer(
+              child: Image.memory(bytes, fit: BoxFit.contain),
+            ),
+          ),
+        );
+      } else if (mime == 'application/pdf') {
+        await FileSaver.instance.saveToDownloads(
+          name: attachment['name']?.toString() ?? 'SkyNest attachment',
+          bytes: bytes,
+          fileExtension: 'pdf',
+          mimeType: MimeType.pdf,
+          subfolder: 'SkyNest Group Files',
+        );
+        if (mounted) snack(context, 'PDF saved to Downloads.');
+      } else {
+        throw StateError('This file type is not supported.');
+      }
+    } catch (error) {
+      if (mounted) snack(context, 'Could not open attachment: ' + error.toString());
     }
   }
 
@@ -4703,6 +5208,55 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
+  Future<void> startPrivateMessage() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final members = await FirebaseFirestore.instance
+          .collection('groups').doc(widget.groupId).collection('members').get();
+      final peers = members.docs.where((doc) => doc.id != uid).toList();
+      if (peers.isEmpty) {
+        snack(context, 'No other group members are available for a private chat.');
+        return;
+      }
+      final selected = await showModalBottomSheet<QueryDocumentSnapshot<Map<String, dynamic>>>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: ListView(shrinkWrap: true, children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Start a private conversation',
+                style: Theme.of(sheetContext).textTheme.titleLarge),
+            ),
+            ...peers.map((peer) => ListTile(
+              leading: CircleAvatar(
+                backgroundImage: (peer.data()['photoUrl']?.toString().isNotEmpty ?? false)
+                    ? NetworkImage(peer.data()['photoUrl'].toString()) : null,
+                child: (peer.data()['photoUrl']?.toString().isNotEmpty ?? false)
+                    ? null : const Icon(Icons.person_outline_rounded),
+              ),
+              title: Text((peer.data()['displayName'] ?? 'Group member').toString()),
+              subtitle: Text('Private · only you and this member'),
+              trailing: const Icon(Icons.lock_outline_rounded),
+              onTap: () => Navigator.pop(sheetContext, peer),
+            )),
+          ]),
+        ),
+      );
+      if (selected == null || !mounted) return;
+      await Navigator.push(context, MaterialPageRoute<void>(
+        builder: (_) => SkyNestDirectMessageScreen(
+          peerId: selected.id,
+          peerName: (selected.data()['displayName'] ?? 'Group member').toString(),
+          peerPhotoUrl: selected.data()['photoUrl']?.toString(),
+        ),
+      ));
+    } catch (error) {
+      if (mounted) snack(context, 'Could not open private messaging: $error');
+    }
+  }
+
   Future<void> leaveGroup() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -4733,6 +5287,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     appBar: AppBar(
       title: Text(widget.groupName),
       actions: [
+        IconButton(
+          tooltip: 'Private message',
+          onPressed: startPrivateMessage,
+          icon: const Icon(Icons.mark_chat_unread_rounded),
+        ),
         IconButton(
           tooltip: 'Voice call',
           onPressed: () => startGroupCall('voice'),
@@ -4800,6 +5359,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                       padding: const EdgeInsets.fromLTRB(13, 9, 7, 8),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(mainAxisSize: MainAxisSize.min, children: [
+                          if (!mine && (data['senderPhotoUrl']?.toString().isNotEmpty ?? false)) ...[
+                            CircleAvatar(radius: 11, backgroundImage: NetworkImage(data['senderPhotoUrl'].toString())),
+                            const SizedBox(width: 6),
+                          ],
                           Flexible(child: Text(mine ? 'You' : (data['senderName']?.toString() ?? 'Group member'),
                             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.primary))),
                           if (mine) PopupMenuButton<String>(
@@ -4828,6 +5391,37 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                           )
                         else
                           Text('Legacy message (not end-to-end encrypted): ${data['text']?.toString() ?? ''}'),
+                        if (data['attachment'] is Map)
+                          Builder(builder: (context) {
+                            final attachment = Map<String, dynamic>.from(data['attachment'] as Map);
+                            final mime = attachment['mimeType']?.toString() ?? '';
+                            final isImage = mime.startsWith('image/');
+                            return InkWell(
+                              onTap: () => _openGroupAttachment(attachment),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                width: 220,
+                                margin: const EdgeInsets.only(top: 8),
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: Theme.of(context).colorScheme.surface.withOpacity(.65),
+                                ),
+                                child: Row(children: [
+                                  Icon(isImage ? Icons.image_rounded : Icons.picture_as_pdf_rounded, size: 28),
+                                  const SizedBox(width: 9),
+                                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Text(attachment['name']?.toString() ?? 'Shared file',
+                                      maxLines: 2, overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                                    Text('${((attachment['size'] as num?)?.toInt() ?? 0) ~/ 1024} KB · Tap to open',
+                                      style: Theme.of(context).textTheme.labelSmall),
+                                  ])),
+                                  const Icon(Icons.open_in_new_rounded, size: 17),
+                                ]),
+                              ),
+                            );
+                          }),
                         if (data['createdAt'] is Timestamp)
                           Align(alignment: Alignment.centerRight, child: Text(
                             DateFormat('HH:mm').format((data['createdAt'] as Timestamp).toDate()),
@@ -4844,6 +5438,19 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         },
       )),
       SafeArea(child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [
+        PopupMenuButton<String>(
+          enabled: !sending,
+          tooltip: 'Attach image or document',
+          icon: const Icon(Icons.attach_file_rounded),
+          onSelected: (value) {
+            if (value == 'image') _pickGroupImage();
+            if (value == 'document') _pickGroupDocument();
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'image', child: ListTile(leading: Icon(Icons.image_outlined), title: Text('Photo'))),
+            PopupMenuItem(value: 'document', child: ListTile(leading: Icon(Icons.picture_as_pdf_outlined), title: Text('PDF document'))),
+          ],
+        ),
         Expanded(child: TextField(
           controller: message,
           minLines: 1, maxLines: 4,

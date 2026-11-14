@@ -1,4 +1,4 @@
-name: Deploy SkyNest Firestore rules and indexes (Spark-compatible)
+name: Deploy SkyNest Firestore and Storage rules (Spark-compatible)
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
     paths:
       - 'firestore.rules'
       - 'firestore.indexes.json'
+      - 'storage.rules'
       - 'firebase.json'
       - '.github/workflows/deploy-firestore.yml'
   workflow_dispatch:
@@ -56,10 +57,10 @@ jobs:
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
 
-      - name: Deploy Firestore rules and indexes
+      - name: Deploy Firestore and Storage rules
         env:
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
         run: |
           set -euo pipefail
-          firebase deploy --only firestore:rules,firestore:indexes --project "$FIREBASE_PROJECT_ID" --non-interactive
+          firebase deploy --only firestore:rules,firestore:indexes,storage --project "$FIREBASE_PROJECT_ID" --non-interactive
 
