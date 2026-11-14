@@ -307,7 +307,8 @@ service cloud.firestore {
 
     // Short video profile metadata is scoped to the user's own property community.
     match /socialProfiles/{userId} {
-      allow read: if linkedTo(resource.data.landlordId);
+      allow get: if linkedTo(profile(userId).role == 'landlord' ? userId : profile(userId).landlordId);
+      allow list: if false;
       allow create: if activeUser() && request.auth.uid == userId &&
         request.resource.data.keys().hasOnly(['ownerId', 'landlordId', 'videoUrl', 'updatedAt']) &&
         request.resource.data.ownerId == request.auth.uid &&
