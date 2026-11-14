@@ -770,6 +770,59 @@ jobs:
           test "$actual" = "$expected" || { echo "ERROR: Built APK certificate does not match original"; echo "Actual: $actual"; exit 1; }
           echo "Built APK package and original signing certificate verified."
 
+      - name: Install and launch release APK on Android 14 API 34
+        if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: arm64-v8a
+          profile: pixel_5
+          emulator-boot-timeout: 900
+          disable-linux-hw-accel: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            APK="build/app/outputs/flutter-apk/app-release.apk"
+            PACKAGE="com.hello22_.chuka"
+
+            SDK="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
+            ABI="$(adb shell getprop ro.product.cpu.abi | tr -d '\r')"
+            echo "Android emulator API level: $SDK"
+            echo "Android emulator primary ABI: $ABI"
+            test "$SDK" = "34"
+            test "$ABI" = "arm64-v8a"
+
+            adb install -r "$APK"
+            adb shell monkey -p "$PACKAGE" 1
+
+            PID=""
+            for attempt in $(seq 1 45); do
+              PID="$(adb shell pidof "$PACKAGE" | tr -d '\r' || true)"
+              if [ -n "$PID" ]; then
+                break
+              fi
+              sleep 2
+            done
+            if [ -z "$PID" ]; then
+              echo "::error::SkyNest process did not remain alive after launch."
+              adb logcat -d -t 2000 | tail -n 250
+              exit 1
+            fi
+
+            adb shell dumpsys activity activities > /tmp/skynest-activities.txt
+            if ! grep -F "$PACKAGE" /tmp/skynest-activities.txt | grep -Eq 'mResumedActivity|topResumedActivity|Resumed'; then
+              echo "::error::SkyNest process started but its activity was not confirmed in the resumed activity stack."
+              grep -F "$PACKAGE" /tmp/skynest-activities.txt || true
+              adb logcat -d -t 2000 | tail -n 250
+              exit 1
+            fi
+
+            echo "PASS: SkyNest installed and launched on Android 14 API 34 (ARM64)."
+            echo "SkyNest process ID: $PID"
+            grep -F "$PACKAGE" /tmp/skynest-activities.txt | head -n 5
+
       - name: Upload APK artifact
         if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') }}
         uses: actions/upload-artifact@v4
