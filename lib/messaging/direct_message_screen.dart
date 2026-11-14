@@ -118,7 +118,10 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFF071326),
     appBar: AppBar(
+      backgroundColor: const Color(0xFF071326),
+      foregroundColor: Colors.white,
       title: Row(children: [
         CircleAvatar(
           radius: 17,
@@ -138,7 +141,7 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
       Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(.45),
+        color: const Color(0xFF142B50),
         child: Row(children: [
           const Icon(Icons.lock_outline_rounded, size: 16),
           const SizedBox(width: 8),
@@ -154,9 +157,9 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
           stream: _conversation.collection('messages').orderBy('createdAt').snapshots(),
           builder: (context, snapshot) {
             if (snapshot.hasError) return const Center(child: Text('Private messages could not load. Check your access and connection.'));
-            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Color(0xFF58E5F2)));
             final docs = snapshot.data!.docs;
-            if (docs.isEmpty) return const Center(child: Text('This is a private conversation. Send the first message.'));
+            if (docs.isEmpty) return const Center(child: Text('This is a private conversation. Send the first message.', style: TextStyle(color: Colors.white70)));
             return ListView.builder(
               padding: const EdgeInsets.all(12),
               itemCount: docs.length,
@@ -168,8 +171,7 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
                   child: ConstrainedBox(
                     constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * .8),
                     child: Card(
-                      color: mine ? Theme.of(context).colorScheme.primaryContainer
-                          : Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color: mine ? const Color(0xFF174A83) : const Color(0xFF172640),
                       child: Padding(
                         padding: const EdgeInsets.all(12),
                         child: FutureBuilder<String>(
