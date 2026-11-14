@@ -75,6 +75,669 @@ jobs:
           print("Verified INTERNET permission in AndroidManifest.xml.")
           PY
 
+      - name: Pin Flutter-compatible Android Gradle toolchain
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # AGP 9.x is not yet a supported baseline for Flutter apps with plugins.
+          # Pin a matched, API-36-capable AGP/Gradle pair instead of inheriting
+          # whatever versions the latest Flutter template happens to generate.
+          settings = Path("android/settings.gradle.kts")
+          app = Path("android/app/build.gradle.kts")
+          wrapper = Path("android/gradle/wrapper/gradle-wrapper.properties")
+          for path in (settings, app, wrapper):
+              if not path.is_file():
+                  raise SystemExit(f"Required generated Android build file missing: {path}")
+
+          s = settings.read_text()
+          s, count = re.subn(
+              r'id\\("com\\.android\\.application"\\)\\s+version\\s+"[^"]+"',
+              'id("com.android.application") version "8.13.2"',
+              s, count=1)
+          if count != 1:
+              raise SystemExit("Could not pin generated Android Gradle Plugin declaration.")
+
+          kotlin_decl = 'id("org.jetbrains.kotlin.android") version "2.2.20" apply false'
+          if 'id("org.jetbrains.kotlin.android")' in s:
+              s, count = re.subn(
+                  r'id\\("org\\.jetbrains\\.kotlin\\.android"\\)\\s+version\\s+"[^"]+"\\s+apply false',
+                  kotlin_decl, s, count=1)
+              if count != 1:
+                  raise SystemExit("Could not pin Kotlin Gradle Plugin declaration.")
+          else:
+              s = s.replace(
+                  'id("com.android.application") version "8.13.2"',
+                  'id("com.android.application") version "8.13.2" apply false\\n    ' + kotlin_decl,
+                  1)
+          settings.write_text(s)
+
+          a = app.read_text()
+          if 'id("org.jetbrains.kotlin.android")' not in a and 'id("kotlin-android")' not in a:
+              marker = '    id("com.android.application")'
+              if marker not in a:
+                  raise SystemExit("Could not locate Android application plugin in app Gradle file.")
+              a = a.replace(marker, marker + '\\n    id("org.jetbrains.kotlin.android")', 1)
+          app.write_text(a)
+
+          w = wrapper.read_text()
+          w, count = re.subn(
+              r'(?m)^distributionUrl=.*gradle-[^/\\s]+-bin\\.zip        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as ET
+
+          gradle = Path("android/app/build.gradle.kts")
+          if not gradle.exists():
+              raise SystemExit("Expected generated Kotlin Gradle file is missing.")
+          source = gradle.read_text()
+          source, count = re.subn(r"(?m)^(\s*)compileSdk\s*=\s*[^\n]+",
+                                  r"\g<1>compileSdk = 36", source, count=1)
+          if count != 1:
+              raise SystemExit("Could not set compileSdk = 36")
+          source, count = re.subn(r"(?m)^(\s*)minSdk\s*=\s*[^\n]+",
+                                  r"\g<1>minSdk = 24", source, count=1)
+          if count != 1:
+              raise SystemExit("Could not set minSdk = 24")
+          source, count = re.subn(r"(?m)^(\s*)targetSdk\s*=\s*[^\n]+",
+                                  r"\g<1>targetSdk = 35", source, count=1)
+          if count != 1:
+              raise SystemExit("Could not set targetSdk = 35")
+          # Android Gradle Plugin selects the installed Build Tools version
+          # automatically. Do not pin it here: compileSdk was already upgraded
+          # above, and a stale compileSdk=34 matcher previously skipped insertion.
+          gradle.write_text(source)
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          tree = ET.parse(manifest)
+          root = tree.getroot()
+          android = "{http://schemas.android.com/apk/res/android}"
+          ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
+          permissions = [
+              "android.permission.INTERNET",
+              "android.permission.USE_BIOMETRIC",
+              "android.permission.CAMERA",
+              "android.permission.RECORD_AUDIO",
+              "android.permission.ACCESS_NETWORK_STATE",
+              "android.permission.CHANGE_NETWORK_STATE",
+              "android.permission.MODIFY_AUDIO_SETTINGS",
+              "android.permission.FOREGROUND_SERVICE",
+              "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+              "android.permission.POST_NOTIFICATIONS",
+              "android.permission.READ_MEDIA_IMAGES",
+              "android.permission.READ_MEDIA_VIDEO",
+          ]
+          present = {p.get(android + "name") for p in root.findall("uses-permission")}
+          # Camera is optional at install time; voice calling remains available on devices without one.
+          feature_names = {f.get(android + "name") for f in root.findall("uses-feature")}
+          app = root.find("application")
+          if app is None:
+              raise SystemExit("Manifest has no application element.")
+          insert_at = list(root).index(app)
+          for permission in permissions:
+              if permission not in present:
+                  root.insert(insert_at, ET.Element("uses-permission", {android + "name": permission}))
+                  insert_at += 1
+          for feature in ("android.hardware.camera", "android.hardware.camera.autofocus"):
+              if feature not in feature_names:
+                  root.insert(insert_at, ET.Element("uses-feature", {
+                      android + "name": feature, android + "required": "false"}))
+                  insert_at += 1
+
+          # The app does not use legacy shared-storage access. Remove any such
+          # declarations contributed by dependency manifests during manifest merge.
+          tools_ns = "{http://schemas.android.com/tools}"
+          ET.register_namespace("tools", "http://schemas.android.com/tools")
+          for permission in ("android.permission.READ_EXTERNAL_STORAGE",
+                             "android.permission.WRITE_EXTERNAL_STORAGE"):
+              if permission not in present:
+                  root.insert(insert_at, ET.Element("uses-permission", {
+                      android + "name": permission, tools_ns + "node": "remove"}))
+                  insert_at += 1
+          for kind in ("activity", "activity-alias", "service", "receiver"):
+              for item in app.findall(kind):
+                  if item.get(android + "exported") is None:
+                      item.set(android + "exported",
+                               "true" if item.find("intent-filter") is not None else "false")
+          tree.write(manifest, encoding="utf-8", xml_declaration=True)
+
+          text = gradle.read_text()
+          for expected in ('compileSdk = 36', 'minSdk = 24', 'targetSdk = 35'):
+              if expected not in text:
+                  raise SystemExit("Gradle configuration verification failed: " + expected)
+          print("PASS: app compileSdk 36 / targetSdk 35 / minSdk 24; Build Tools are SDK-managed.")
+          print("PASS: Android 15 manifest permissions and exported component attributes")
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          content = p.read_text()
+          meta = '        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-1281241380359357~6894041283"/>'
+          if "com.google.android.gms.ads.APPLICATION_ID" not in content:
+              content = content.replace("</application>", meta + "\n    </application>")
+          p.write_text(content)
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("android/app/build.gradle.kts")
+          if p.exists():
+              s = p.read_text()
+              s, count = re.subn(r"(?m)^\s*compileSdk\s*=\s*[^\n]+", "    compileSdk = 36", s, count=1)
+              if count == 0:
+                  raise SystemExit("Could not locate compileSdk in build.gradle.kts")
+              p.write_text(s)
+          else:
+              p = Path("android/app/build.gradle")
+              if not p.exists():
+                  raise SystemExit("Flutter Android Gradle file not found")
+              s = p.read_text()
+              s, count = re.subn(r"(?m)^\s*compileSdkVersion\s+[^\n]+", "    compileSdkVersion 36", s, count=1)
+              if count == 0:
+                  s, count = re.subn(r"(?m)^\s*compileSdk\s+[^\n]+", "    compileSdk 36", s, count=1)
+              if count == 0:
+                  raise SystemExit("Could not locate compileSdk in build.gradle")
+              p.write_text(s)
+          PY
+
+      - name: Exclude WorkManager automatic startup initializer
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          path = Path("android/app/src/main/AndroidManifest.xml")
+          android_uri = "http://schemas.android.com/apk/res/android"
+          tools_uri = "http://schemas.android.com/tools"
+          ET.register_namespace("android", android_uri)
+          ET.register_namespace("tools", tools_uri)
+          android = "{" + android_uri + "}"
+          tools = "{" + tools_uri + "}"
+          tree = ET.parse(path)
+          root = tree.getroot()
+          app = root.find("application")
+          if app is None:
+              raise SystemExit("Application element missing from app manifest.")
+
+          # The provider is normally contributed by androidx.startup in a
+          # dependency manifest, so it may not exist in the app manifest yet.
+          provider = next((item for item in app.findall("provider")
+                           if item.get(android + "name") == "androidx.startup.InitializationProvider"), None)
+          if provider is None:
+              provider = ET.SubElement(app, "provider", {
+                  android + "name": "androidx.startup.InitializationProvider",
+                  android + "authorities": "${applicationId}.androidx-startup",
+                  android + "exported": "false",
+                  tools + "node": "merge"
+              })
+
+          # A tools:node=remove marker is a manifest-merger instruction; do not
+          # delete Startup itself or any other initializer metadata.
+          for item in list(provider.findall("meta-data")):
+              if item.get(android + "name") == "androidx.work.WorkManagerInitializer":
+                  provider.remove(item)
+          ET.SubElement(provider, "meta-data", {
+              android + "name": "androidx.work.WorkManagerInitializer",
+              tools + "node": "remove"
+          })
+          tree.write(path, encoding="utf-8", xml_declaration=True)
+
+          # Verify the directive exists in the app manifest before Gradle merge.
+          check = ET.parse(path).getroot()
+          p = next((item for item in check.findall("./application/provider")
+                    if item.get(android + "name") == "androidx.startup.InitializationProvider"), None)
+          if p is None or not any(
+              m.get(android + "name") == "androidx.work.WorkManagerInitializer"
+              and m.get(tools + "node") == "remove"
+              for m in p.findall("meta-data")
+          ):
+              raise SystemExit("WorkManager initializer removal directive verification failed.")
+          print("PASS: WorkManager automatic initializer removal directive configured.")
+          PY
+
+      - name: Install Android 14 SDK and Build Tools
+        run: |
+          set -euo pipefail
+          # sdkmanager may finish after accepting licenses before `yes` exits.
+          # Ignore the producer-side SIGPIPE, but still fail on sdkmanager errors.
+          set +e
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          license_status=${PIPESTATUS[1]}
+          set -e
+          if [ "$license_status" -ne 0 ]; then
+            echo "sdkmanager --licenses failed with exit code $license_status."
+            exit "$license_status"
+          fi
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+          # Preinstall the NDK used by the generated Flutter Android project.
+          # Gradle's on-demand sdkmanager download has intermittently failed while
+          # unpacking this exact package, so retry cleanly before starting Gradle.
+          for attempt in 1 2 3; do
+            if [ -d "$ANDROID_HOME/ndk/28.2.13676358" ]; then
+              break
+            fi
+            rm -rf "$ANDROID_HOME/ndk/28.2.13676358"
+            if "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;28.2.13676358"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Could not install Android NDK 28.2.13676358 after three attempts."
+              exit 1
+            fi
+            echo "NDK install attempt $attempt failed; retrying after cleanup."
+            sleep 10
+          done
+          test -d "$ANDROID_HOME/ndk/28.2.13676358"
+          echo "Android platform 36, Build Tools 36.0.0, and NDK 28.2.13676358 installed."
+
+      - name: Audit native Android source for API 31-35 requirements
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          roots = [Path("android/app/src/main/java"), Path("android/app/src/main/kotlin")]
+          files = [p for root in roots if root.exists() for p in root.rglob("*")
+                   if p.suffix in (".kt", ".java")]
+          source = "\n".join(p.read_text(errors="replace") for p in files)
+          pending = re.findall(r"PendingIntent\s*\.\s*get(?:Activity|Service|Broadcast)\s*\(", source)
+          if pending and "FLAG_IMMUTABLE" not in source and "FLAG_MUTABLE" not in source:
+              raise SystemExit("PendingIntent calls found without an explicit mutability flag.")
+          if "startForeground(" in source:
+              print("Foreground service code detected; verify each call supplies a notification and is invoked promptly.")
+          if "setExact(" in source or "setExactAndAllowWhileIdle(" in source:
+              if "canScheduleExactAlarms" not in source:
+                  raise SystemExit("Exact AlarmManager scheduling found without canScheduleExactAlarms() handling.")
+          print(f"Audited {len(files)} app-owned Kotlin/Java files.")
+          print(f"PendingIntent factory call sites found: {len(pending)}")
+          print("No app-owned exact-alarm or foreground-service implementation requires Android 14 changes." if
+                "startForeground(" not in source and not ("setExact(" in source or "setExactAndAllowWhileIdle(" in source)
+                else "Review the foreground-service / exact-alarm findings above.")
+          PY
+
+      - name: Configure Firebase Android app (optional)
+        id: firebase
+        env:
+          FIREBASE_ANDROID_CONFIG_BASE64: ${{ secrets.FIREBASE_ANDROID_CONFIG_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_ANDROID_CONFIG_BASE64:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Firebase config is missing. Build validation may run, but no release APK will be published until Firebase is configured."
+            exit 0
+          fi
+          if ! printf '%s' "$FIREBASE_ANDROID_CONFIG_BASE64" | base64 --decode > android/app/google-services.json 2>/dev/null; then
+            # Accept a raw google-services.json secret too, while preferring Base64.
+            printf '%s' "$FIREBASE_ANDROID_CONFIG_BASE64" > android/app/google-services.json
+            if ! python3 -m json.tool android/app/google-services.json > /dev/null 2>&1; then
+              echo "::error::Firebase Android config secret is neither valid Base64 nor valid JSON."
+              exit 1
+            fi
+            echo "::warning::Firebase Android config secret contains raw JSON; consider storing its Base64 encoding."
+          fi
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          config = json.loads(Path("android/app/google-services.json").read_text())
+          project_id = config.get("project_info", {}).get("project_id", "")
+          clients = config.get("client", [])
+          package_names = [
+              client.get("client_info", {}).get("android_client_info", {}).get("package_name", "")
+              for client in clients
+          ]
+          expected_package = "com.hello22_.chuka"
+          if not project_id:
+              raise SystemExit("Firebase config is missing project_info.project_id.")
+          if expected_package not in package_names:
+              raise SystemExit("Firebase config does not contain the SkyNest Android package " + expected_package)
+          # Safe diagnostics only: never print API keys, OAuth IDs, or the config.
+          print("Firebase config JSON: valid.")
+          print("Firebase project_id from repository secret: " + project_id)
+          print("Firebase Android package match: " + expected_package)
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          settings = Path("android/settings.gradle.kts")
+          app = Path("android/app/build.gradle.kts")
+          if not settings.exists() or not app.exists():
+              raise SystemExit("Expected Kotlin Gradle files were not generated.")
+          text = settings.read_text()
+          marker = '    id("com.android.application")'
+          if 'id("com.google.gms.google-services")' not in text:
+              text = text.replace(marker, '    id("com.google.gms.google-services") version "4.4.2" apply false\n' + marker, 1)
+          settings.write_text(text)
+          text = app.read_text()
+          marker = '    id("dev.flutter.flutter-gradle-plugin")'
+          if 'id("com.google.gms.google-services")' not in text:
+              if marker not in text:
+                  raise SystemExit("Could not locate Flutter Gradle plugin in app build file.")
+              text = text.replace(marker, marker + '\n    id("com.google.gms.google-services")', 1)
+          app.write_text(text)
+          PY
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "Firebase Android configuration installed."
+
+
+      - name: Verify original signing certificate and configure release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          if ! printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/skynest-release.jks; then
+            echo "ERROR: ANDROID_KEYSTORE_BASE64 is not valid Base64."
+            exit 1
+          fi
+          if [ ! -s android/app/skynest-release.jks ]; then
+            echo "ERROR: Decoded keystore file is empty."
+            exit 1
+          fi
+
+          if ! keytool -list -v -keystore android/app/skynest-release.jks -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" > /tmp/skynest-keytool-check.txt 2>&1; then
+            echo "ERROR: Java could not open the keystore using the supplied alias and store password. Safe diagnostic:"
+            sed -E 's/(password|storepass|keypass)[^[:cntrl:]]*/[REDACTED]/Ig' /tmp/skynest-keytool-check.txt
+            exit 1
+          fi
+          actual="$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' /tmp/skynest-keytool-check.txt | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+          expected="106BEBFDDB78488B4817608A97417ED5AFAE4C88D5FCB00B29572B4DA554BB0F"
+          if [ -z "$actual" ]; then
+            echo "ERROR: Could not read SHA-256 from the supplied keystore. Check the alias and keystore password."
+            exit 1
+          fi
+          if [ "$actual" != "$expected" ]; then
+            echo "ERROR: Signing certificate does not match the installed SkyNest app. Build stopped to protect app updates."
+            echo "Expected original certificate SHA-256: $expected"
+            echo "Supplied keystore certificate SHA-256: $actual"
+            exit 1
+          fi
+          echo "Original SkyNest signing certificate verified."
+
+          if [ -f android/app/build.gradle.kts ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+          signing = '''    signingConfigs {
+                  create("release") {
+                      keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                      keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                      storeFile = file("skynest-release.jks")
+                      storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                  }
+              }
+
+          '''
+          if 'signingConfigs {' not in s:
+              marker = '    buildTypes {'
+              if marker not in s:
+                  raise SystemExit("Could not find buildTypes in build.gradle.kts")
+              s = s.replace(marker, signing + marker, 1)
+          s = s.replace('signingConfig = signingConfigs.getByName("debug")',
+                        'signingConfig = signingConfigs.getByName("release")')
+          if 'signingConfig = signingConfigs.getByName("release")' not in s:
+              raise SystemExit("Could not attach release signing config")
+          p.write_text(s)
+          PY
+          elif [ -f android/app/build.gradle ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle")
+          s = p.read_text()
+          signing = '''    signingConfigs {
+                  release {
+                      keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                      keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+                      storeFile file('skynest-release.jks')
+                      storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                  }
+              }
+
+          '''
+          if 'signingConfigs {' not in s:
+              marker = '    buildTypes {'
+              if marker not in s:
+                  raise SystemExit("Could not find buildTypes in build.gradle")
+              s = s.replace(marker, signing + marker, 1)
+          s = s.replace("signingConfig signingConfigs.debug",
+                        "signingConfig signingConfigs.release")
+          if 'signingConfig signingConfigs.release' not in s:
+              raise SystemExit("Could not attach release signing config")
+          p.write_text(s)
+          PY
+          else
+            echo "ERROR: Flutter Android Gradle file not found."
+            exit 1
+          fi
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Run Dart static analysis before release build
+        run: flutter analyze --no-pub --no-fatal-infos
+
+      - name: Run Flutter widget tests before release build
+        run: flutter test --no-pub
+
+      - name: Generate custom SkyNest launcher icons
+        run: |
+          set -euo pipefail
+          if ! command -v convert >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y imagemagick
+          fi
+          convert -background none assets/branding/skynest_launcher.svg -resize 1024x1024 assets/branding/skynest_launcher.png
+          dart run flutter_launcher_icons
+          echo "Generated SkyNest launcher icons for Android."
+
+      - name: Align Flutter Android plugin compile SDK to API 36
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path.home() / ".pub-cache" / "hosted" / "pub.dev"
+          if not root.is_dir():
+              raise SystemExit("Flutter pub cache not found after dependency resolution.")
+
+          auth_files = list(root.glob("firebase_auth-*/android/build.gradle*"))
+          if not auth_files:
+              raise SystemExit("firebase_auth Android Gradle file was not found.")
+
+          patched = []
+          for gradle_file in root.rglob("build.gradle*"):
+              if "android" not in gradle_file.parts:
+                  continue
+              lines = gradle_file.read_text().splitlines()
+              output = []
+              changed = False
+              for line in lines:
+                  stripped = line.lstrip()
+                  indent = line[:len(line) - len(stripped)]
+                  if (stripped.startswith("compileSdkVersion") or
+                      stripped.startswith("compileSdk ") or
+                      stripped.startswith("compileSdk=")):
+                      if gradle_file.name.endswith(".gradle.kts"):
+                          output.append(indent + "compileSdk = 36")
+                      else:
+                          output.append(indent + "compileSdkVersion 36")
+                      changed = True
+                  else:
+                      output.append(line)
+              if changed:
+                  gradle_file.write_text(chr(10).join(output) + chr(10))
+                  patched.append(str(gradle_file))
+
+          for auth_file in auth_files:
+              lines = auth_file.read_text().splitlines()
+              if not any(line.strip() == "compileSdkVersion 36" for line in lines):
+                  raise SystemExit(f"firebase_auth compile SDK was not set to 36: {auth_file}")
+
+          print(f"Patched {len(patched)} Android plugin Gradle files.")
+          print("Verified firebase_auth compileSdkVersion 36.")
+          for file in patched:
+              print(f"Patched: {file}")
+          PY
+
+      - name: Set up Shorebird
+        uses: shorebirdtech/setup-shorebird@v1
+        with:
+          cache: true
+
+      - name: Select an unused Shorebird release version
+        if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') }}
+        id: release_version
+        shell: bash
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Read the authoritative Shorebird release registry for this app.
+          # Never infer availability from GitHub tags or workflow run numbers.
+          release_list="$(shorebird releases list)"
+          printf '%s\n' "$release_list"
+          build_number=2044
+          while RELEASE_LIST="$release_list" CANDIDATE="$build_number" python3 - <<'PY'
+          import os
+          import re
+          candidate = os.environ["CANDIDATE"]
+          releases = os.environ["RELEASE_LIST"]
+          pattern = re.compile(r"(?<![0-9.])1\.1\.3\+" + re.escape(candidate) + r"(?![0-9])")
+          raise SystemExit(0 if pattern.search(releases) else 1)
+          PY
+          do
+            echo "Shorebird already contains 1.1.3+$build_number; checking the next build number."
+            build_number=$((build_number + 1))
+          done
+          echo "Confirmed unused Shorebird Android release version: 1.1.3+$build_number"
+          echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
+
+      - name: Build Shorebird release APK
+        if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') }}
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          BUILD_NUMBER: ${{ steps.release_version.outputs.build_number }}
+          SKYNEST_TURN_URL: ${{ secrets.SKYNEST_TURN_URL }}
+          SKYNEST_TURN_USERNAME: ${{ secrets.SKYNEST_TURN_USERNAME }}
+          SKYNEST_TURN_CREDENTIAL: ${{ secrets.SKYNEST_TURN_CREDENTIAL }}
+        run: |
+          # Configure Shorebird's release target and Flutter's APK target explicitly.
+          # Shorebird's option selects the release ABI; Flutter's forwarded option
+          # constrains the Gradle APK packaging task to arm64-v8a as well.
+          shorebird release android --artifact apk --target-platform android-arm64 -- \
+            --target-platform=android-arm64 \
+            --build-name=1.1.3 --build-number="$BUILD_NUMBER" \
+            --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" \
+            --dart-define=SKYNEST_TURN_USERNAME="$SKYNEST_TURN_USERNAME" \
+            --dart-define=SKYNEST_TURN_CREDENTIAL="$SKYNEST_TURN_CREDENTIAL"
+
+
+      - name: Publish SkyNest surprise OTA patch
+        if: ${{ contains(github.event.head_commit.message || '', '[ota-only]') }}
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SKYNEST_TURN_URL: ${{ secrets.SKYNEST_TURN_URL }}
+          SKYNEST_TURN_USERNAME: ${{ secrets.SKYNEST_TURN_USERNAME }}
+          SKYNEST_TURN_CREDENTIAL: ${{ secrets.SKYNEST_TURN_CREDENTIAL }}
+        run: |
+          set -euo pipefail
+          # Use the newest published full APK release, not Shorebird's latest release.
+          # Test branches can create Shorebird releases that users never received.
+          release_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '[.[] | select(.draft == false and .prerelease == false)] | sort_by(.created_at) | last | .tag_name')"
+          if [ -z "$release_tag" ] || [ "$release_tag" = "null" ]; then
+            echo "::error::No published SkyNest GitHub release is available as an OTA base."
+            exit 1
+          fi
+          if [[ "$release_tag" =~ ^v(1\.1\.3\+([0-9]+))$ ]]; then
+            release_version="${BASH_REMATCH[1]}"
+            build_number="${BASH_REMATCH[2]}"
+          else
+            echo "::error::Latest published release tag is not a supported SkyNest 1.1.3 release: $release_tag"
+            exit 1
+          fi
+          echo "Using the latest published full APK release as the OTA base: $release_version"
+          # Shorebird still rejects native or asset diffs. Never bypass that safety check.
+          shorebird patch android --release-version="$release_version" --track=stable -- --no-shrink --no-obfuscate --build-name=1.1.3 --build-number="$build_number" --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" --dart-define=SKYNEST_TURN_USERNAME="$SKYNEST_TURN_USERNAME" --dart-define=SKYNEST_TURN_CREDENTIAL="$SKYNEST_TURN_CREDENTIAL"
+
+      - name: Verify built APK package and signature
+        if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          APK_BYTES="$(stat -c '%s' "$APK")"
+          APK_MB="$((APK_BYTES / 1024 / 1024))"
+          echo "Arm64 release APK size: ${APK_MB} MB"
+          if [ "$APK_BYTES" -gt $((85 * 1024 * 1024)) ]; then
+            echo "::error::APK exceeds the 85 MB size ceiling. Inspect native libraries and assets before publishing."
+            exit 1
+          fi
+          ABIS="$(unzip -Z1 "$APK" | sed -n 's#^lib/\([^/]*\)/.*#\1#p' | sort -u | tr '\n' ' ')"
+          echo "Native ABIs in APK: $ABIS"
+          if [ "$ABIS" != "arm64-v8a " ] && [ "$ABIS" != "arm64-v8a" ]; then
+            echo "::error::Expected an arm64-only APK but found: $ABIS"
+            exit 1
+          fi
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/skynest-apk-signature.txt
+          package="$("$BUILD_TOOLS/aapt" dump badging "$APK" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
+          echo "APK package: $package"
+          test "$package" = "com.hello22_.chuka" || { echo "ERROR: Wrong APK package ID"; exit 1; }
+          actual="$(sed -n 's/.*certificate SHA-256 digest: //p' /tmp/skynest-apk-signature.txt | head -n 1 | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+          expected="106BEBFDDB78488B4817608A97417ED5AFAE4C88D5FCB00B29572B4DA554BB0F"
+          test "$actual" = "$expected" || { echo "ERROR: Built APK certificate does not match original"; echo "Actual: $actual"; exit 1; }
+          echo "Built APK package and original signing certificate verified."
+
+      - name: Upload APK artifact
+        if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: skynest-android-1.1.3-${{ steps.release_version.outputs.build_number }}
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish GitHub release
+        if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/integration/roles-on-current-main' || startsWith(github.ref, 'refs/tags/')) && steps.firebase.outputs.configured == 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/integration/roles-on-current-main') && format('v1.1.3+{0}', steps.release_version.outputs.build_number) || github.ref_name }}
+          name: SkyNest Android 1.1.3 (build ${{ steps.release_version.outputs.build_number }})
+          target_commitish: ${{ github.sha }}
+          files: build/app/outputs/flutter-apk/app-release.apk
+          token: ${{ secrets.GITHUB_TOKEN }}
+,
+              r'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip',
+              w, count=1)
+          if count != 1:
+              raise SystemExit("Could not pin Gradle wrapper distribution to 8.13.")
+          wrapper.write_text(w)
+
+          assert 'version "8.13.2"' in settings.read_text()
+          assert 'version "2.2.20"' in settings.read_text()
+          assert 'gradle-8.13-bin.zip' in wrapper.read_text()
+          assert 'id("org.jetbrains.kotlin.android")' in app.read_text()
+          print("PASS: Android Gradle Plugin 8.13.2 / Gradle 8.13 / Kotlin Gradle Plugin 2.2.20 pinned.")
+          PY
+
       - name: Enforce Android 15 edge-to-edge configuration and audit manifest
         run: |
           set -euo pipefail
