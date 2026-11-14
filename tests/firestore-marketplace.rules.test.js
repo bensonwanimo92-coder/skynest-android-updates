@@ -84,7 +84,7 @@ test("public visitors can read approved unexpired listings only", async () => {
   await assertFails(getDoc(doc(publicDb, "publicListings", "pending")));
 });
 
-test("only custom-claim marketplace admin can approve a pending listing", async () => {
+test("custom-claim marketplace admin can approve a pending listing", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), "publicListings", "pending-1"), listing({ status: "pending" }));
   });
@@ -108,6 +108,53 @@ test("only custom-claim marketplace admin can approve a pending listing", async 
     updatedAt: serverTimestamp(),
     expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 86400000))
   }));
+});
+
+
+test("pinned verified initial administrator can moderate on Spark without custom claims", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "publicListings", "spark-pending"), listing({ status: "pending" }));
+  });
+  const uid = "PN9bC3ZzgSaOK1JjG4TcjCU9Grx1";
+  const admin = env.authenticatedContext(uid, {
+    email: "bensonwanimo92@gmail.com",
+    email_verified: true
+  }).firestore();
+  await assertSucceeds(updateDoc(doc(admin, "publicListings", "spark-pending"), {
+    status: "approved",
+    reviewedAt: serverTimestamp(),
+    reviewedBy: uid,
+    updatedAt: serverTimestamp(),
+    expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 86400000))
+  }));
+});
+
+test("pinned initial administrator identity cannot be impersonated with a different UID or email", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "publicListings", "protected-pending"), listing({ status: "pending" }));
+  });
+  const sameEmailWrongUid = env.authenticatedContext("not-the-admin", {
+    email: "bensonwanimo92@gmail.com",
+    email_verified: true
+  }).firestore();
+  const sameUidWrongEmail = env.authenticatedContext("PN9bC3ZzgSaOK1JjG4TcjCU9Grx1", {
+    email: "attacker@example.com",
+    email_verified: true
+  }).firestore();
+  const unverified = env.authenticatedContext("PN9bC3ZzgSaOK1JjG4TcjCU9Grx1", {
+    email: "bensonwanimo92@gmail.com",
+    email_verified: false
+  }).firestore();
+  const change = {
+    status: "approved",
+    reviewedAt: serverTimestamp(),
+    reviewedBy: "PN9bC3ZzgSaOK1JjG4TcjCU9Grx1",
+    updatedAt: serverTimestamp(),
+    expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 86400000))
+  };
+  await assertFails(updateDoc(doc(sameEmailWrongUid, "publicListings", "protected-pending"), change));
+  await assertFails(updateDoc(doc(sameUidWrongEmail, "publicListings", "protected-pending"), change));
+  await assertFails(updateDoc(doc(unverified, "publicListings", "protected-pending"), change));
 });
 
 test("public marketplace rules do not expose private SkyNest house records", async () => {
