@@ -15,6 +15,31 @@ service firebase.storage {
         && fileName == 'profile.jpg';
     }
 
+    // Marketplace media: each advertiser can upload only into their own listing folder.
+    // Images and short clips are capped to protect the Spark storage budget.
+    match /listing_media/{ownerUid}/{listingId}/{fileName} {
+      function listingDoc() {
+        return firestore.get(/databases/(default)/documents/publicListings/$(listingId)).data;
+      }
+      function listingExists() {
+        return firestore.exists(/databases/(default)/documents/publicListings/$(listingId));
+      }
+      allow create: if request.auth != null
+        && request.auth.uid == ownerUid
+        && listingExists()
+        && listingDoc().ownerUid == ownerUid
+        && listingDoc().status in ['draft', 'pending', 'rejected']
+        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)|video/(mp4|webm|quicktime)');
+      allow read: if request.auth != null && (
+        request.auth.uid == ownerUid ||
+        (listingExists() && listingDoc().status == 'approved' &&
+          listingDoc().expiresAt > request.time)
+      );
+      allow update: if false;
+      allow delete: if request.auth != null && request.auth.uid == ownerUid;
+    }
+
     // Group files are private to current members. The uploader's UID is
     // embedded in the path to prevent one member replacing another's upload.
     match /group_attachments/{groupId}/{userId}/{fileName} {
