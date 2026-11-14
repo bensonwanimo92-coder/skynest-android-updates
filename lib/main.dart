@@ -116,8 +116,8 @@ Future<bool> ensureFirebaseReady() async {
 }
 
 class ThemeManager extends ChangeNotifier {
-  ThemeData value = Themes.blue;
-  String selectedName = 'Classic Blue';
+  ThemeData value = Themes.dark;
+  String selectedName = 'Midnight Luxury';
   int? customColorValue;
   bool slideshowEnabled = true;
 
