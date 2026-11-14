@@ -22,6 +22,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:math' as math;
 import 'package:table_calendar/table_calendar.dart';
 
@@ -1180,7 +1181,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(height: 14),
             Text(
-              'Preview this SkyNest section before opening it. Continue when you are ready to view its tools and records.',
+              _modulePreviewDescription(item.title),
               style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
                 height: 1.45,
@@ -1493,8 +1494,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
                         itemCount: filteredItems.length,
                         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 240,
-                          childAspectRatio: 1.02,
+                          maxCrossAxisExtent: 250,
+                          childAspectRatio: 0.94,
                           crossAxisSpacing: 12,
                           mainAxisSpacing: 12,
                         ),
@@ -2249,8 +2250,21 @@ class _TenantsScreenState extends State<TenantsScreen> {
                       if (familyCount is num) Text('Family members: $familyCount', style: const TextStyle(fontSize: 11)),
                     ]),
                     isThreeLine: true,
-                    trailing: IconButton(icon: const Icon(Icons.person_remove_alt_1, color: Colors.red),
-                      onPressed: () => confirmDelete(context, 'Remove ' + (d['name']?.toString() ?? 'this tenant') + '? Payment records will remain.', () => doc.reference.delete())),
+                    trailing: PopupMenuButton<String>(
+                      tooltip: 'Tenant actions',
+                      onSelected: (action) {
+                        if (action == 'call') _contactTenant(context, d['phone']?.toString() ?? '', whatsapp: false);
+                        if (action == 'whatsapp') _contactTenant(context, d['phone']?.toString() ?? '', whatsapp: true);
+                        if (action == 'details') _showTenantDetails(context, d);
+                        if (action == 'remove') confirmDelete(context, 'Remove ' + (d['name']?.toString() ?? 'this tenant') + '? Payment records will remain.', () => doc.reference.delete());
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'details', child: ListTile(dense: true, leading: Icon(Icons.badge_outlined), title: Text('View details'))),
+                        PopupMenuItem(value: 'call', child: ListTile(dense: true, leading: Icon(Icons.call_outlined), title: Text('Call tenant'))),
+                        PopupMenuItem(value: 'whatsapp', child: ListTile(dense: true, leading: Icon(Icons.chat_outlined), title: Text('WhatsApp'))),
+                        PopupMenuItem(value: 'remove', child: ListTile(dense: true, leading: Icon(Icons.person_remove_alt_1, color: Colors.red), title: Text('Remove tenant'))),
+                      ],
+                    ),
                   )),
                 ])),
               );
@@ -6221,6 +6235,87 @@ class CaretakerPaymentsScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+
+String _modulePreviewDescription(String title) {
+  const descriptions = <String, String>{
+    'Houses': 'View your properties, occupancy, monthly rent, unit photos and house records.',
+    'Account approvals': 'Review new tenant and caretaker accounts before granting access.',
+    'Tenants': 'Manage tenant profiles, balances, contract dates, family details and contact actions.',
+    'Payments': 'Track rent received, pending balances, payment methods and receipt dates.',
+    'Tenant payment submissions': 'Review tenant-submitted payments, check queue times, and verify or reject submissions.',
+    'Caretakers & invitations': 'Create time-limited invitations, manage linked caretakers and control property access.',
+    'Complaints': 'Receive, prioritise, respond to and track property or maintenance complaints.',
+    'Tenant groups': 'Communicate with tenant groups, share updates and follow group activity.',
+    'Notices': 'Publish notices, choose urgency and templates, and track tenant acknowledgements.',
+    'Electricity': 'Register meters, allocate usage and keep electricity billing records.',
+    'Activity log': 'Review important account and property actions with timestamps.',
+    'Reports': 'Explore rent collection, occupancy, monthly comparisons and top-performing properties.',
+    'Calculator': 'Estimate rent, arrears, fees, expenses, loans and property costs.',
+    'Calendar': 'Review dated payment activity and upcoming property events.',
+    'Plans': 'Create reminders and track property-management tasks.',
+    'Achievements': 'See your property-management progress and key milestones.',
+    'Pamphlets': 'Read practical landlord, tenant, payment and maintenance guidance.',
+    'Reading & media hub': 'Open learning resources and useful property-management media.',
+    'Themes': 'Choose a coordinated SkyNest appearance and visual style.',
+    'Premium': 'Review your subscription status and available premium features.',
+    'Sounds & vibration': 'Customise app sounds and haptic feedback.',
+    'Security & fingerprint': 'Manage account security and available biometric protections.',
+  };
+  return descriptions[title] ?? 'Preview the tools, records and actions available in this SkyNest section before continuing.';
+}
+
+Future<void> _contactTenant(BuildContext context, String phone, {required bool whatsapp}) async {
+  final cleaned = phone.trim().replaceAll(RegExp(r'[^0-9+]'), '');
+  if (cleaned.isEmpty) {
+    snack(context, 'This tenant has no phone number saved.');
+    return;
+  }
+  final digits = cleaned.startsWith('+254')
+      ? cleaned.substring(1)
+      : cleaned.startsWith('0')
+          ? '254' + cleaned.substring(1)
+          : cleaned.replaceFirst(RegExp(r'^\+'), '');
+  final uri = whatsapp
+      ? Uri.parse('https://wa.me/' + digits)
+      : Uri(scheme: 'tel', path: cleaned);
+  try {
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) snack(context, whatsapp ? 'WhatsApp could not be opened on this device.' : 'The phone app could not be opened.');
+  } catch (_) {
+    if (context.mounted) snack(context, 'Could not open the contact action.');
+  }
+}
+
+void _showTenantDetails(BuildContext context, Map<String, dynamic> data) {
+  final name = data['name']?.toString() ?? 'Tenant';
+  final balanceRaw = data['balance'] ?? data['outstandingBalance'] ?? 0;
+  final balance = balanceRaw is num ? balanceRaw.toDouble() : 0.0;
+  final contractEnd = data['contractEnd'];
+  final contractLabel = contractEnd is Timestamp
+      ? DateFormat('dd MMM yyyy').format(contractEnd.toDate())
+      : 'Not recorded';
+  final familyCount = data['familyCount']?.toString() ?? 'Not recorded';
+  showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(name),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('House: ' + (data['houseNo']?.toString() ?? 'Not assigned')),
+          Text('Phone: ' + (data['phone']?.toString() ?? 'Not recorded')),
+          Text('Monthly rent: ' + currency.format((data['rentAmount'] as num?)?.toDouble() ?? 0)),
+          Text('Outstanding balance: ' + currency.format(balance)),
+          Text('Contract ends: ' + contractLabel),
+          Text('Family members: ' + familyCount),
+        ],
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('CLOSE'))],
+    ),
+  );
 }
 
 class EmptyView extends StatelessWidget {
