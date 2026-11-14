@@ -230,6 +230,14 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
       });
       _localRenderer.srcObject = _localStream;
 
+      // Start calls on loudspeaker by default so the existing speaker control
+      // has a predictable initial state on Android devices.
+      try {
+        await Helper.setSpeakerphoneOn(true);
+      } catch (audioRouteError) {
+        debugPrint('Could not select loudspeaker at call start: $audioRouteError');
+      }
+
       _peer = await createPeerConnection(_rtcConfiguration);
       for (final track in _localStream!.getTracks()) {
         await _peer!.addTrack(track, _localStream!);
@@ -504,8 +512,18 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
           ],
           _CallControl(icon: _speakerOn ? Icons.volume_up : Icons.hearing, label: 'Speaker', active: _speakerOn,
             onTap: () async {
-              setState(() => _speakerOn = !_speakerOn);
-              await Helper.setSpeakerphoneOn(_speakerOn);
+              final nextSpeakerState = !_speakerOn;
+              try {
+                await Helper.setSpeakerphoneOn(nextSpeakerState);
+                if (mounted) setState(() => _speakerOn = nextSpeakerState);
+              } catch (error) {
+                debugPrint('Speaker route change failed: $error');
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not change audio output: $error')),
+                  );
+                }
+              }
             }),
           FloatingActionButton(
             heroTag: 'end-call',
