@@ -487,5 +487,111 @@ service cloud.firestore {
       }
     }
 
+
+    // Public marketplace is isolated from private houses, tenants and payment records.
+    match /publicListings/{listingId} {
+      function marketplaceAdmin() {
+        return signedIn() && request.auth.token.marketplaceAdmin == true;
+      }
+      function validListingFields(data) {
+        return data.keys().hasOnly([
+          'ownerUid', 'title', 'category', 'advertType', 'county', 'town',
+          'estate', 'price', 'currency', 'description', 'contactPhone',
+          'photoUrls', 'bedrooms', 'bathrooms', 'status', 'createdAt',
+          'updatedAt', 'submittedAt', 'reviewedAt', 'reviewedBy',
+          'rejectionReason', 'expiresAt', 'featured'
+        ]) &&
+        data.ownerUid is string && data.title is string &&
+        data.title.size() >= 8 && data.title.size() <= 120 &&
+        data.category in ['Residential', 'Commercial', 'Land', 'Development'] &&
+        data.advertType in ['For rent', 'For sale', 'Commercial lease', 'Property development'] &&
+        data.county is string && data.county.size() > 0 && data.county.size() <= 80 &&
+        data.town is string && data.town.size() > 0 && data.town.size() <= 120 &&
+        (!data.keys().hasAny(['estate']) || (data.estate is string && data.estate.size() <= 120)) &&
+        (!data.keys().hasAny(['bedrooms']) || (data.bedrooms is int && data.bedrooms >= 0 && data.bedrooms <= 50)) &&
+        (!data.keys().hasAny(['bathrooms']) || (data.bathrooms is number && data.bathrooms >= 0 && data.bathrooms <= 50)) &&
+        data.price is number && data.price > 0 &&
+        data.currency == 'KES' &&
+        data.description is string && data.description.size() >= 20 &&
+        data.description.size() <= 5000 &&
+        data.contactPhone is string && data.contactPhone.size() >= 7 &&
+        data.contactPhone.size() <= 20 &&
+        data.photoUrls is list && data.photoUrls.size() <= 12 &&
+        data.status in ['draft', 'pending', 'approved', 'rejected', 'paused', 'expired'] &&
+        data.createdAt is timestamp && data.updatedAt is timestamp;
+      }
+
+      allow get, list: if
+        (resource.data.status == 'approved' &&
+         resource.data.expiresAt is timestamp &&
+         resource.data.expiresAt > request.time) ||
+        (signedIn() && resource.data.ownerUid == request.auth.uid) ||
+        marketplaceAdmin();
+
+      allow create: if signedIn() && request.auth.token.email_verified == true &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        validListingFields(request.resource.data) &&
+        request.resource.data.status == 'draft' &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
+        !request.resource.data.keys().hasAny([
+          'submittedAt', 'reviewedAt', 'reviewedBy', 'rejectionReason',
+          'expiresAt', 'featured'
+        ]);
+
+      allow update: if signedIn() && request.auth.token.email_verified == true &&
+        resource.data.ownerUid == request.auth.uid &&
+        resource.data.status in ['draft', 'rejected'] &&
+        request.resource.data.ownerUid == resource.data.ownerUid &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.status in ['draft', 'pending'] &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'category', 'advertType', 'county', 'town', 'estate',
+          'price', 'currency', 'description', 'contactPhone', 'photoUrls',
+          'bedrooms', 'bathrooms', 'status', 'updatedAt'
+        ]) &&
+        request.resource.data.updatedAt == request.time &&
+        validListingFields(request.resource.data);
+
+      allow update: if marketplaceAdmin() &&
+        request.resource.data.ownerUid == resource.data.ownerUid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'reviewedAt', 'reviewedBy', 'rejectionReason',
+          'expiresAt', 'featured', 'updatedAt'
+        ]) &&
+        request.resource.data.status in ['approved', 'rejected', 'paused', 'expired'] &&
+        (request.resource.data.status != 'approved' ||
+          (request.resource.data.expiresAt is timestamp && request.resource.data.expiresAt > request.time)) &&
+        (!request.resource.data.keys().hasAny(['featured']) || request.resource.data.featured is bool) &&
+        request.resource.data.reviewedBy == request.auth.uid &&
+        request.resource.data.reviewedAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+
+      allow delete: if marketplaceAdmin() ||
+        (signedIn() && resource.data.ownerUid == request.auth.uid &&
+         resource.data.status in ['draft', 'rejected']);
+    }
+
+    match /marketplaceListingReports/{reportId} {
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasOnly([
+          'listingId', 'reporterUid', 'reason', 'details', 'createdAt', 'status'
+        ]) &&
+        request.resource.data.reporterUid == request.auth.uid &&
+        request.resource.data.listingId is string &&
+        request.resource.data.reason in [
+          'fraud', 'misleading', 'unavailable', 'duplicate', 'other'
+        ] &&
+        request.resource.data.details is string &&
+        request.resource.data.details.size() <= 1000 &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.status == 'open';
+      allow get, list: if signedIn() &&
+        (request.auth.token.marketplaceAdmin == true ||
+         resource.data.reporterUid == request.auth.uid);
+      allow update, delete: if signedIn() &&
+        request.auth.token.marketplaceAdmin == true;
+    }
+
   }
 }
