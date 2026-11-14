@@ -4867,7 +4867,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFF071326),
     appBar: AppBar(
+      backgroundColor: const Color(0xFF071326),
+      foregroundColor: Colors.white,
       title: Text(widget.groupName),
       actions: [
         IconButton(
@@ -4896,7 +4899,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(.55),
+        color: const Color(0xFF142B50),
         child: Row(children: [
           Icon(Icons.lock_outline, size: 16, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 8),
@@ -4912,7 +4915,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         stream: FirebaseFirestore.instance.collection('groups').doc(widget.groupId)
             .collection('messages').orderBy('createdAt').snapshots(),
         builder: (context, snap) {
-          if (snap.hasError) return errorView('Messages could not load. Check group membership and Firestore permissions.');
+          if (snap.hasError) return const Center(child: Text('Messages could not load. Check group membership and Firestore permissions.', style: TextStyle(color: Colors.white70)));
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
           final uid = FirebaseAuth.instance.currentUser?.uid;
           if (snap.data!.docs.isEmpty) return const EmptyView('No messages yet. Say hello to the group.');
@@ -4937,7 +4940,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
                   child: Card(
-                    color: mine ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerHighest,
+                    color: mine ? const Color(0xFF174A83) : const Color(0xFF172640),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(13, 9, 7, 8),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
