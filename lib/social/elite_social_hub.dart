@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
+import '../messaging/direct_message_screen.dart';
 
 const _midnight = Color(0xFF071326);
 const _panel = Color(0xFF101F3C);
@@ -394,6 +395,7 @@ class _EliteSocialHubScreenState extends State<EliteSocialHubScreen> {
     final profile = await FirebaseFirestore.instance.collection('socialProfiles').doc(userId).get();
     if (!mounted) return;
     final video = profile.data()?['videoUrl']?.toString();
+    final pageContext = context;
     showModalBottomSheet<void>(
       context: context, backgroundColor: _panel, showDragHandle: true,
       builder: (context) => SafeArea(child: Padding(padding: const EdgeInsets.all(22), child: Column(
@@ -405,6 +407,16 @@ class _EliteSocialHubScreenState extends State<EliteSocialHubScreen> {
           const SizedBox(height: 12),
           if (video != null) _NetworkVideoCard(url: video),
           if (video == null) const Text('No video profile added yet.', style: TextStyle(color: Colors.white60)),
+          const SizedBox(height: 12),
+          SizedBox(width: double.infinity, child: FilledButton.icon(
+            onPressed: userId == _uid ? null : () {
+              Navigator.pop(context);
+              Navigator.push(pageContext, MaterialPageRoute<void>(builder: (_) =>
+                SkyNestDirectMessageScreen(peerId: userId, peerName: name, peerPhotoUrl: photo)));
+            },
+            icon: const Icon(Icons.chat_bubble_outline_rounded),
+            label: const Text('Send private message'),
+          )),
           if (userId == _uid) TextButton.icon(onPressed: () { Navigator.pop(context); _uploadProfileVideo(); },
             icon: const Icon(Icons.video_call_rounded), label: const Text('Update video profile')),
         ],
