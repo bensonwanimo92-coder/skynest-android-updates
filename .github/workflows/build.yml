@@ -96,24 +96,20 @@ jobs:
                   raise SystemExit(f"Required generated Android build file missing: {path}")
 
           s = settings.read_text()
+          app_decl = 'id("com.android.application") version "8.13.2" apply false'
           s, count = re.subn(
-              r'id\("com\.android\.application"\)\s+version\s+"[^"]+"',
-              'id("com.android.application") version "8.13.2" apply false',
-              s, count=1)
+              r'id\("com\.android\.application"\)\s+version\s+"[^"]+"(?:\s+apply false)?',
+              app_decl, s, count=1)
           if count != 1:
               raise SystemExit("Could not pin generated Android Gradle Plugin declaration.")
 
-          # Pin the library plugin as well: Flutter packages apply
-          # com.android.library and must not resolve a different AGP major.
+          # Pin the library plugin too; Flutter packages apply this plugin.
           library_decl = 'id("com.android.library") version "8.13.2" apply false'
           if 'id("com.android.library")' not in s:
-              s = s.replace(
-                  'id("com.android.application") version "8.13.2" apply false',
-                  'id("com.android.application") version "8.13.2" apply false\\n    ' + library_decl,
-                  1)
+              s = s.replace(app_decl, app_decl + "\\n    " + library_decl, 1)
           else:
               s, count = re.subn(
-                  r'id\("com\.android\.library"\)\s+version\s+"[^"]+"\s+apply false',
+                  r'id\("com\.android\.library"\)\s+version\s+"[^"]+"(?:\s+apply false)?',
                   library_decl, s, count=1)
               if count != 1:
                   raise SystemExit("Could not pin Android library Gradle Plugin declaration.")
