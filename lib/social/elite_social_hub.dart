@@ -14,7 +14,7 @@ const _violet = Color(0xFF9275FF);
 /// Premium community hub for SkyNest groups, people, Moments and video profiles.
 /// The parent supplies the existing encrypted group-chat route.
 class EliteSocialHubScreen extends StatefulWidget {
-  final void Function(String groupId, String groupName) openGroup;
+  final void Function(BuildContext context, String groupId, String groupName) openGroup;
   const EliteSocialHubScreen({super.key, required this.openGroup});
 
   @override
@@ -281,7 +281,7 @@ class _EliteSocialHubScreenState extends State<EliteSocialHubScreen> {
               padding: const EdgeInsets.only(bottom: 11),
               child: InkWell(
                 borderRadius: BorderRadius.circular(22),
-                onTap: isMember ? () => widget.openGroup(doc.id, groupName) : null,
+                onTap: isMember ? () => widget.openGroup(context, doc.id, groupName) : null,
                 child: Container(
                   padding: const EdgeInsets.all(15),
                   decoration: BoxDecoration(
