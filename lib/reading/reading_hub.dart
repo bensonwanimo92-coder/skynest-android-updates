@@ -308,13 +308,13 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
       header: (context) => pw.Container(
         alignment: pw.Alignment.centerRight,
         padding: const pw.EdgeInsets.only(bottom: 12),
-        child: pw.Text(_pdfSafe('SKYNEST READING  •  ${issue.category.toUpperCase()}'),
+        child: pw.Text(_pdfSafe('SKYNEST READING / ${issue.category.toUpperCase()}'),
           style: pw.TextStyle(fontSize: 8, color: pdf.PdfColor.fromInt(0xFF64748B))),
       ),
       footer: (context) => pw.Container(
         alignment: pw.Alignment.center,
         padding: const pw.EdgeInsets.only(top: 12),
-        child: pw.Text('SkyNest Reading  •  ${context.pageNumber}',
+        child: pw.Text('SkyNest Reading - ${context.pageNumber}',
           style: pw.TextStyle(fontSize: 8, color: pdf.PdfColor.fromInt(0xFF64748B))),
       ),
       build: (context) => <pw.Widget>[
@@ -499,8 +499,10 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
                 ),
                 FilledButton.tonalIcon(
                   onPressed: _downloading ? null : () => _downloadIssue(issue),
-                  icon: const Icon(Icons.download_rounded, size: 18),
-                  label: const Text('Download'),
+                  icon: _downloading
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.download_rounded, size: 18),
+                  label: Text(_downloading ? 'Saving…' : 'Download'),
                 ),
               ]),
             ),
