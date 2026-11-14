@@ -243,7 +243,14 @@ service cloud.firestore {
         request.resource.data.participantNames is map &&
         request.resource.data.createdAt is timestamp &&
         request.resource.data.updatedAt is timestamp;
-      allow get, list: if activeUser() &&
+      // The deterministic conversation ID contains exactly the two sorted
+      // participant UIDs. Permit a participant to check a not-yet-created
+      // conversation document, while existing documents remain participant-only.
+      allow get: if activeUser() && (
+        (resource == null && conversationId.split('__').hasAny([request.auth.uid])) ||
+        (resource != null && request.auth.uid in resource.data.participantIds)
+      );
+      allow list: if activeUser() &&
         request.auth.uid in resource.data.participantIds;
       allow update: if activeUser() &&
         request.auth.uid in resource.data.participantIds &&
