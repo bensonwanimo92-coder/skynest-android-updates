@@ -75,8 +75,20 @@ jobs:
                   s, count = re.subn(r"(?m)^(\s*)<application\b", lambda m: permission + "\n" + m.group(1) + "<application", s, count=1)
                   if count != 1:
                       raise SystemExit(f"Could not find application tag to insert {permission_name} permission.")
+          channel_meta = ('        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" '
+                          'android:value="skynest_messages_v2"/>')
+          if "default_notification_channel_id" not in s:
+              s, count = re.subn(r"(?m)^(\s*)</application>", lambda m: channel_meta + "\n" + m.group(1) + "</application>", s, count=1)
+              if count != 1:
+                  raise SystemExit("Could not add the default FCM notification channel metadata.")
           p.write_text(s)
-          print("Verified INTERNET and RECORD_AUDIO permissions in AndroidManifest.xml.")
+          raw = Path("android/app/src/main/res/raw")
+          raw.mkdir(parents=True, exist_ok=True)
+          pop_source = Path("assets/sounds/pop.wav")
+          if not pop_source.is_file():
+              raise SystemExit("SkyNest pop notification sound asset is missing.")
+          (raw / "pop.wav").write_bytes(pop_source.read_bytes())
+          print("Configured RECORD_AUDIO, SkyNest FCM channel and pop.wav notification sound.")
           PY
 
       - name: Pin Flutter-compatible Android Gradle toolchain

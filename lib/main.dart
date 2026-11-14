@@ -7,6 +7,7 @@ import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
 import 'services/sound_service.dart';
 import 'services/voice_service.dart';
+import 'services/notification_service.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -59,6 +60,7 @@ Future<void> initializePushNotifications() async {
     final settings = await messaging.requestPermission(
       alert: true, badge: true, sound: true,
     );
+    await SkyNestNotificationService.initialize();
     if (settings.authorizationStatus == AuthorizationStatus.denied) return;
     final token = await messaging.getToken();
     if (token != null && token.isNotEmpty) await _savePushToken(user.uid, token);
@@ -66,9 +68,7 @@ Future<void> initializePushNotifications() async {
       FirebaseMessaging.onMessage.listen((message) {
         final title = message.notification?.title ?? 'SkyNest';
         final body = message.notification?.body ?? 'You have a new notification.';
-        _rootScaffoldMessengerKey.currentState?.showSnackBar(
-          SnackBar(content: Text('$title: $body')),
-        );
+        unawaited(SkyNestNotificationService.showMessage(title: title, body: body, payload: message.data['groupId']?.toString()));
       });
       _pushForegroundListenerRegistered = true;
     }
