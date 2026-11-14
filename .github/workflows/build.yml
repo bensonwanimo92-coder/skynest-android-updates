@@ -103,6 +103,21 @@ jobs:
           if count != 1:
               raise SystemExit("Could not pin generated Android Gradle Plugin declaration.")
 
+          # Pin the library plugin as well: Flutter packages apply
+          # com.android.library and must not resolve a different AGP major.
+          library_decl = 'id("com.android.library") version "8.13.2" apply false'
+          if 'id("com.android.library")' not in s:
+              s = s.replace(
+                  'id("com.android.application") version "8.13.2" apply false',
+                  'id("com.android.application") version "8.13.2" apply false\\n    ' + library_decl,
+                  1)
+          else:
+              s, count = re.subn(
+                  r'id\("com\.android\.library"\)\s+version\s+"[^"]+"\s+apply false',
+                  library_decl, s, count=1)
+              if count != 1:
+                  raise SystemExit("Could not pin Android library Gradle Plugin declaration.")
+
           kotlin_decl = 'id("org.jetbrains.kotlin.android") version "2.2.20" apply false'
           if 'id("org.jetbrains.kotlin.android")' in s:
               s, count = re.subn(
@@ -731,7 +746,7 @@ jobs:
           SKYNEST_TURN_CREDENTIAL: ${{ secrets.SKYNEST_TURN_CREDENTIAL }}
         run: |
           flutter build apk --release --target-platform android-arm64 \
-            --android-skip-build-dependency-validation \
+            --android-skip-build-dependency-validation --verbose \
             --build-name=1.1.3 --build-number="$BUILD_NUMBER" \
             --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" \
             --dart-define=SKYNEST_TURN_USERNAME="$SKYNEST_TURN_USERNAME" \
