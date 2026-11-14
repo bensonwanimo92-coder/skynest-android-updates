@@ -20,8 +20,11 @@ class ReadingHubStorage {
             '${(await getApplicationDocumentsDirectory()).path}'
             '${Platform.pathSeparator}SkyNest Reading',
           );
-    if (!await target.exists()) {
-      await target.create(recursive: true);
+    // Directory setup and listing are deliberately synchronous: the app
+    // stores only a small number of PDFs, and this keeps the shelf refresh
+    // deterministic while the actual PDF write remains asynchronous.
+    if (!target.existsSync()) {
+      target.createSync(recursive: true);
     }
     return target;
   }
