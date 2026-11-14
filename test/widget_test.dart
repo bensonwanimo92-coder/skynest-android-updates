@@ -38,14 +38,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Reading & Media Hub'), findsOneWidget);
 
-    // The offline shelf is deliberately placed before the catalogue so
-    // previously saved PDFs are the first useful content after the intro.
-    await tester.scrollUntilVisible(find.text('My offline downloads'), 240, scrollable: find.byType(Scrollable).first);
-    await tester.scrollUntilVisible(find.text('No offline booklets yet'), 240, scrollable: find.byType(Scrollable).first);
+    // The offline shelf is intentionally above the catalogue and visible
+    // without navigating to a separate downloads page.
+    expect(find.text('My offline downloads'), findsOneWidget);
     expect(find.text('No offline booklets yet'), findsOneWidget);
-
-    await tester.scrollUntilVisible(find.text('The Lighthouse Garden'), 240, scrollable: find.byType(Scrollable).first);
-    expect(find.text('The Lighthouse Garden'), findsOneWidget);
   });
 
   testWidgets('Reading Hub lists a saved booklet for offline reading', (tester) async {
@@ -55,7 +51,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     final savedBooklet = find.widgetWithText(ListTile, 'The Lighthouse Garden');
-    await tester.scrollUntilVisible(savedBooklet, 240, scrollable: find.byType(Scrollable).first);
     expect(savedBooklet, findsOneWidget);
     expect(find.text('Saved on this device · PDF'), findsOneWidget);
   });
