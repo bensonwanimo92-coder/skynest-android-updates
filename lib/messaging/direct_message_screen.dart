@@ -177,7 +177,7 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
         );
         return;
       }
-      await _sendEncryptedPayload(EncryptedImageMessage.encodeImage(bytes));
+      await _sendEncryptedPayload(VoiceMessageBubble.encodeImage(bytes));
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Image could not be attached: $error')),
