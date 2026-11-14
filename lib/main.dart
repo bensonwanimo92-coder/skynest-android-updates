@@ -4,6 +4,7 @@ import 'security/message_encryption.dart';
 import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
 import 'messaging/direct_message_screen.dart';
+import 'settings/sound_settings.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -1253,6 +1254,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ]);
     }
 
+    items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
     items.add(_MenuItem('Security & fingerprint', Icons.fingerprint_rounded, Colors.blueGrey, const SecuritySettingsScreen()));
 
     final query = searchQuery.trim().toLowerCase();
@@ -1517,7 +1519,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             clipBehavior: Clip.antiAlias,
                             child: InkWell(
                               onTap: () async {
-                                await SystemSound.play(SystemSoundType.click);
+                                await SkyNestFeedback.playTap();
                                 if (!context.mounted) return;
                                 await _previewModule(context, item);
                               },
