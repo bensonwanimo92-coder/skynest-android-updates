@@ -1,0 +1,38 @@
+name: SkyNest Release Candidate Checks
+
+on:
+  push:
+    branches:
+      - feature/skynest-release-candidate-compact
+  pull_request:
+    branches:
+      - integration/roles-on-current-main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skynest-release-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Analyze Dart and Flutter source
+        run: flutter analyze --no-pub --no-fatal-infos
+
+      - name: Run Flutter tests
+        run: flutter test --no-pub
