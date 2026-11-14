@@ -2,6 +2,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    // Spark-compatible bootstrap for the one initial marketplace administrator.
+    // The UID is immutable; the verified email is an additional identity check.
+    // Custom-claim administrators remain supported for future trusted provisioning.
+    function marketplaceAdmin() {
+      return signedIn() && (
+        request.auth.token.marketplaceAdmin == true ||
+        (
+          request.auth.uid == 'PN9bC3ZzgSaOK1JjG4TcjCU9Grx1' &&
+          request.auth.token.email == 'bensonwanimo92@gmail.com' &&
+          request.auth.token.email_verified == true
+        )
+      );
+    }
     function profile(uid) { return get(/databases/$(database)/documents/users/$(uid)).data; }
     function activeUser() { return signedIn() && profile(request.auth.uid).status == 'active'; }
     function myRole() { return profile(request.auth.uid).role; }
@@ -490,9 +503,6 @@ service cloud.firestore {
 
     // Public marketplace is isolated from private houses, tenants and payment records.
     match /publicListings/{listingId} {
-      function marketplaceAdmin() {
-        return signedIn() && request.auth.token.marketplaceAdmin == true;
-      }
       function validListingFields(data) {
         return data.keys().hasOnly([
           'ownerUid', 'title', 'category', 'advertType', 'county', 'town',
@@ -587,10 +597,9 @@ service cloud.firestore {
         request.resource.data.createdAt == request.time &&
         request.resource.data.status == 'open';
       allow get, list: if signedIn() &&
-        (request.auth.token.marketplaceAdmin == true ||
+        (marketplaceAdmin() ||
          resource.data.reporterUid == request.auth.uid);
-      allow update, delete: if signedIn() &&
-        request.auth.token.marketplaceAdmin == true;
+      allow update, delete: if marketplaceAdmin();
     }
 
   }
