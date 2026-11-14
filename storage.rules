@@ -1,0 +1,38 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Profile photos are visible only to signed-in SkyNest users.
+    // Only the account owner may upload or remove their own image.
+    match /profile_photos/{userId}/{fileName} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && fileName == 'profile.jpg'
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if request.auth != null
+        && request.auth.uid == userId
+        && fileName == 'profile.jpg';
+    }
+
+    // Group files are private to current members. The uploader's UID is
+    // embedded in the path to prevent one member replacing another's upload.
+    match /group_attachments/{groupId}/{userId}/{fileName} {
+      function isGroupMember() {
+        return request.auth != null
+          && request.auth.uid in firestore.get(
+            /databases/(default)/documents/groups/$(groupId)
+          ).data.memberIds;
+      }
+      allow read: if isGroupMember();
+      allow create: if isGroupMember()
+        && request.auth.uid == userId
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches(
+          'image/(jpeg|png|webp)|application/pdf|application/msword|application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        );
+      allow update: if false;
+      allow delete: if isGroupMember() && request.auth.uid == userId;
+    }
+  }
+}
