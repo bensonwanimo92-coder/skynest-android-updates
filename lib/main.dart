@@ -7,6 +7,8 @@ import 'messaging/direct_message_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -1618,6 +1620,7 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
   String status = '';
   bool loading = true;
   bool saving = false;
+  bool photoBusy = false;
 
   @override
   void initState() {
@@ -1650,6 +1653,82 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
         setState(() => loading = false);
         snack(context, 'Could not load account details: ' + error.toString());
       }
+    }
+  }
+
+  Future<void> _changeProfilePhoto() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || photoBusy) return;
+    setState(() => photoBusy = true);
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 84,
+        maxWidth: 1400,
+        maxHeight: 1400,
+      );
+      if (picked == null) return;
+      final file = File(picked.path);
+      final length = await file.length();
+      if (length > 5 * 1024 * 1024) {
+        throw StateError('Choose an image smaller than 5 MB.');
+      }
+      final ref = FirebaseStorage.instance.ref()
+          .child('profile_photos').child(user.uid).child('profile.jpg');
+      final task = await ref.putFile(file, SettableMetadata(
+        contentType: 'image/jpeg',
+        cacheControl: 'public,max-age=3600',
+      ));
+      final url = await task.ref.getDownloadURL();
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'photoUrl': url,
+        'photoPath': ref.fullPath,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      await user.updatePhotoURL(url);
+      await user.reload();
+      if (mounted) snack(context, 'Profile photo updated.');
+    } catch (error) {
+      if (mounted) snack(context, 'Photo upload failed: ' + error.toString());
+    } finally {
+      if (mounted) setState(() => photoBusy = false);
+    }
+  }
+
+  Future<void> _removeProfilePhoto() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || photoBusy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove profile photo?'),
+        content: const Text('Your account will return to its initials avatar.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('CANCEL')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('REMOVE')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => photoBusy = true);
+    try {
+      final ref = FirebaseStorage.instance.ref()
+          .child('profile_photos').child(user.uid).child('profile.jpg');
+      try { await ref.delete(); } on FirebaseException catch (error) {
+        if (error.code != 'object-not-found') rethrow;
+      }
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'photoUrl': FieldValue.delete(),
+        'photoPath': FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      await user.updatePhotoURL(null);
+      await user.reload();
+      if (mounted) snack(context, 'Profile photo removed.');
+    } catch (error) {
+      if (mounted) snack(context, 'Could not remove photo: ' + error.toString());
+    } finally {
+      if (mounted) setState(() => photoBusy = false);
     }
   }
 
@@ -1750,6 +1829,52 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
                 style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text('Account status: ' + (status.isEmpty ? 'unknown' : status)),
             )),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(children: [
+                  StreamBuilder<User?>(
+                    stream: FirebaseAuth.instance.userChanges(),
+                    initialData: FirebaseAuth.instance.currentUser,
+                    builder: (context, snapshot) {
+                      final user = snapshot.data;
+                      final photo = user?.photoURL;
+                      final name = user?.displayName?.trim() ?? '';
+                      return CircleAvatar(
+                        radius: 34,
+                        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                        backgroundImage: photo != null && photo.isNotEmpty ? NetworkImage(photo) : null,
+                        child: photo == null || photo.isEmpty
+                          ? Text(name.isEmpty ? 'S' : name.characters.first.toUpperCase(),
+                              style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800))
+                          : null,
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('Profile photo', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                    const SizedBox(height: 4),
+                    const Text('Add a clear photo so people recognise you in groups and private chats.',
+                      style: TextStyle(fontSize: 12)),
+                    const SizedBox(height: 9),
+                    Wrap(spacing: 8, children: [
+                      OutlinedButton.icon(
+                        onPressed: photoBusy ? null : _changeProfilePhoto,
+                        icon: photoBusy
+                          ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.photo_camera_outlined, size: 17),
+                        label: Text(photoBusy ? 'Please wait…' : 'Change photo'),
+                      ),
+                      TextButton(
+                        onPressed: photoBusy ? null : _removeProfilePhoto,
+                        child: const Text('Remove'),
+                      ),
+                    ]),
+                  ])),
+                ]),
+              ),
+            ),
             if (role == 'landlord') ...[
               Card(child: Padding(
                 padding: const EdgeInsets.all(16),
