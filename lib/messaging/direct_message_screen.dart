@@ -45,15 +45,25 @@ class _SkyNestDirectMessageScreenState extends State<SkyNestDirectMessageScreen>
     try {
       await SkyNestMessageEncryption.instance.prepareDevice(_uid);
       final profile = await FirebaseFirestore.instance.collection('users').doc(_uid).get();
-      await _conversation.set({
-        'participantIds': <String>[_uid, widget.peerId]..sort(),
-        'participantNames': <String, String>{
-          _uid: (profile.data()?['displayName'] ?? 'Member').toString(),
-          widget.peerId: widget.peerName,
-        },
-        'updatedAt': FieldValue.serverTimestamp(),
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      final existing = await _conversation.get();
+      if (existing.exists) {
+        final participants = (existing.data()?['participantIds'] as List<dynamic>? ?? <dynamic>[])
+            .map((value) => value.toString()).toSet();
+        if (!participants.contains(_uid) || !participants.contains(widget.peerId) || participants.length != 2) {
+          throw StateError('This private conversation has invalid membership.');
+        }
+        await _conversation.update({'updatedAt': FieldValue.serverTimestamp()});
+      } else {
+        await _conversation.set({
+          'participantIds': <String>[_uid, widget.peerId]..sort(),
+          'participantNames': <String, String>{
+            _uid: (profile.data()?['displayName'] ?? 'Member').toString(),
+            widget.peerId: widget.peerName,
+          },
+          'updatedAt': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
       if (mounted) setState(() => _ready = true);
     } catch (error) {
       if (mounted) setState(() => _setupError = error.toString());
