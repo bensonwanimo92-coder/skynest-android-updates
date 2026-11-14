@@ -336,15 +336,13 @@ service cloud.firestore {
             (
               request.resource.data.attachment is map &&
               request.resource.data.attachment.keys().hasOnly([
-                'name', 'mimeType', 'downloadUrl', 'storagePath', 'size'
+                'name', 'mimeType', 'storagePath', 'size'
               ]) &&
               request.resource.data.attachment.name is string &&
               request.resource.data.attachment.mimeType in [
                 'image/jpeg', 'image/png', 'image/webp', 'application/pdf',
-                'application/msword',
-                'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                
               ] &&
-              request.resource.data.attachment.downloadUrl is string &&
               request.resource.data.attachment.storagePath is string &&
               request.resource.data.attachment.size is int &&
               request.resource.data.attachment.size > 0 &&
