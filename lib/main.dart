@@ -6,6 +6,8 @@ import 'reading/reading_hub.dart';
 import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
 import 'services/sound_service.dart';
+import 'services/voice_service.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -5171,6 +5173,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   String? _encryptionSetupError;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _messageSoundSubscription;
   bool _initialMessagesLoaded = false;
+  bool _recordingVoice = false;
+  bool _playingVoice = false;
+  final AudioPlayer _voicePlayer = AudioPlayer();
 
   @override
   void initState() {
@@ -5198,7 +5203,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   @override
-  void dispose() { _messageSoundSubscription?.cancel(); message.dispose(); super.dispose(); }
+  void dispose() { _messageSoundSubscription?.cancel(); message.dispose(); _voicePlayer.dispose(); unawaited(SkyNestVoiceService.dispose()); super.dispose(); }
 
   Future<void> send() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -5239,6 +5244,91 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       message.text = text;
     } finally {
       if (mounted) setState(() => sending = false);
+    }
+  }
+
+  Future<void> _startVoiceRecording() async {
+    if (sending || _recordingVoice) return;
+    try {
+      await SkyNestVoiceService.startRecording();
+      if (mounted) setState(() => _recordingVoice = true);
+    } catch (error) {
+      if (mounted) snack(context, 'Could not start recording: $error');
+    }
+  }
+
+  Future<void> _stopVoiceRecording() async {
+    if (!_recordingVoice) return;
+    final path = await SkyNestVoiceService.stopRecording();
+    if (mounted) setState(() => _recordingVoice = false);
+    if (path == null) {
+      if (mounted) snack(context, 'No voice recording was captured.');
+      return;
+    }
+    await _sendVoiceNote(path);
+  }
+
+  Future<void> _sendVoiceNote(String localPath) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || sending) return;
+    setState(() => sending = true);
+    String? uploadedPath;
+    try {
+      final groupRef = FirebaseFirestore.instance.collection('groups').doc(widget.groupId);
+      final groupSnapshot = await groupRef.get();
+      final groupData = groupSnapshot.data();
+      if (groupData == null) throw StateError('This group is no longer available.');
+      final memberIds = (groupData['memberIds'] as List? ?? const []).map((value) => value.toString()).toList();
+      if (!memberIds.contains(user.uid)) throw StateError('You are no longer a member of this group.');
+      final attachment = await SkyNestVoiceService.uploadVoiceNote(
+        groupId: widget.groupId, userId: user.uid, localPath: localPath,
+      );
+      uploadedPath = attachment['storagePath']?.toString();
+      final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final senderName = (profile.data()?['displayName'] ?? user.displayName ?? 'Member').toString();
+      final encrypted = await SkyNestMessageEncryption.instance.encryptGroupMessage(
+        groupId: widget.groupId, senderId: user.uid, plaintext: 'Voice message', memberIds: memberIds,
+      );
+      await groupRef.collection('messages').add({
+        ...encrypted,
+        'senderId': user.uid,
+        'senderName': senderName,
+        'senderPhotoUrl': profile.data()?['photoUrl'] ?? user.photoURL,
+        'attachment': attachment,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      await SkyNestSoundService.playSent();
+    } catch (error) {
+      if (uploadedPath != null) {
+        try { await FirebaseStorage.instance.ref(uploadedPath).delete(); } catch (_) {}
+      }
+      if (mounted) snack(context, 'Voice note not sent: $error');
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
+
+  Future<void> _playVoiceAttachment(Map<String, dynamic> attachment) async {
+    final path = attachment['storagePath']?.toString() ?? '';
+    if (!path.startsWith('group_attachments/' + widget.groupId + '/')) {
+      snack(context, 'This voice note does not belong to the current group.');
+      return;
+    }
+    try {
+      if (_playingVoice) {
+        await _voicePlayer.stop();
+        if (mounted) setState(() => _playingVoice = false);
+        return;
+      }
+      final bytes = await FirebaseStorage.instance.ref(path).getData(8 * 1024 * 1024);
+      if (bytes == null || bytes.isEmpty) throw StateError('Voice note is unavailable.');
+      await _voicePlayer.play(BytesSource(bytes));
+      if (mounted) setState(() => _playingVoice = true);
+      _voicePlayer.onPlayerComplete.first.then((_) {
+        if (mounted) setState(() => _playingVoice = false);
+      });
+    } catch (error) {
+      if (mounted) snack(context, 'Could not play voice note: $error');
     }
   }
 
@@ -5358,6 +5448,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             ),
           ),
         );
+      } else if (mime.startsWith('audio/')) {
+        await _playVoiceAttachment(attachment);
       } else if (mime == 'application/pdf') {
         await FileSaver.instance.saveToDownloads(
           name: attachment['name']?.toString() ?? 'SkyNest attachment',
@@ -5749,6 +5841,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                             final attachment = Map<String, dynamic>.from(data['attachment'] as Map);
                             final mime = attachment['mimeType']?.toString() ?? '';
                             final isImage = mime.startsWith('image/');
+                            final isAudio = mime.startsWith('audio/');
                             return InkWell(
                               onTap: () => _openGroupAttachment(attachment),
                               borderRadius: BorderRadius.circular(12),
@@ -5761,7 +5854,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                   color: Theme.of(context).colorScheme.surface.withOpacity(.65),
                                 ),
                                 child: Row(children: [
-                                  Icon(isImage ? Icons.image_rounded : Icons.picture_as_pdf_rounded, size: 28),
+                                  Icon(isImage ? Icons.image_rounded : isAudio ? Icons.graphic_eq_rounded : Icons.picture_as_pdf_rounded, size: 28, color: const Color(0xFF67E8F9)),
                                   const SizedBox(width: 9),
                                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                     Text(attachment['name']?.toString() ?? 'Shared file',
@@ -5790,7 +5883,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           );
         },
       )),
-      SafeArea(child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [
+      SafeArea(child: Padding(padding: const EdgeInsets.all(10), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (_recordingVoice) const Padding(padding: EdgeInsets.only(bottom: 7), child: Text('Recording voice note · release microphone to send', style: TextStyle(color: Color(0xFF67E8F9), fontWeight: FontWeight.w700, fontSize: 12))),
+        Row(children: [
         PopupMenuButton<String>(
           enabled: !sending,
           tooltip: 'Attach image or document',
@@ -5813,7 +5908,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           onSubmitted: (_) => send(),
         )),
         const SizedBox(width: 8),
+        GestureDetector(
+          onLongPressStart: sending ? null : (_) => _startVoiceRecording(),
+          onLongPressEnd: (_) => _stopVoiceRecording(),
+          onLongPressCancel: _stopVoiceRecording,
+          child: Container(width: 43, height: 43, margin: const EdgeInsets.only(right: 6),
+            decoration: BoxDecoration(color: _recordingVoice ? const Color(0xFFEF4444) : const Color(0xFF173D6B), shape: BoxShape.circle, border: Border.all(color: const Color(0xFF67E8F9).withOpacity(.6))),
+            child: Icon(_recordingVoice ? Icons.mic : Icons.mic_none_rounded, color: Colors.white)),
+        ),
         IconButton.filled(onPressed: sending ? null : send, icon: const Icon(Icons.send)),
+        ]),
       ]))),
     ]),
   );
