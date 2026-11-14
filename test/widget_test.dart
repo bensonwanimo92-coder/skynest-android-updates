@@ -40,11 +40,11 @@ void main() {
 
     // The offline shelf is deliberately placed before the catalogue so
     // previously saved PDFs are the first useful content after the intro.
-    await tester.scrollUntilVisible(find.text('My offline downloads'), 240);
-    await tester.scrollUntilVisible(find.text('No offline booklets yet'), 240);
+    await tester.scrollUntilVisible(find.text('My offline downloads'), 240, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(find.text('No offline booklets yet'), 240, scrollable: find.byType(Scrollable).first);
     expect(find.text('No offline booklets yet'), findsOneWidget);
 
-    await tester.scrollUntilVisible(find.text('The Lighthouse Garden'), 240);
+    await tester.scrollUntilVisible(find.text('The Lighthouse Garden'), 240, scrollable: find.byType(Scrollable).first);
     expect(find.text('The Lighthouse Garden'), findsOneWidget);
   });
 
@@ -55,7 +55,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     final savedBooklet = find.widgetWithText(ListTile, 'The Lighthouse Garden');
-    await tester.scrollUntilVisible(savedBooklet, 240);
+    await tester.scrollUntilVisible(savedBooklet, 240, scrollable: find.byType(Scrollable).first);
     expect(savedBooklet, findsOneWidget);
     expect(find.text('Saved on this device · PDF'), findsOneWidget);
   });
@@ -65,12 +65,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     final downloadButton = find.widgetWithText(FilledButton, 'Download').first;
-    await tester.scrollUntilVisible(downloadButton, 300);
-    await tester.tap(downloadButton);
-    await tester.pumpAndSettle();
-
+    await tester.scrollUntilVisible(downloadButton, 300, scrollable: find.byType(Scrollable).first);
     final savedFile = File('${offlineDirectory.path}${Platform.pathSeparator}the_lighthouse_garden.pdf');
+    await tester.tap(downloadButton);
+
+    // The offline shelf shows an indeterminate scan indicator while the file
+    // is being indexed, so wait for the file itself rather than pumpAndSettle.
+    for (var attempt = 0; attempt < 50 && !savedFile.existsSync(); attempt++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
     expect(await savedFile.exists(), isTrue);
+    await tester.pump(const Duration(milliseconds: 300));
     final bytes = await savedFile.readAsBytes();
     expect(bytes.length, greaterThan(100));
     expect(bytes.take(4).toList(), '%PDF'.codeUnits);
@@ -81,12 +86,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     final historyChip = find.widgetWithText(ChoiceChip, 'History');
-    await tester.scrollUntilVisible(historyChip, 240);
+    await tester.scrollUntilVisible(historyChip, 240, scrollable: find.byType(Scrollable).first);
     await tester.tap(historyChip);
     await tester.pump(const Duration(milliseconds: 200));
 
     final historyBooklet = find.text('History: Reading the Past');
-    await tester.scrollUntilVisible(historyBooklet, 240);
+    await tester.scrollUntilVisible(historyBooklet, 240, scrollable: find.byType(Scrollable).first);
     expect(historyBooklet, findsOneWidget);
   });
 }
