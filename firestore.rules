@@ -505,8 +505,11 @@ service cloud.firestore {
         data.title.size() >= 8 && data.title.size() <= 120 &&
         data.category in ['Residential', 'Commercial', 'Land', 'Development'] &&
         data.advertType in ['For rent', 'For sale', 'Commercial lease', 'Property development'] &&
-        data.county is string && data.county.size() > 0 &&
-        data.town is string && data.town.size() > 0 &&
+        data.county is string && data.county.size() > 0 && data.county.size() <= 80 &&
+        data.town is string && data.town.size() > 0 && data.town.size() <= 120 &&
+        (!data.keys().hasAny(['estate']) || (data.estate is string && data.estate.size() <= 120)) &&
+        (!data.keys().hasAny(['bedrooms']) || (data.bedrooms is int && data.bedrooms >= 0 && data.bedrooms <= 50)) &&
+        (!data.keys().hasAny(['bathrooms']) || (data.bathrooms is number && data.bathrooms >= 0 && data.bathrooms <= 50)) &&
         data.price is number && data.price > 0 &&
         data.currency == 'KES' &&
         data.description is string && data.description.size() >= 20 &&
@@ -557,6 +560,9 @@ service cloud.firestore {
           'expiresAt', 'featured', 'updatedAt'
         ]) &&
         request.resource.data.status in ['approved', 'rejected', 'paused', 'expired'] &&
+        (request.resource.data.status != 'approved' ||
+          (request.resource.data.expiresAt is timestamp && request.resource.data.expiresAt > request.time)) &&
+        (!request.resource.data.keys().hasAny(['featured']) || request.resource.data.featured is bool) &&
         request.resource.data.reviewedBy == request.auth.uid &&
         request.resource.data.reviewedAt == request.time &&
         request.resource.data.updatedAt == request.time;
