@@ -6,6 +6,7 @@ on:
       - integration/roles-on-current-main
     paths:
       - 'firestore.rules'
+      - 'storage.rules'
       - 'firestore.indexes.json'
       - 'firebase.json'
       - 'functions/**'
@@ -62,7 +63,7 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
         run: |
           set -euo pipefail
-          firebase deploy --only firestore:rules,firestore:indexes --project "$FIREBASE_PROJECT_ID" --non-interactive
+          firebase deploy --only firestore:rules,firestore:indexes,storage --project "$FIREBASE_PROJECT_ID" --non-interactive
 
       - name: Deploy group-message push function
         env:
