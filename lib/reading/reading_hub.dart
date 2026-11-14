@@ -76,6 +76,7 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This offline file is no longer available.')));
         return;
       }
+      if (!mounted) return;
       await Navigator.of(context).push(MaterialPageRoute<void>(
         builder: (_) => Scaffold(
           appBar: AppBar(title: Text(_offlineTitle(file))),
@@ -100,7 +101,7 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (!mounted || confirmed != true) return;
     try { await file.delete(); await _refreshOfflineFiles(); }
     catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not remove this offline booklet.')));
