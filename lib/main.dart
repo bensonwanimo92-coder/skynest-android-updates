@@ -5485,6 +5485,107 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
+  Future<void> _showGroupMembers() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('groups').doc(widget.groupId).collection('members').get();
+      if (!mounted) return;
+      var queryText = '';
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: const Color(0xFF0B1D3A),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            final visible = snapshot.docs.where((doc) {
+              final d = doc.data();
+              final name = (d['displayName'] ?? 'Group member').toString().toLowerCase();
+              return name.contains(queryText.toLowerCase()) || doc.id.toLowerCase().contains(queryText.toLowerCase());
+            }).toList();
+            return SafeArea(
+              child: SizedBox(
+                height: MediaQuery.of(sheetContext).size.height * .72,
+                child: Column(children: [
+                  const SizedBox(height: 12),
+                  Container(width: 42, height: 4, decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(8))),
+                  Padding(padding: const EdgeInsets.fromLTRB(20, 18, 20, 12), child: Row(children: [
+                    const Expanded(child: Text('Group members', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800))),
+                    Text(snapshot.docs.length.toString(), style: const TextStyle(color: Color(0xFF67E8F9), fontWeight: FontWeight.w800)),
+                  ])),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: TextField(
+                    style: const TextStyle(color: Colors.white),
+                    onChanged: (value) => setSheetState(() => queryText = value),
+                    decoration: InputDecoration(
+                      hintText: 'Search members...', hintStyle: const TextStyle(color: Colors.white54),
+                      prefixIcon: const Icon(Icons.search, color: Color(0xFF67E8F9)),
+                      filled: true, fillColor: const Color(0xFF142847),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+                    ),
+                  )),
+                  const SizedBox(height: 8),
+                  Expanded(child: visible.isEmpty
+                    ? const Center(child: Text('No matching members.', style: TextStyle(color: Colors.white70)))
+                    : ListView(children: visible.map((peer) {
+                      final d = peer.data();
+                      final peerName = (d['displayName'] ?? 'Group member').toString();
+                      final photo = (d['photoUrl'] ?? d['photoURL'] ?? '').toString();
+                      final hasPresence = d.containsKey('isOnline') || d.containsKey('online');
+                      final online = d['isOnline'] == true || d['online'] == true;
+                      final isSelf = peer.id == uid;
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(color: const Color(0xFF142847), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.white10)),
+                        child: ListTile(
+                          leading: Stack(children: [
+                            CircleAvatar(
+                              backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
+                              child: photo.isEmpty ? const Icon(Icons.person_outline_rounded) : null,
+                            ),
+                            if (hasPresence) Positioned(right: 0, bottom: 0, child: CircleAvatar(radius: 5, backgroundColor: online ? const Color(0xFF22C55E) : Colors.grey, child: const SizedBox())),
+                          ]),
+                          title: Text(peerName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                          subtitle: Text(isSelf ? 'You' : hasPresence ? (online ? 'Online' : 'Offline') : 'Status unavailable',
+                            style: TextStyle(color: online ? const Color(0xFF4ADE80) : Colors.white54, fontSize: 11)),
+                          trailing: isSelf ? null : Wrap(spacing: 0, children: [
+                            IconButton(tooltip: 'Call', icon: const Icon(Icons.call_rounded, color: Color(0xFF67E8F9)), onPressed: () async {
+                              Navigator.pop(sheetContext);
+                              try {
+                                final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+                                final callerName = (profile.data()?['displayName'] ?? FirebaseAuth.instance.currentUser?.displayName ?? 'SkyNest member').toString();
+                                final call = await FirebaseFirestore.instance.collection('calls').add({
+                                  'groupId': widget.groupId, 'callerId': uid, 'calleeId': peer.id,
+                                  'callerName': callerName, 'calleeName': peerName, 'type': 'voice',
+                                  'status': 'preparing', 'createdAt': FieldValue.serverTimestamp(),
+                                });
+                                if (!mounted) return;
+                                await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => SkyNestCallScreen(callId: call.id, isCaller: true)));
+                              } catch (error) { if (mounted) snack(context, 'Could not start call: $error'); }
+                            }),
+                            IconButton(tooltip: 'Direct message', icon: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFFA78BFA)), onPressed: () {
+                              Navigator.pop(sheetContext);
+                              Navigator.push(context, MaterialPageRoute<void>(builder: (_) => SkyNestDirectMessageScreen(
+                                peerId: peer.id, peerName: peerName, peerPhotoUrl: photo.isEmpty ? null : photo,
+                              )));
+                            }),
+                          ]),
+                        ),
+                      );
+                    }).toList()),
+                  ),
+                ]),
+              ),
+            );
+          },
+        ),
+      );
+    } catch (error) {
+      if (mounted) snack(context, 'Could not load group members: $error');
+    }
+  }
+
   Future<void> leaveGroup() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
