@@ -43,7 +43,9 @@ service cloud.firestore {
       );
       allow list: if activeUser() && (
         (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
-        (myRole() == 'caretaker' && resource.data.landlordId == profile(request.auth.uid).landlordId)
+        (myRole() == 'caretaker' && resource.data.landlordId == profile(request.auth.uid).landlordId) ||
+        (myRole() == 'tenant' && profile(request.auth.uid).landlordId != null &&
+          resource.data.landlordId == profile(request.auth.uid).landlordId)
       );
       allow create: if signedIn() && request.auth.uid == userId && (
         (request.resource.data.role == 'landlord' && request.resource.data.status == 'active') ||
@@ -281,6 +283,44 @@ service cloud.firestore {
       }
     }
 
+
+    // Community Moments are visible only to authenticated members of the
+    // same landlord/property community. Owners may remove their own Moments.
+    match /socialMoments/{momentId} {
+      allow create: if activeUser() &&
+        request.resource.data.keys().hasOnly([
+          'ownerId', 'ownerName', 'ownerPhotoUrl', 'landlordId',
+          'mediaUrl', 'mediaType', 'caption', 'createdAt', 'expiresAt'
+        ]) &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.landlordId ==
+          (myRole() == 'landlord' ? request.auth.uid : profile(request.auth.uid).landlordId) &&
+        request.resource.data.mediaUrl is string &&
+        request.resource.data.mediaType in ['image', 'video'] &&
+        request.resource.data.caption is string &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.expiresAt is timestamp;
+      allow read: if linkedTo(resource.data.landlordId);
+      allow update: if false;
+      allow delete: if activeUser() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Short video profile metadata is scoped to the user's own property community.
+    match /socialProfiles/{userId} {
+      allow read: if linkedTo(resource.data.landlordId);
+      allow create: if activeUser() && request.auth.uid == userId &&
+        request.resource.data.keys().hasOnly(['ownerId', 'landlordId', 'videoUrl', 'updatedAt']) &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.landlordId ==
+          (myRole() == 'landlord' ? request.auth.uid : profile(request.auth.uid).landlordId) &&
+        request.resource.data.videoUrl is string &&
+        request.resource.data.updatedAt is timestamp;
+      allow update: if activeUser() && request.auth.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['videoUrl', 'updatedAt']) &&
+        request.resource.data.videoUrl is string &&
+        request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
+    }
 
     match /groups/{groupId} {
       allow create: if activeUser() && request.resource.data.createdBy == request.auth.uid &&
