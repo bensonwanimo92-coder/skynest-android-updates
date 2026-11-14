@@ -34,4 +34,4 @@ jobs:
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
       - name: Run Firestore emulator security tests
-        run: firebase emulators:exec --only firestore --project demo-skynest-marketplace "npm run test:marketplace-rules"
+        run: firebase emulators:exec --only firestore,storage --project demo-skynest-marketplace "npm run test:marketplace-rules && npm run test:storage-rules"
