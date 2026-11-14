@@ -5,6 +5,7 @@ import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
 import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
+import 'marketplace/marketplace_discovery.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -1210,6 +1211,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (userRole == 'landlord') {
       items.addAll([
         _MenuItem('Houses', Icons.home_work_outlined, Colors.orange, const HousesScreen()),
+        _MenuItem('Tenant Discovery', Icons.travel_explore_rounded, Colors.teal, const MarketplaceDiscoveryScreen()),
         _MenuItem('Account approvals', Icons.how_to_reg_outlined, Colors.green, const TenantApprovalsScreen()),
         _MenuItem('Tenants', Icons.people_alt_outlined, Colors.green, const TenantsScreen()),
         _MenuItem('Payments', Icons.payments_outlined, Colors.blue, const PaymentsScreen()),
@@ -1233,6 +1235,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } else if (userRole == 'caretaker') {
       items.addAll([
         _MenuItem('Assigned houses', Icons.home_work_outlined, Colors.orange, const CaretakerHousesScreen()),
+        _MenuItem('Tenant Discovery', Icons.travel_explore_rounded, Colors.teal, const MarketplaceDiscoveryScreen()),
         _MenuItem('Tenant approvals', Icons.how_to_reg_outlined, Colors.green, const TenantApprovalsScreen()),
         _MenuItem('Rent confirmations', Icons.fact_check_outlined, Colors.blue, const CaretakerPaymentsScreen()),
         _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
@@ -1246,6 +1249,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } else {
       items.addAll([
         _MenuItem('Find a vacant house', Icons.home_work_outlined, Colors.orange, const TenantPortalScreen()),
+        _MenuItem('Tenant Discovery', Icons.travel_explore_rounded, Colors.teal, const MarketplaceDiscoveryScreen()),
         _MenuItem('My complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('House change requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
