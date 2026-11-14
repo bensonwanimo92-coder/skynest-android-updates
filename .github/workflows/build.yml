@@ -666,7 +666,6 @@ jobs:
           PY
 
       - name: Set up Shorebird
-        if: ${{ github.ref != 'refs/heads/integration/roles-on-current-main' }}
         uses: shorebirdtech/setup-shorebird@v1
         with:
           cache: true
