@@ -3063,8 +3063,9 @@ class PlansScreen extends StatefulWidget {
 
 class _PlansScreenState extends State<PlansScreen> {
   final Set<String> _selectedPlanIds = <String>{};
+  bool _selectionEnabled = false;
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _currentPlanDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-  bool get _selectionMode => _selectedPlanIds.isNotEmpty;
+  bool get _selectionMode => _selectionEnabled || _selectedPlanIds.isNotEmpty;
 
   String _type(String value) => const {
     'build': 'New build', 'renovate': 'Renovation',
@@ -3155,7 +3156,7 @@ class _PlansScreenState extends State<PlansScreen> {
       final batch = FirebaseFirestore.instance.batch();
       for (final doc in selected) { batch.delete(doc.reference); }
       await batch.commit();
-      if (mounted) setState(() => _selectedPlanIds.clear());
+      if (mounted) setState(() { _selectedPlanIds.clear(); _selectionEnabled = false; });
       if (mounted) snack(context, '${selected.length} items deleted.');
     } catch (error) {
       if (mounted) snack(context, 'Bulk delete failed: $error');
@@ -3179,7 +3180,7 @@ class _PlansScreenState extends State<PlansScreen> {
           try {
             await FirebaseFirestore.instance.collection('plans').add({
               'title': title.text.trim(), 'note': note.text.trim(), 'done': false,
-              'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+              'createdAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp(), 'createdBy': uid,
             });
             if (d.mounted) Navigator.pop(d);
           } catch (e) { if (d.mounted) snack(d, 'Could not save reminder: $e'); }
@@ -3324,8 +3325,11 @@ class _PlansScreenState extends State<PlansScreen> {
       appBar: AppBar(title: Text(_selectionMode ? '${_selectedPlanIds.length} selected' : 'Plans and reminders'), actions: [
         if (_selectionMode) IconButton(tooltip: 'Delete selected', onPressed: () => _deleteSelected(_currentPlanDocs),
           icon: const Icon(Icons.delete_outline)),
-        if (_selectionMode) IconButton(tooltip: 'Clear selection', onPressed: () => setState(() => _selectedPlanIds.clear()),
-          icon: const Icon(Icons.close)),
+        if (_selectionMode) IconButton(tooltip: 'Clear selection', onPressed: () => setState(() {
+          _selectedPlanIds.clear(); _selectionEnabled = false;
+        }), icon: const Icon(Icons.close)),
+        if (!_selectionMode) IconButton(tooltip: 'Select plans', onPressed: () => setState(() => _selectionEnabled = true),
+          icon: const Icon(Icons.checklist_rounded)),
         if (!_selectionMode) IconButton(tooltip: 'Add reminder', onPressed: _addReminder, icon: const Icon(Icons.notifications_active_outlined)),
       ]),
       floatingActionButton: FloatingActionButton.extended(onPressed: _addProject,
@@ -3367,7 +3371,7 @@ class _PlansScreenState extends State<PlansScreen> {
               final d = doc.data();
               if (d['planType'] == null) return Card(
                 child: GestureDetector(
-                  onLongPress: () => setState(() => _selectedPlanIds.add(doc.id)),
+                  onLongPress: () => setState(() { _selectionEnabled = true; _selectedPlanIds.add(doc.id); }),
                   child: CheckboxListTile(
                     selected: _selectedPlanIds.contains(doc.id),
                     secondary: _selectionMode ? Checkbox(
@@ -3411,7 +3415,7 @@ class _PlansScreenState extends State<PlansScreen> {
               final color = type == 'renovate' ? Colors.teal : type == 'expand' ? Colors.indigo : type == 'loanClear' ? Colors.deepPurple : Colors.orange;
               return Card(margin: const EdgeInsets.only(bottom: 12), clipBehavior: Clip.antiAlias,
                 child: GestureDetector(
-                  onLongPress: () => setState(() => _selectedPlanIds.add(doc.id)),
+                  onLongPress: () => setState(() { _selectionEnabled = true; _selectedPlanIds.add(doc.id); }),
                   child: ExpansionTile(
                   leading: _selectionMode ? Checkbox(
                     value: _selectedPlanIds.contains(doc.id),
