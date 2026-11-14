@@ -1508,7 +1508,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             clipBehavior: Clip.antiAlias,
                             child: InkWell(
-                              onTap: () => _previewModule(context, item),
+                              onTap: () async {
+                                await SystemSound.play(SystemSoundType.click);
+                                if (!context.mounted) return;
+                                await _previewModule(context, item);
+                              },
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [
