@@ -95,7 +95,7 @@ jobs:
           s = settings.read_text()
           s, count = re.subn(
               r'id\("com\.android\.application"\)\s+version\s+"[^"]+"',
-              'id("com.android.application") version "8.13.2"',
+              'id("com.android.application") version "8.13.2" apply false',
               s, count=1)
           if count != 1:
               raise SystemExit("Could not pin generated Android Gradle Plugin declaration.")
