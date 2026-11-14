@@ -776,11 +776,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
-                              colors: [const Color(0xFF10365F).withOpacity(0.86), const Color(0xFF2476C8).withOpacity(0.70)],
+                              colors: [const Color(0xFF090D16).withOpacity(0.96), const Color(0xFF17243A).withOpacity(0.91)],
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF174D83).withOpacity(0.20),
+                                color: const Color(0xFFD4AF37).withOpacity(0.16),
                                 blurRadius: 24,
                                 offset: const Offset(0, 12),
                               ),
@@ -796,7 +796,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   shape: BoxShape.circle,
                                   border: Border.all(color: Colors.white.withOpacity(0.35)),
                                 ),
-                                child: const Icon(Icons.apartment_rounded, size: 43, color: Colors.white),
+                                child: const Icon(Icons.apartment_rounded, size: 43, color: Color(0xFFF5D76E)),
                               ),
                               const SizedBox(height: 14),
                               const Text(
@@ -900,7 +900,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: FilledButton(
                             onPressed: busy ? null : signIn,
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF174D83),
+                              backgroundColor: const Color(0xFF101827),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                             ),
                             child: busy
@@ -910,7 +910,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     children: [
                                       Icon(Icons.login_rounded),
                                       SizedBox(width: 10),
-                                      Text('SIGN IN', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+                                      Text('SIGN IN', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.8, color: Color(0xFFF5D76E))),
                                     ],
                                   ),
                           ),
