@@ -459,7 +459,7 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
                 track.enabled = !_muted;
               }
             }),
-          if (_isVideo)
+          if (_isVideo) ...[
             _CallControl(icon: _cameraOff ? Icons.videocam_off : Icons.videocam, label: 'Camera', active: _cameraOff,
               onTap: () {
                 setState(() => _cameraOff = !_cameraOff);
@@ -467,6 +467,22 @@ class _SkyNestCallScreenState extends State<SkyNestCallScreen> {
                   track.enabled = !_cameraOff;
                 }
               }),
+            _CallControl(icon: Icons.cameraswitch_rounded, label: 'Flip',
+              onTap: () async {
+                final tracks = _localStream?.getVideoTracks() ?? <MediaStreamTrack>[];
+                if (tracks.isEmpty || _released) return;
+                try {
+                  await Helper.switchCamera(tracks.first);
+                } catch (error) {
+                  debugPrint('Camera switch failed: $error');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Could not switch camera: $error')),
+                    );
+                  }
+                }
+              }),
+          ],
           _CallControl(icon: _speakerOn ? Icons.volume_up : Icons.hearing, label: 'Speaker', active: _speakerOn,
             onTap: () async {
               setState(() => _speakerOn = !_speakerOn);
