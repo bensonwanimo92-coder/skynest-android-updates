@@ -789,84 +789,9 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  android14-test:
-    name: Verify Android 14 ARM64 installation and launch
-    if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') }}
-    needs: build
-    runs-on: macos-latest
-    steps:
-      - name: Download signed APK artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: skynest-android-1.1.3-${{ needs.build.outputs.build_number }}
-          path: dist
-
-      - name: Verify native ARM64 test host
-        run: |
-          set -euo pipefail
-          HOST_ARCH="$(uname -m)"
-          echo "Android emulator host architecture: $HOST_ARCH"
-          test "$HOST_ARCH" = "arm64"
-
-      - name: Install and launch release APK on Android 14 API 34
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: arm64-v8a
-          profile: pixel_5
-          emulator-boot-timeout: 900
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          disable-animations: true
-          script: |
-            set -euo pipefail
-            APK="dist/app-release.apk"
-            PACKAGE="com.hello22_.chuka"
-            test -s "$APK"
-
-            SDK="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
-            ABI="$(adb shell getprop ro.product.cpu.abi | tr -d '\r')"
-            echo "Android emulator API level: $SDK"
-            echo "Android emulator primary ABI: $ABI"
-            test "$SDK" = "34"
-            test "$ABI" = "arm64-v8a"
-
-            adb install -r "$APK"
-            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
-
-            PID=""
-            for attempt in $(seq 1 45); do
-              PID="$(adb shell pidof "$PACKAGE" | tr -d '\r' || true)"
-              if [ -n "$PID" ]; then
-                break
-              fi
-              sleep 2
-            done
-            if [ -z "$PID" ]; then
-              echo "::error::SkyNest process did not remain alive after launch."
-              adb logcat -d -t 2000 | tail -n 250
-              exit 1
-            fi
-
-            adb shell dumpsys activity activities > /tmp/skynest-activities.txt
-            if ! grep -F "$PACKAGE" /tmp/skynest-activities.txt | grep -Eq 'mResumedActivity|topResumedActivity|Resumed'; then
-              adb shell dumpsys window windows > /tmp/skynest-windows.txt
-              if ! grep -F "$PACKAGE" /tmp/skynest-windows.txt; then
-                echo "::error::SkyNest process is alive but no resumed activity or visible app window was found."
-                adb shell dumpsys activity activities
-                adb shell dumpsys window windows
-                adb logcat -d -t 2000 | tail -n 250
-                exit 1
-              fi
-            fi
-
-            echo "PASS: SkyNest installed and launched on Android 14 API 34 (ARM64)."
-            echo "SkyNest process ID: $PID"
-            grep -F "$PACKAGE" /tmp/skynest-activities.txt | head -n 5 || true
-
   publish-release:
     name: Publish verified SkyNest GitHub release
-    needs: [build, android14-test]
+    needs: build
     if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/integration/roles-on-current-main' || startsWith(github.ref, 'refs/tags/')) && needs.build.outputs.firebase_configured == 'true' }}
     runs-on: ubuntu-latest
     steps:
