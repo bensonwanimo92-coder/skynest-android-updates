@@ -616,17 +616,15 @@ jobs:
               raise SystemExit("Generated Android Kotlin Gradle file is missing.")
 
           source = path.read_text()
-          marker = "dependencies {"
+          marker = "android {"
           if marker not in source:
-              raise SystemExit("Could not locate dependencies block for packaging configuration.")
+              raise SystemExit("Could not locate existing android block for packaging configuration.")
 
-          config = '''android {
-              packaging {
+          config = '''    packaging {
                   jniLibs {
-                      // Shorebird/Flutter currently contributes duplicate copies
-                      // of the ARM64 app library. Resolve only that exact entry.
+                      // Resolve only the duplicate ARM64 Flutter app library.
                       pickFirsts += "lib/arm64-v8a/libapp.so"
-                      // SkyNest distributes an ARM64-only APK.
+                      // Keep the distributable APK ARM64-only.
                       excludes += setOf(
                           "**/armeabi-v7a/**",
                           "**/x86/**",
@@ -634,11 +632,10 @@ jobs:
                       )
                   }
               }
-          }
 
           '''
           if "pickFirsts += \"lib/arm64-v8a/libapp.so\"" not in source:
-              source = source.replace(marker, config + marker, 1)
+              source = source.replace(marker, marker + "\\n" + config, 1)
               path.write_text(source)
 
           check = path.read_text()
