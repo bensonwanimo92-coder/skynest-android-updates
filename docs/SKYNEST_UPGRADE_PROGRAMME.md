@@ -14,7 +14,8 @@ Baseline: `ae0359d36bbfe8b868f9133e49eed6d988f17a8a` (`integration/roles-on-curr
 ## Upgrade backlog
 
 ### 1. Login and visual identity
-- [ ] Redesign login screen to a polished, high-end responsive experience.
+- [x] Apply a premium graphite-and-gold visual refinement to the login header and primary sign-in action. Full responsive/accessibility review remains pending.
+- [ ] Complete the broader login screen redesign and responsive verification.
 - [ ] Preserve sign-in, registration, password reset, validation, and fingerprint compatibility.
 - [ ] Redesign SkyNest logo toward a distinctive, warm, joyful but premium property brand; do not replace production icon until approved.
 - [ ] Create separate Benson Wanimo signature identity; do not confuse it with SkyNest branding.
@@ -26,9 +27,9 @@ Baseline: `ae0359d36bbfe8b868f9133e49eed6d988f17a8a` (`integration/roles-on-curr
 
 ### 3. Plans and flexible module fields
 - [ ] Improve inner Plans tiles/cards (not the semi-main Plans tile).
-- [ ] Add, edit, delete individual plan entries.
-- [ ] Support safe multi-select and bulk deletion with confirmation.
-- [ ] Show created and last-updated timestamps.
+- [x] Add edit and delete actions for individual plan entries and reminders.
+- [x] Add long-press/selection mode and confirmation-protected bulk deletion for plan entries.
+- [ ] Show created and last-updated timestamps consistently (created date is now shown on project cards; last-updated display and reminder timestamps remain to finish).
 - [ ] Audit other modules for similarly rigid fields and missing add/edit/delete, bulk actions, timestamps, filters, and responsive layouts.
 - [ ] Preserve role permissions and existing records; avoid destructive schema changes.
 
@@ -73,9 +74,9 @@ Baseline: `ae0359d36bbfe8b868f9133e49eed6d988f17a8a` (`integration/roles-on-curr
 
 ### 10. Main user profiles and profile photos
 - [ ] Add a user profile screen with editable profile photo.
-- [ ] Show profile photo alongside the user's name in chats, group member lists, and relevant identity surfaces.
+- [x] Show available Firebase account/profile photo in the dashboard account avatar and propagate available photo URL to new group messages; full profile photo management and group-member list coverage remain pending.
 - [ ] Support upload, replacement, removal/default avatar, image sizing/cropping, and loading/error states.
 - [ ] Apply storage and Firestore security rules so users can update permitted profile fields without changing another user's identity.
 
 ## Status
-The rapid sprint has committed the following source changes on this feature branch: front/rear camera switch (`774ca015`); dashboard preview-before-open interaction (`4ec92703`); moderately larger dashboard tiles (`48e60973`); and dashboard tile click feedback (`0e463f37`). Existing camera capture and mute/speaker controls were confirmed by source inspection, not device testing. The dashboard and call changes have not yet been compiled or tested on a physical device. All other backlog items remain pending. This document does not claim that the overall upgrade programme is complete, released, or delivered.
+The rapid sprint has committed these source changes on this feature branch: front/rear camera switch (`774ca015`); dashboard preview-before-open interaction (`4ec92703`); moderately larger dashboard tiles (`48e60973`); dashboard tile click feedback (`0e463f37`); Plans edit/delete/multi-select and timestamps (`07fb6cec`, `98a84e3a`); profile-photo display/propagation where a Firebase photo URL already exists (`f56f7456`); and a graphite-and-gold login visual refinement (`527a3230`). These changes have not yet been compiled or tested on a physical device. Profile photo upload, group attachments, private DMs, persistent offline downloads, public property discovery, ringback/ringtones, and remaining responsive/accessibility work are still pending. This document does not claim that the overall upgrade programme is complete, released, or delivered.
