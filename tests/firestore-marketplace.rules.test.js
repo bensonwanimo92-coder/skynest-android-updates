@@ -220,3 +220,64 @@ test("private direct messages allow participant bootstrap and deny outsiders", a
     { ...encryptedMessage, senderId: "eve" }
   ));
 });
+
+test("verified advertiser can create multi-category vehicle advert with structured details and media metadata", async () => {
+  const db = env.authenticatedContext("vehicle-advertiser", { email_verified: true }).firestore();
+  await assertSucceeds(setDoc(doc(db, "publicListings", "vehicle-draft"), listing({
+    ownerUid: "vehicle-advertiser",
+    title: "Low mileage Toyota Harrier in excellent condition",
+    category: "Vehicles",
+    advertType: "For sale",
+    details: { make: "Toyota", model: "Harrier", yearMade: 2020, mileage: 42000 },
+    media: [{ kind: "image", storagePath: "listing_media/vehicle-advertiser/vehicle-draft/front.jpg", contentType: "image/jpeg", size: 1000 }],
+    photoUrls: ["https://example.invalid/front.jpg"],
+    videoUrls: ["https://example.invalid/walkaround.mp4"]
+  })));
+});
+
+test("advertisers cannot assign themselves premium or standard tiers", async () => {
+  const db = env.authenticatedContext("tier-advertiser", { email_verified: true }).firestore();
+  await assertFails(setDoc(doc(db, "publicListings", "self-premium"), listing({
+    ownerUid: "tier-advertiser",
+    advertiserTier: "premium"
+  })));
+  await assertSucceeds(setDoc(doc(db, "publicListings", "tier-draft"), listing({
+    ownerUid: "tier-advertiser"
+  })));
+  await assertFails(updateDoc(doc(db, "publicListings", "tier-draft"), {
+    advertiserTier: "standard",
+    updatedAt: serverTimestamp()
+  }));
+});
+
+test("admin can request changes and assign a premium tier only during approval", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "publicListings", "review-me"), listing({ status: "pending" }));
+  });
+  const uid = "PN9bC3ZzgSaOK1JjG4TcjCU9Grx1";
+  const admin = env.authenticatedContext(uid, {
+    email: "bensonwanimo92@gmail.com",
+    email_verified: true
+  }).firestore();
+  await assertSucceeds(updateDoc(doc(admin, "publicListings", "review-me"), {
+    status: "changes_requested",
+    rejectionReason: "Please add clearer exterior photos.",
+    reviewedAt: serverTimestamp(),
+    reviewedBy: uid,
+    updatedAt: serverTimestamp()
+  }));
+  const advertiser = env.authenticatedContext("advertiser-1", { email_verified: true }).firestore();
+  await assertSucceeds(updateDoc(doc(advertiser, "publicListings", "review-me"), {
+    status: "pending",
+    submittedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }));
+  await assertSucceeds(updateDoc(doc(admin, "publicListings", "review-me"), {
+    status: "approved",
+    advertiserTier: "premium",
+    reviewedAt: serverTimestamp(),
+    reviewedBy: uid,
+    updatedAt: serverTimestamp(),
+    expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 86400000))
+  }));
+});
