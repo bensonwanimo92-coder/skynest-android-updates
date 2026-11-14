@@ -424,6 +424,33 @@ class _EliteSocialHubScreenState extends State<EliteSocialHubScreen> {
     );
   }
 
+  Future<void> _deleteMoment(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this Moment?'),
+        content: const Text('This removes the Moment from your community.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final url = doc.data()['mediaUrl']?.toString();
+      if (url != null && url.isNotEmpty) {
+        try { await FirebaseStorage.instance.refFromURL(url).delete(); } catch (error) {
+          debugPrint('Moment media cleanup skipped: $error');
+        }
+      }
+      await doc.reference.delete();
+      if (mounted) _notice('Moment deleted.');
+    } catch (error) {
+      if (mounted) _notice('Could not delete Moment: $error');
+    }
+  }
+
   Widget _momentsTab() => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
     stream: FirebaseFirestore.instance.collection('socialMoments').where('landlordId', isEqualTo: _landlordId).snapshots(),
     builder: (context, snapshot) {
@@ -454,6 +481,11 @@ class _EliteSocialHubScreenState extends State<EliteSocialHubScreen> {
                   child: (photo?.isNotEmpty ?? false) ? null : const Icon(Icons.person_outline_rounded)),
                 title: Text((data['ownerName'] ?? 'SkyNest member').toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
                 subtitle: const Text('Moment · expires after 24 hours', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                trailing: data['ownerId'] == _uid ? PopupMenuButton<String>(
+                  iconColor: Colors.white70,
+                  onSelected: (value) { if (value == 'delete') _deleteMoment(docs[index]); },
+                  itemBuilder: (_) => const [PopupMenuItem(value: 'delete', child: Text('Delete Moment'))],
+                ) : null,
               ),
               if (!isVideo) Image.network(data['mediaUrl'].toString(), width: double.infinity, height: 240, fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => const SizedBox(height: 160, child: Center(child: Icon(Icons.broken_image_outlined, color: Colors.white54))))
