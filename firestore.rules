@@ -234,6 +234,55 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /directConversations/{conversationId} {
+      allow create: if activeUser() &&
+        request.resource.data.keys().hasOnly(['participantIds', 'participantNames', 'createdAt', 'updatedAt']) &&
+        request.resource.data.participantIds is list &&
+        request.resource.data.participantIds.size() == 2 &&
+        request.auth.uid in request.resource.data.participantIds &&
+        request.resource.data.participantNames is map &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp;
+      allow get, list: if activeUser() &&
+        request.auth.uid in resource.data.participantIds;
+      allow update: if activeUser() &&
+        request.auth.uid in resource.data.participantIds &&
+        request.resource.data.participantIds == resource.data.participantIds &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt']) &&
+        request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        function participants() {
+          return get(/databases/$(database)/documents/directConversations/$(conversationId)).data.participantIds;
+        }
+        allow read: if activeUser() && request.auth.uid in participants();
+        allow create: if activeUser() &&
+          request.resource.data.keys().hasOnly([
+            'encryptionVersion', 'encryptionAlgorithm', 'senderPublicKey',
+            'nonce', 'ciphertext', 'mac', 'keyEnvelopes',
+            'senderId', 'senderName', 'senderPhotoUrl', 'createdAt'
+          ]) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.auth.uid in participants() &&
+          request.resource.data.encryptionVersion == 1 &&
+          request.resource.data.encryptionAlgorithm == 'X25519-HKDF-SHA256-AES-256-GCM' &&
+          request.resource.data.senderPublicKey is string &&
+          request.resource.data.nonce is string &&
+          request.resource.data.ciphertext is string &&
+          request.resource.data.mac is string &&
+          request.resource.data.keyEnvelopes is map &&
+          request.resource.data.keyEnvelopes.keys().hasAll(participants()) &&
+          request.resource.data.createdAt is timestamp;
+        allow update: if false;
+        allow delete: if activeUser() &&
+          request.auth.uid in participants() &&
+          resource.data.senderId == request.auth.uid;
+      }
+    }
+
+
+
     match /groups/{groupId} {
       allow create: if activeUser() && request.resource.data.createdBy == request.auth.uid &&
         linkedTo(request.resource.data.landlordId) && request.auth.uid in request.resource.data.memberIds;
