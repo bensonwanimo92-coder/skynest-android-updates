@@ -1,35 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#061B63"/>
-      <stop offset=".55" stop-color="#0756C8"/>
-      <stop offset="1" stop-color="#02A9F4"/>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E2E7EC"/>
+      <stop offset="1" stop-color="#8795A3"/>
     </linearGradient>
-    <linearGradient id="cloud" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FFFFFF"/>
-      <stop offset="1" stop-color="#9BE7FF"/>
-    </linearGradient>
-    <linearGradient id="roof" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#FFFFFF"/>
-      <stop offset="1" stop-color="#B6EFFF"/>
-    </linearGradient>
-    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#FFF27A"/>
-      <stop offset="1" stop-color="#FFB300"/>
-    </linearGradient>
-    <filter id="glow"><feGaussianBlur stdDeviation="18"/></filter>
   </defs>
-  <rect width="1024" height="1024" rx="210" fill="url(#bg)"/>
-  <circle cx="790" cy="250" r="112" fill="#FFD65A" opacity=".23" filter="url(#glow)"/>
-  <circle cx="790" cy="250" r="66" fill="url(#gold)"/>
-  <path d="M145 610c-68-14-102-70-88-132 11-50 54-87 107-91 7-108 96-189 204-189 56 0 108 23 145 62 36-55 98-91 168-91 111 0 201 90 201 201 67 8 118 65 118 133 0 74-60 134-134 134H172" fill="none" stroke="url(#cloud)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M208 650 512 386l304 264v190H208z" fill="#071C59" stroke="url(#roof)" stroke-width="25" stroke-linejoin="round"/>
-  <path d="M142 665 512 340l370 325-49 54-321-281-321 281z" fill="url(#roof)" stroke="#FFFFFF" stroke-width="10" stroke-linejoin="round"/>
-  <rect x="420" y="625" width="184" height="215" rx="12" fill="#0B347F" stroke="#C8F4FF" stroke-width="14"/>
-  <rect x="448" y="653" width="58" height="72" rx="5" fill="url(#gold)"/>
-  <rect x="518" y="653" width="58" height="72" rx="5" fill="url(#gold)"/>
-  <rect x="448" y="740" width="58" height="72" rx="5" fill="url(#gold)"/>
-  <rect x="518" y="740" width="58" height="72" rx="5" fill="url(#gold)"/>
-  <path d="M105 872c182-64 360-74 534-28 108 29 193 27 280-13" fill="none" stroke="url(#gold)" stroke-width="20" stroke-linecap="round"/>
-  <path d="M140 922c205-48 415-42 631 8" fill="none" stroke="#FFFFFF" stroke-opacity=".7" stroke-width="8" stroke-linecap="round"/>
+  <rect width="1024" height="1024" rx="224" fill="#111820"/>
+  <path d="M212 790V448c0-178 134-290 300-290s300 112 300 290v342"
+        fill="none" stroke="#52687B" stroke-width="28" stroke-linecap="round"/>
+  <path d="M302 760V430c0-122 86-208 210-208s210 86 210 208v330"
+        fill="none" stroke="#2D3D4B" stroke-width="12" stroke-linecap="round"/>
+  <path d="M340 676V356l344 344V380"
+        fill="none" stroke="url(#metal)" stroke-width="58" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M340 760H684" fill="none" stroke="#52687B" stroke-width="18" stroke-linecap="round"/>
+  <circle cx="512" cy="512" r="390" fill="none" stroke="#FFFFFF" stroke-opacity=".08" stroke-width="2"/>
 </svg>
