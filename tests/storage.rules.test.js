@@ -62,3 +62,33 @@ test("group attachment access requires current group membership", async () => {
     { contentType: "application/pdf" }
   ));
 });
+
+test("marketplace media uploads are owner-scoped and public only after approval", async () => {
+  const ownerUid = "market-advertiser";
+  const listingId = "market-draft";
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "publicListings", listingId), {
+      ownerUid, status: "draft"
+    });
+  });
+  const image = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  const owner = env.authenticatedContext(ownerUid).storage();
+  const stranger = env.authenticatedContext("intruder").storage();
+  const publicStorage = env.unauthenticatedContext().storage();
+  const path = "listing_media/market-advertiser/market-draft/front.jpg";
+  await assertSucceeds(uploadBytes(ref(owner, path), image, { contentType: "image/jpeg" }));
+  await assertFails(getBytes(ref(stranger, path)));
+  await assertFails(getBytes(ref(publicStorage, path)));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "publicListings", listingId), {
+      ownerUid, status: "approved",
+      expiresAt: new Date(Date.now() + 86400000)
+    });
+  });
+  await assertSucceeds(getBytes(ref(publicStorage, path)));
+  await assertFails(uploadBytes(
+    ref(stranger, "listing_media/market-advertiser/market-draft/intruder.jpg"),
+    image,
+    { contentType: "image/jpeg" }
+  ));
+});
