@@ -1,0 +1,38 @@
+name: Marketplace Firestore rules tests
+
+on:
+  pull_request:
+    paths:
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/marketplace-rules-test.yml'
+  push:
+    branches:
+      - integration/roles-on-current-main
+    paths:
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/marketplace-rules-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  firestore-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install test dependencies
+        run: npm install
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+      - name: Run Firestore emulator security tests
+        run: firebase emulators:exec --only firestore --project demo-skynest-marketplace "npm run test:marketplace-rules"
