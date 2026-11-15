@@ -458,6 +458,40 @@ test("scheduled automations are restricted to their active Landlord owner", asyn
 });
 
 
+test("linked tenants can record their own payment activity but cannot forge another actor or landlord", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users", "audit-landlord-tenant-owner"), {
+      role: "landlord", status: "active"
+    });
+    await setDoc(doc(db, "users", "audit-tenant-1"), {
+      role: "tenant", status: "active", landlordId: "audit-landlord-tenant-owner"
+    });
+  });
+
+  const tenant = env.authenticatedContext("audit-tenant-1").firestore();
+  const ownEvent = {
+    landlordId: "audit-landlord-tenant-owner",
+    actorId: "audit-tenant-1",
+    actorName: "Tenant",
+    actorRole: "tenant",
+    action: "Submitted rent payment",
+    isSuspicious: false,
+    createdAt: serverTimestamp()
+  };
+
+  await assertSucceeds(setDoc(doc(tenant, "activityLogs", "tenant-audit-1"), ownEvent));
+  await assertFails(getDoc(doc(tenant, "activityLogs", "tenant-audit-1")));
+  await assertFails(setDoc(doc(tenant, "activityLogs", "forged-landlord"), {
+    ...ownEvent,
+    landlordId: "another-landlord"
+  }));
+  await assertFails(setDoc(doc(tenant, "activityLogs", "forged-actor"), {
+    ...ownEvent,
+    actorId: "audit-landlord-tenant-owner"
+  }));
+});
+
 test("activity audit entries are owner-scoped and cannot be forged for another actor", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
