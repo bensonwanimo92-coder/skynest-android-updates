@@ -5395,6 +5395,56 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
   final Set<String> selectedGroupIds = <String>{};
   @override
   void dispose() { name.dispose(); search.dispose(); super.dispose(); }
+  Future<void> _deleteGroup(String groupId, Map<String, dynamic> groupData) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || groupData['createdBy'] != uid) {
+      snack(context, 'Only the group creator can delete this group.');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this group?'),
+        content: const Text('The group, its messages and membership records will be permanently deleted. Download or keep anything important first.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete group')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final groupRef = FirebaseFirestore.instance.collection('groups').doc(groupId);
+      final messages = await groupRef.collection('messages').get();
+      final members = await groupRef.collection('members').get();
+      for (final message in messages.docs) {
+        final attachment = message.data()['attachment'];
+        final path = attachment is Map ? attachment['storagePath']?.toString() : null;
+        if (path != null && path.startsWith('group_attachments/$groupId/')) {
+          try { await FirebaseStorage.instance.ref().child(path).delete(); } catch (_) {}
+        }
+      }
+      final records = <DocumentReference<Map<String, dynamic>>>[
+        ...messages.docs.map((doc) => doc.reference),
+        ...members.docs.map((doc) => doc.reference),
+      ];
+      for (var start = 0; start < records.length; start += 400) {
+        final batch = FirebaseFirestore.instance.batch();
+        for (final ref in records.skip(start).take(400)) {
+          batch.delete(ref);
+        }
+        await batch.commit();
+      }
+      await groupRef.delete();
+      if (mounted) {
+        setState(() => selectedGroupIds.remove(groupId));
+        snack(context, 'Group and its messages deleted.');
+      }
+    } catch (error) {
+      if (mounted) snack(context, 'Could not delete group: $error');
+    }
+  }
+
   Future<void> createGroup() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || name.text.trim().isEmpty) { snack(context, 'Enter a group name.'); return; }
@@ -5507,7 +5557,7 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                   final seenBy = data['seenBy'] is List ? (data['seenBy'] as List).length : ((data['seenCount'] as num?)?.toInt() ?? 0);
                   final broadcastOnly = data['broadcastOnly'] == true;
                   final highDue = due is num && due > 0;
-                  final tile = Container(
+                  final tile = Stack(children: [Container(
                     margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                     decoration: BoxDecoration(color: const Color(0xFF10264A), borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: groupColor.withOpacity(.38)),
@@ -5585,7 +5635,22 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                         ]),
                       ]))),
                     ]))),
-                  );
+                  ), if (data['createdBy'] == uid)
+                    Positioned(
+                      right: 5,
+                      top: 5,
+                      child: Material(
+                        color: const Color(0xDD07152F),
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          tooltip: 'Delete group',
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 19),
+                          onPressed: () => _deleteGroup(doc.id, data),
+                        ),
+                      ),
+                    ),
+                  ]);
                   return Dismissible(
                     key: ValueKey('group-tile-' + doc.id),
                     direction: isMember ? DismissDirection.startToEnd : DismissDirection.none,
