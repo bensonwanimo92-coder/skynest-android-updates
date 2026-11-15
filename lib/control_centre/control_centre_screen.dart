@@ -14,6 +14,7 @@ class ControlCentreScreen extends StatefulWidget {
     required this.onOpenAutomations,
     required this.onOpenBackup,
     required this.onOpenGlobalSearch,
+    required this.onOpenRecycleBin,
   });
 
   final List<String> moduleTitles;
@@ -25,6 +26,7 @@ class ControlCentreScreen extends StatefulWidget {
   final VoidCallback onOpenAutomations;
   final VoidCallback onOpenBackup;
   final VoidCallback onOpenGlobalSearch;
+  final VoidCallback onOpenRecycleBin;
 
   @override
   State<ControlCentreScreen> createState() => _ControlCentreScreenState();
@@ -125,6 +127,17 @@ class _ControlCentreScreenState extends State<ControlCentreScreen> {
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: widget.onOpenAutomations,
               ),
+              if (widget.moduleTitles.contains('Recycle Bin')) ...[
+                const Divider(height: 1, indent: 64),
+                ListTile(
+                  leading: CircleAvatar(backgroundColor: colors.errorContainer,
+                    child: Icon(Icons.delete_sweep_outlined, color: colors.error)),
+                  title: const Text('Recycle Bin'),
+                  subtitle: const Text('Restore deleted records or remove them permanently'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: widget.onOpenRecycleBin,
+                ),
+              ],
               if (widget.moduleTitles.contains('Global search')) ...[
                 const Divider(height: 1, indent: 64),
                 ListTile(
