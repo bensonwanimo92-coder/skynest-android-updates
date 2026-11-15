@@ -1,9 +1,11 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
+
+final AudioPlayer skyNestMediaPlayer = AudioPlayer();
+final ValueNotifier<String?> skyNestNowPlaying = ValueNotifier<String?>(null);
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -20,13 +22,11 @@ class MediaCentreScreen extends StatefulWidget {
 }
 
 class _MediaCentreScreenState extends State<MediaCentreScreen> {
-  final AudioPlayer _audio = AudioPlayer();
   final TextEditingController _url = TextEditingController();
   final List<PlatformFile> _localMedia = [];
   final List<PlatformFile> _downloadedMedia = [];
   final Set<String> _favourites = {};
   List<String> _recentlyPlayed = [];
-  StreamSubscription<void>? _completed;
   String? _playingName;
   String _filter = 'all';
   bool _busy = false;
@@ -38,15 +38,10 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
   void initState() {
     super.initState();
     _loadSavedLibrary();
-    _completed = _audio.onPlayerComplete.listen((_) {
-      if (mounted) setState(() => _playingName = null);
-    });
   }
 
   @override
   void dispose() {
-    _completed?.cancel();
-    _audio.dispose();
     _url.dispose();
     super.dispose();
   }
@@ -149,9 +144,10 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
     }
     if (_isAudio(file.name)) {
       try {
-        await _audio.stop();
-        await _audio.play(DeviceFileSource(path));
+        await skyNestMediaPlayer.stop();
+        await skyNestMediaPlayer.play(DeviceFileSource(path));
         if (mounted) setState(() => _playingName = file.name);
+        skyNestNowPlaying.value = file.name;
         await _recordPlayed(file);
       } catch (error) {
         _message('Could not play this audio file: $error');
@@ -435,7 +431,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
                 trailing: IconButton(
                   tooltip: 'Pause',
                   icon: const Icon(Icons.pause_rounded),
-                  onPressed: () => _audio.pause(),
+                  onPressed: () => skyNestMediaPlayer.pause(),
                 ),
               ),
             ),
@@ -517,6 +513,47 @@ class _MediaVideoScreenState extends State<_MediaVideoScreen> {
                 ),
               ),
       ),
+    );
+  }
+}
+
+
+/// Small in-app player that stays visible while the user navigates SkyNest.
+class SkyNestGlobalMiniPlayer extends StatelessWidget {
+  const SkyNestGlobalMiniPlayer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<String?>(
+      valueListenable: skyNestNowPlaying,
+      builder: (context, title, _) {
+        if (title == null || title.isEmpty) return const SizedBox.shrink();
+        return Material(
+          color: const Color(0xF20A1830),
+          elevation: 12,
+          borderRadius: BorderRadius.circular(18),
+          child: StreamBuilder<PlayerState>(
+            stream: skyNestMediaPlayer.onPlayerStateChanged,
+            initialData: PlayerState.playing,
+            builder: (context, snapshot) {
+              final playing = snapshot.data == PlayerState.playing;
+              return ListTile(
+                dense: true,
+                leading: const Icon(Icons.graphic_eq_rounded, color: Colors.cyanAccent),
+                title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                subtitle: const Text('SkyNest Media', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                trailing: IconButton(
+                  tooltip: playing ? 'Pause playback' : 'Resume playback',
+                  color: Colors.white,
+                  icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                  onPressed: () => playing ? skyNestMediaPlayer.pause() : skyNestMediaPlayer.resume(),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
