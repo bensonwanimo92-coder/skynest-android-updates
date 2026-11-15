@@ -3090,10 +3090,19 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
                     currency.format((d['amount'] as num?)?.toDouble() ?? 0) + ' • ' + status + '\n' + ageLabel),
                   isThreeLine: true,
                   trailing: PopupMenuButton<String>(
-                    onSelected: (value) {
+                    onSelected: (value) async {
                       if (value == 'assign') assignCaretaker(context, doc.id, d);
                       if (value == 'received') markReceived(context, doc.id, d);
-                      if (value == 'reject') doc.reference.update({'status': 'rejected', 'reviewedAt': FieldValue.serverTimestamp()});
+                      if (value == 'reject') {
+                        await doc.reference.update({
+                          'status': 'rejected',
+                          'reviewedAt': FieldValue.serverTimestamp(),
+                        });
+                        final ownerId = d['landlordId']?.toString();
+                        if (ownerId != null && ownerId.isNotEmpty) {
+                          await recordActivity(ownerId, 'Rejected tenant payment submission for house ' + (d['houseNo'] ?? '').toString());
+                        }
+                      }
                     },
                     itemBuilder: (_) => const [
                       PopupMenuItem(value: 'assign', child: Text('Send to caretaker')),
