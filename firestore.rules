@@ -384,21 +384,66 @@ service cloud.firestore {
 
     match /pamphlets/{pamphletId} {
       allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.keys().hasOnly([
+          'title', 'type', 'message', 'swahiliMessage', 'copies',
+          'landlordId', 'createdBy', 'createdAt', 'isPrinted'
+        ]) &&
         request.resource.data.landlordId == request.auth.uid &&
         request.resource.data.createdBy == request.auth.uid &&
-        request.resource.data.title is string && request.resource.data.title.size() > 0 &&
-        request.resource.data.message is string && request.resource.data.message.size() > 0 &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 120 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() > 0 &&
+        request.resource.data.message.size() <= 5000 &&
+        request.resource.data.swahiliMessage is string &&
+        request.resource.data.swahiliMessage.size() <= 5000 &&
         request.resource.data.type in ['rentNotice', 'eviction', 'appreciation', 'rules'] &&
-        request.resource.data.copies is int && request.resource.data.copies >= 1 &&
-        request.resource.data.copies <= 500;
+        request.resource.data.copies is int &&
+        request.resource.data.copies >= 1 &&
+        request.resource.data.copies <= 500 &&
+        request.resource.data.isPrinted == false;
       allow read, delete: if activeUser() && myRole() == 'landlord' &&
         resource.data.landlordId == request.auth.uid;
       allow update: if activeUser() && myRole() == 'landlord' &&
         resource.data.landlordId == request.auth.uid &&
         request.resource.data.landlordId == request.auth.uid &&
         request.resource.data.createdBy == resource.data.createdBy &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isPrinted', 'printedAt']) &&
-        request.resource.data.isPrinted is bool;
+        request.resource.data.keys().hasOnly([
+          'title', 'type', 'message', 'swahiliMessage', 'copies',
+          'landlordId', 'createdBy', 'createdAt', 'isPrinted', 'printedAt'
+        ]) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'type', 'message', 'swahiliMessage', 'copies', 'isPrinted', 'printedAt'
+        ]) &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 120 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() > 0 &&
+        request.resource.data.message.size() <= 5000 &&
+        request.resource.data.swahiliMessage is string &&
+        request.resource.data.swahiliMessage.size() <= 5000 &&
+        request.resource.data.type in ['rentNotice', 'eviction', 'appreciation', 'rules'] &&
+        request.resource.data.copies is int &&
+        request.resource.data.copies >= 1 &&
+        request.resource.data.copies <= 500 &&
+        request.resource.data.isPrinted is bool &&
+        (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'title', 'type', 'message', 'swahiliMessage', 'copies'
+          ]) ||
+          (
+            request.resource.data.isPrinted == false &&
+            !request.resource.data.keys().hasAny(['printedAt'])
+          )
+        ) &&
+        (
+          request.resource.data.isPrinted == false
+            ? !request.resource.data.keys().hasAny(['printedAt'])
+            : request.resource.data.printedAt is timestamp
+        );
     }
 
     match /meters/{id} {

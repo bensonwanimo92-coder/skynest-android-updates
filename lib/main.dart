@@ -4350,7 +4350,14 @@ class _PamphletsScreenState extends State<PamphletsScreen> {
           content: Form(
             key: formKey,
             child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(controller: title, decoration: const InputDecoration(labelText: 'Title'), validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter a title' : null),
+              TextFormField(
+                controller: title,
+                maxLength: 120,
+                decoration: const InputDecoration(labelText: 'Title'),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Enter a title'
+                    : v.trim().length > 120 ? 'Use 120 characters or fewer' : null,
+              ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
                 value: type,
@@ -4364,9 +4371,24 @@ class _PamphletsScreenState extends State<PamphletsScreen> {
                 onChanged: (v) => refresh(() => type = v ?? 'rentNotice'),
               ),
               const SizedBox(height: 10),
-              TextFormField(controller: message, minLines: 3, maxLines: 5, decoration: const InputDecoration(labelText: 'Message (English)'), validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter the message' : null),
+              TextFormField(
+                controller: message,
+                minLines: 3,
+                maxLines: 5,
+                maxLength: 5000,
+                decoration: const InputDecoration(labelText: 'Message (English)'),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Enter the message'
+                    : v.trim().length > 5000 ? 'Message is too long' : null,
+              ),
               const SizedBox(height: 10),
-              TextFormField(controller: swahili, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Swahili version (optional)')),
+              TextFormField(
+                controller: swahili,
+                minLines: 2,
+                maxLines: 4,
+                maxLength: 5000,
+                decoration: const InputDecoration(labelText: 'Swahili version (optional)'),
+              ),
               const SizedBox(height: 10),
               TextFormField(controller: copies, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Number of copies'), validator: (v) {
                 final n = int.tryParse((v ?? '').trim());
@@ -4400,6 +4422,135 @@ class _PamphletsScreenState extends State<PamphletsScreen> {
       if (mounted) snack(context, 'Pamphlet saved.');
     } catch (e) {
       if (mounted) snack(context, 'Could not save pamphlet: ' + e.toString());
+    }
+  }
+
+  Future<void> _editPamphlet(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final data = doc.data();
+    final title = TextEditingController(text: data['title']?.toString() ?? '');
+    final message = TextEditingController(text: data['message']?.toString() ?? '');
+    final swahili = TextEditingController(text: data['swahiliMessage']?.toString() ?? '');
+    final copies = TextEditingController(
+      text: (data['copies'] is num ? (data['copies'] as num).toInt() : 1).toString(),
+    );
+    final formKey = GlobalKey<FormState>();
+    const types = <String>['rentNotice', 'eviction', 'appreciation', 'rules'];
+    String type = types.contains(data['type']) ? data['type'].toString() : 'rentNotice';
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: const Text('Edit pamphlet'),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextFormField(
+                  controller: title,
+                  maxLength: 120,
+                  decoration: const InputDecoration(labelText: 'Title'),
+                  validator: (value) => (value == null || value.trim().isEmpty)
+                      ? 'Enter a title'
+                      : value.trim().length > 120 ? 'Use 120 characters or fewer' : null,
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  value: type,
+                  decoration: const InputDecoration(labelText: 'Pamphlet type'),
+                  items: const [
+                    DropdownMenuItem(value: 'rentNotice', child: Text('Rent notice')),
+                    DropdownMenuItem(value: 'eviction', child: Text('Tenancy notice')),
+                    DropdownMenuItem(value: 'appreciation', child: Text('Appreciation')),
+                    DropdownMenuItem(value: 'rules', child: Text('House rules')),
+                  ],
+                  onChanged: (value) => refresh(() => type = value ?? 'rentNotice'),
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: message,
+                  minLines: 3,
+                  maxLines: 5,
+                  maxLength: 5000,
+                  decoration: const InputDecoration(labelText: 'Message (English)'),
+                  validator: (value) => (value == null || value.trim().isEmpty)
+                      ? 'Enter the message'
+                      : value.trim().length > 5000 ? 'Message is too long' : null,
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: swahili,
+                  minLines: 2,
+                  maxLines: 4,
+                  maxLength: 5000,
+                  decoration: const InputDecoration(labelText: 'Swahili version (optional)'),
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: copies,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Number of copies'),
+                  validator: (value) {
+                    final count = int.tryParse((value ?? '').trim());
+                    return count == null || count < 1 || count > 500
+                        ? 'Enter 1–500 copies'
+                        : null;
+                  },
+                ),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (!formKey.currentState!.validate()) return;
+                Navigator.pop(dialogContext, {
+                  'title': title.text.trim(),
+                  'type': type,
+                  'message': message.text.trim(),
+                  'swahiliMessage': swahili.text.trim(),
+                  'copies': int.parse(copies.text.trim()),
+                });
+              },
+              child: const Text('Save changes'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    title.dispose();
+    message.dispose();
+    swahili.dispose();
+    copies.dispose();
+    if (result == null || !mounted) return;
+
+    try {
+      await doc.reference.update({
+        ...result,
+        'isPrinted': false,
+        'printedAt': FieldValue.delete(),
+      });
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        try {
+          await recordActivity(user.uid, 'Updated pamphlet: ${result['title']}');
+        } catch (error) {
+          debugPrint('Pamphlet updated, but activity logging failed: $error');
+        }
+      }
+      if (mounted) {
+        snack(context, 'Pamphlet updated and returned to Draft status.');
+      }
+    } catch (error) {
+      debugPrint('SkyNest pamphlet update failed: $error');
+      if (mounted) {
+        snack(context, 'Could not update pamphlet. Check your connection and permissions.');
+      }
     }
   }
 
@@ -4652,6 +4803,11 @@ class _PamphletsScreenState extends State<PamphletsScreen> {
                           const SizedBox(height: 4),
                           Text(copies.toString() + ' copies • ' + date, style: Theme.of(context).textTheme.bodySmall),
                           Row(children: [
+                            IconButton(
+                              tooltip: 'Edit pamphlet',
+                              onPressed: () => _editPamphlet(doc),
+                              icon: const Icon(Icons.edit_outlined, size: 19),
+                            ),
                             IconButton(tooltip: 'Print', onPressed: () => _printDocs([doc]), icon: const Icon(Icons.print, size: 19)),
                             IconButton(tooltip: 'Share PDF', onPressed: () => _shareDoc(doc), icon: const Icon(Icons.share, size: 19)),
                             IconButton(tooltip: 'Delete', onPressed: () => _deleteDoc(doc), icon: const Icon(Icons.delete_outline, size: 19)),

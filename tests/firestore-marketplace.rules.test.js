@@ -5,7 +5,7 @@ import {
   initializeTestEnvironment, assertFails, assertSucceeds
 } from "@firebase/rules-unit-testing";
 import {
-  collection, doc, getDoc, serverTimestamp, setDoc, updateDoc, Timestamp
+  collection, deleteField, doc, getDoc, serverTimestamp, setDoc, updateDoc, Timestamp
 } from "firebase/firestore";
 
 const projectId = "demo-skynest-marketplace";
@@ -305,5 +305,62 @@ test("moderation audit log is append-only and administrator-only", async () => {
   }));
   await assertFails(updateDoc(doc(admin, "marketplaceModerationLogs", "audit-1"), {
     reason: "Changed after the fact."
+  }));
+});
+
+test("landlords can edit pamphlet content without changing ownership", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users", "landlord-1"), {
+      role: "landlord",
+      status: "active"
+    });
+    await setDoc(doc(db, "users", "other-landlord"), {
+      role: "landlord",
+      status: "active"
+    });
+  });
+
+  const landlord = env.authenticatedContext("landlord-1").firestore();
+  const pamphlet = doc(landlord, "pamphlets", "rent-reminder");
+  await assertSucceeds(setDoc(pamphlet, {
+    title: "Monthly Rent Reminder",
+    type: "rentNotice",
+    message: "Rent is due on the agreed date.",
+    swahiliMessage: "Kodi inapaswa kulipwa kwa wakati.",
+    copies: 1,
+    landlordId: "landlord-1",
+    createdBy: "landlord-1",
+    createdAt: serverTimestamp(),
+    isPrinted: false
+  }));
+
+  await assertSucceeds(updateDoc(pamphlet, {
+    isPrinted: true,
+    printedAt: serverTimestamp()
+  }));
+  await assertSucceeds(updateDoc(pamphlet, {
+    title: "Updated Rent Reminder",
+    type: "rentNotice",
+    message: "Please pay rent by the agreed date and keep your receipt.",
+    swahiliMessage: "Tafadhali lipa kodi kwa tarehe tuliyokubaliana.",
+    copies: 2,
+    isPrinted: false,
+    printedAt: deleteField()
+  }));
+
+  const saved = await getDoc(pamphlet);
+  assert.equal(saved.data().title, "Updated Rent Reminder");
+  assert.equal(saved.data().copies, 2);
+  assert.equal(saved.data().isPrinted, false);
+  assert.equal("printedAt" in saved.data(), false);
+
+  await assertFails(updateDoc(pamphlet, { landlordId: "other-landlord" }));
+  await assertFails(updateDoc(pamphlet, { copies: 501 }));
+  await assertFails(updateDoc(pamphlet, { type: "unrestricted" }));
+
+  const other = env.authenticatedContext("other-landlord").firestore();
+  await assertFails(updateDoc(doc(other, "pamphlets", "rent-reminder"), {
+    title: "Attempted takeover"
   }));
 });
