@@ -1,8 +1,15 @@
 import 'package:chuka/control_centre/control_centre_screen.dart';
+import '../lib/control_centre/notification_centre.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
   testWidgets('Control Centre saves visible modules and their order', (tester) async {
     List<String>? savedOrder;
     Set<String>? savedHidden;
