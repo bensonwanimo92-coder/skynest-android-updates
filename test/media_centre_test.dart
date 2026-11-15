@@ -15,6 +15,12 @@ void main() {
     expect(find.text('Phone storage'), findsOneWidget);
     expect(find.text('BROWSE ONLINE MUSIC'), findsOneWidget);
     expect(find.text('Search online catalogue'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Play direct link'),
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('ONLINE MEDIA'), findsOneWidget);
     expect(find.text('Play direct link'), findsOneWidget);
     expect(find.text('Open provider'), findsOneWidget);
