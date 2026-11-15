@@ -19,7 +19,6 @@ void main() {
         onOpenNotifications: () {},
         onOpenActivityLog: () {},
         onOpenAutomations: () {},
-        onOpenAutomations: () {},
       ),
     ));
 
@@ -45,6 +44,7 @@ void main() {
         onSave: (_, __) async {},
         onOpenNotifications: () => opened = true,
         onOpenActivityLog: () {},
+        onOpenAutomations: () {},
       ),
     ));
 
