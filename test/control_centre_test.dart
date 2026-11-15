@@ -18,6 +18,8 @@ void main() {
         },
         onOpenNotifications: () {},
         onOpenActivityLog: () {},
+        onOpenAutomations: () {},
+        onOpenAutomations: () {},
       ),
     ));
 
