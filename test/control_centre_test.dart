@@ -26,6 +26,7 @@ void main() {
     expect(find.text('Payments'), findsOneWidget);
     expect(find.text('Reports'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('Save dashboard layout'));
     await tester.tap(find.text('Save dashboard layout'));
     await tester.pumpAndSettle();
 
