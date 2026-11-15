@@ -51,7 +51,19 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList('skynest_media_downloads_v1') ?? [];
+      final savedLocal = prefs.getStringList('skynest_media_local_v1') ?? [];
       final files = <PlatformFile>[];
+      final localFiles = <PlatformFile>[];
+      for (final entry in savedLocal) {
+        try {
+          final data = jsonDecode(entry) as Map<String, dynamic>;
+          final path = data['path']?.toString();
+          final name = data['name']?.toString();
+          if (path != null && path.isNotEmpty && name != null && name.isNotEmpty) {
+            localFiles.add(PlatformFile(name: name, size: (data['size'] as num?)?.toInt() ?? 0, path: path));
+          }
+        } catch (_) {}
+      }
       for (final entry in saved) {
         try {
           final data = jsonDecode(entry) as Map<String, dynamic>;
@@ -64,6 +76,9 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
       }
       if (!mounted) return;
       setState(() {
+        _localMedia
+          ..clear()
+          ..addAll(localFiles);
         _downloadedMedia
           ..clear()
           ..addAll(files);
@@ -92,6 +107,10 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
 
   Future<void> _saveLibraryPreferences() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('skynest_media_local_v1', _localMedia
+      .where((file) => file.path != null)
+      .map((file) => jsonEncode({'name': file.name, 'path': file.path, 'size': file.size}))
+      .toList());
     await prefs.setStringList('skynest_media_downloads_v1', _downloadedMedia
       .where((file) => file.path != null)
       .map((file) => jsonEncode({'name': file.name, 'path': file.path, 'size': file.size}))
@@ -258,6 +277,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
           if (!_localMedia.any((item) => item.path == file.path)) _localMedia.add(file);
         }
       });
+      await _saveLibraryPreferences();
       if (accepted.isEmpty) _message('No supported audio or video files were selected.');
     } catch (error) {
       _message('Could not open phone media: $error');
