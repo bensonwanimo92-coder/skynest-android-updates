@@ -51,7 +51,12 @@ service firebase.storage {
           'image/(jpeg|png|webp)|application/pdf'
         );
       allow update: if false;
-      allow delete: if isGroupMember() && request.auth.uid == userId;
+      allow delete: if request.auth != null && (
+        request.auth.uid == userId ||
+        request.auth.uid == firestore.get(
+          /databases/(default)/documents/groups/$(groupId)
+        ).data.createdBy
+      );
     }
   }
 }
