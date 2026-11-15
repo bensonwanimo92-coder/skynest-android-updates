@@ -13,6 +13,7 @@ class ControlCentreScreen extends StatefulWidget {
     required this.onOpenActivityLog,
     required this.onOpenAutomations,
     required this.onOpenBackup,
+    required this.onOpenGlobalSearch,
   });
 
   final List<String> moduleTitles;
@@ -23,6 +24,7 @@ class ControlCentreScreen extends StatefulWidget {
   final VoidCallback onOpenActivityLog;
   final VoidCallback onOpenAutomations;
   final VoidCallback onOpenBackup;
+  final VoidCallback onOpenGlobalSearch;
 
   @override
   State<ControlCentreScreen> createState() => _ControlCentreScreenState();
@@ -123,6 +125,17 @@ class _ControlCentreScreenState extends State<ControlCentreScreen> {
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: widget.onOpenAutomations,
               ),
+              if (widget.moduleTitles.contains('Global search')) ...[
+                const Divider(height: 1, indent: 64),
+                ListTile(
+                  leading: CircleAvatar(backgroundColor: colors.secondaryContainer,
+                    child: Icon(Icons.search_rounded, color: colors.secondary)),
+                  title: const Text('Global search'),
+                  subtitle: const Text('Find property, tenant, payment and plan records'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: widget.onOpenGlobalSearch,
+                ),
+              ],
               if (widget.moduleTitles.contains('Backup & export')) ...[
                 const Divider(height: 1, indent: 64),
                 ListTile(
