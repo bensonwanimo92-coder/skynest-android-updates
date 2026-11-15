@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:skynest/payments/rent_ledger.dart';
+import 'package:chuka/payments/rent_ledger.dart';
 
 void main() {
   RentInvoiceLedger invoice({
