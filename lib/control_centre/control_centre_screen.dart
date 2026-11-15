@@ -12,6 +12,7 @@ class ControlCentreScreen extends StatefulWidget {
     required this.onOpenNotifications,
     required this.onOpenActivityLog,
     required this.onOpenAutomations,
+    required this.onOpenBackup,
   });
 
   final List<String> moduleTitles;
@@ -21,6 +22,7 @@ class ControlCentreScreen extends StatefulWidget {
   final VoidCallback onOpenNotifications;
   final VoidCallback onOpenActivityLog;
   final VoidCallback onOpenAutomations;
+  final VoidCallback onOpenBackup;
 
   @override
   State<ControlCentreScreen> createState() => _ControlCentreScreenState();
@@ -121,6 +123,17 @@ class _ControlCentreScreenState extends State<ControlCentreScreen> {
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: widget.onOpenAutomations,
               ),
+              if (widget.moduleTitles.contains('Backup & export')) ...[
+                const Divider(height: 1, indent: 64),
+                ListTile(
+                  leading: CircleAvatar(backgroundColor: colors.primaryContainer,
+                    child: Icon(Icons.cloud_download_outlined, color: colors.primary)),
+                  title: const Text('Backup & export'),
+                  subtitle: const Text('Download a portable copy of your business records'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: widget.onOpenBackup,
+                ),
+              ],
               if (widget.moduleTitles.contains('Activity log')) ...[
                 const Divider(height: 1, indent: 64),
                 ListTile(
