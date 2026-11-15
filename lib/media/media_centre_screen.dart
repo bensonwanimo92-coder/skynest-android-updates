@@ -421,6 +421,8 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
   List<PlatformFile> get _visibleMedia => [..._localMedia, ..._downloadedMedia].where((file) {
     if (_filter == 'audio') return _isAudio(file.name);
     if (_filter == 'video') return _isVideo(file.name);
+    if (_filter == 'favourites') return _favourites.contains(file.path);
+    if (_filter == 'downloads') return _downloadedMedia.any((item) => item.path == file.path);
     return true;
   }).toList();
 
@@ -470,6 +472,8 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
               ButtonSegment(value: 'all', label: Text('All'), icon: Icon(Icons.library_music_outlined)),
               ButtonSegment(value: 'audio', label: Text('Songs'), icon: Icon(Icons.music_note_rounded)),
               ButtonSegment(value: 'video', label: Text('Videos'), icon: Icon(Icons.video_library_outlined)),
+              ButtonSegment(value: 'favourites', label: Text('Favourites'), icon: Icon(Icons.favorite_border)),
+              ButtonSegment(value: 'downloads', label: Text('Downloads'), icon: Icon(Icons.download_outlined)),
             ],
             selected: {_filter},
             onSelectionChanged: (value) => setState(() => _filter = value.first),
