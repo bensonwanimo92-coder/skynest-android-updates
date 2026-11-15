@@ -478,6 +478,48 @@ service cloud.firestore {
         resource.data.landlordId == request.auth.uid;
     }
 
+    // Landlord-owned scheduled reminders. Only the owning Landlord can
+    // manage reminder definitions; Cloud Functions owns execution history.
+    match /automations/{automationId} {
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 100 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() > 0 &&
+        request.resource.data.message.size() <= 500 &&
+        request.resource.data.frequency in ['once', 'daily', 'weekly', 'monthly'] &&
+        request.resource.data.nextRunAt is timestamp &&
+        request.resource.data.enabled is bool &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp;
+      allow read, delete: if activeUser() && myRole() == 'landlord' &&
+        resource.data.ownerId == request.auth.uid;
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.ownerId == request.auth.uid &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['title', 'message', 'frequency', 'nextRunAt', 'enabled', 'updatedAt']
+        ) &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 100 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() > 0 &&
+        request.resource.data.message.size() <= 500 &&
+        request.resource.data.frequency in ['once', 'daily', 'weekly', 'monthly'] &&
+        request.resource.data.nextRunAt is timestamp &&
+        request.resource.data.enabled is bool &&
+        request.resource.data.updatedAt is timestamp;
+
+      match /runs/{runId} {
+        allow read: if activeUser() && myRole() == 'landlord' &&
+          get(/databases/$(database)/documents/automations/$(automationId)).data.ownerId == request.auth.uid;
+        allow write: if false;
+      }
+    }
+
     match /activityLogs/{id} {
       allow read: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
       allow create: if activeUser() && landlordFor(request.resource.data.landlordId) &&
