@@ -10,6 +10,7 @@ on:
       - '.github/workflows/mpesa-app-check.yml'
   pull_request:
     branches:
+      - feature/skynest-build-3409
       - feature/skynest-mpesa-cloudflare
     paths:
       - 'lib/**'
