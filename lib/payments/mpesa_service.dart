@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
 
-/// Calls the SkyNest Cloudflare M-Pesa gateway. The base URL is injected at
+/// Calls the SkyNest Google Cloud Run M-Pesa API. The base URL is injected at
 /// build time; no Daraja credentials are ever stored in the Android app.
 class SkyNestMpesaService {
   static const String _baseUrl = String.fromEnvironment('SKYNEST_API_BASE_URL');
