@@ -4,6 +4,7 @@ import 'security/message_encryption.dart';
 import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
 import 'media/media_centre_screen.dart';
+// ignore: duplicate_import -- retained for the legacy direct-message route.
 import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
 import 'services/sound_service.dart';
