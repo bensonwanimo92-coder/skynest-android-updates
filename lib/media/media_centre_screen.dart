@@ -475,16 +475,19 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'all', label: Text('All'), icon: Icon(Icons.library_music_outlined)),
-              ButtonSegment(value: 'audio', label: Text('Songs'), icon: Icon(Icons.music_note_rounded)),
-              ButtonSegment(value: 'video', label: Text('Videos'), icon: Icon(Icons.video_library_outlined)),
-              ButtonSegment(value: 'favourites', label: Text('Favourites'), icon: Icon(Icons.favorite_border)),
-              ButtonSegment(value: 'downloads', label: Text('Downloads'), icon: Icon(Icons.download_outlined)),
-            ],
-            selected: {_filter},
-            onSelectionChanged: (value) => setState(() => _filter = value.first),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'all', label: Text('All'), icon: Icon(Icons.library_music_outlined)),
+                ButtonSegment(value: 'audio', label: Text('Songs'), icon: Icon(Icons.music_note_rounded)),
+                ButtonSegment(value: 'video', label: Text('Videos'), icon: Icon(Icons.video_library_outlined)),
+                ButtonSegment(value: 'favourites', label: Text('Favourites'), icon: Icon(Icons.favorite_border)),
+                ButtonSegment(value: 'downloads', label: Text('Downloads'), icon: Icon(Icons.download_outlined)),
+              ],
+              selected: {_filter},
+              onSelectionChanged: (value) => setState(() => _filter = value.first),
+            ),
           ),
           const SizedBox(height: 12),
           Card(
