@@ -534,7 +534,9 @@ service cloud.firestore {
             profile(request.auth.uid).landlordId == request.resource.data.landlordId
           )
         );
-      allow update, delete: if false;
+      allow update: if false;
+      // Only the landlord who owns the audit stream may remove an entry.
+      allow delete: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
     }
 
     // Landlord-owned soft-deleted business records. The original document is
