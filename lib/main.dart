@@ -414,6 +414,12 @@ class SkynestApp extends StatelessWidget {
                   : Colors.white.withOpacity(0.70),
             ),
             if (child != null) IncomingCallHost(child: child),
+            const Positioned(
+              left: 12,
+              right: 12,
+              bottom: 14,
+              child: SkyNestGlobalMiniPlayer(),
+            ),
           ],
         ),
         home: StartupGate(enableRemoteImages: enableRemoteBackdrops),
