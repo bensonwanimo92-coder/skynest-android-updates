@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
+import 'internet_archive_audio_service.dart';
 
 final AudioPlayer skyNestMediaPlayer = AudioPlayer();
 final ValueNotifier<String?> skyNestNowPlaying = ValueNotifier<String?>(null);
@@ -23,6 +25,11 @@ class MediaCentreScreen extends StatefulWidget {
 
 class _MediaCentreScreenState extends State<MediaCentreScreen> {
   final TextEditingController _url = TextEditingController();
+  final TextEditingController _archiveQuery = TextEditingController();
+  final InternetArchiveAudioService _archiveService = InternetArchiveAudioService();
+  List<InternetArchiveAudioTrack> _archiveTracks = [];
+  bool _archiveBusy = false;
+  String? _archiveError;
   final List<PlatformFile> _localMedia = [];
   final List<PlatformFile> _downloadedMedia = [];
   final Set<String> _favourites = {};
@@ -44,6 +51,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
   @override
   void dispose() {
     _url.dispose();
+    _archiveQuery.dispose();
     super.dispose();
   }
 
@@ -261,6 +269,18 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
   bool _isAudio(String name) => _audioExtensions.contains(_extension(name));
   bool _isVideo(String name) => _videoExtensions.contains(_extension(name));
 
+  Future<Directory> _mediaDirectory(String folder) async {
+    final base = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+    final directory = Directory('${base.path}/SkyNest/$folder');
+    await directory.create(recursive: true);
+    return directory;
+  }
+
+  String _safeFileName(String name) {
+    final cleaned = name.replaceAll(RegExp(r'[^A-Za-z0-9._ ()-]'), '_').trim();
+    return cleaned.isEmpty ? 'skynest_media' : cleaned;
+  }
+
   Future<void> _pickLocal() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -269,18 +289,37 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
         withData: false,
       );
       if (result == null) return;
-      final accepted = result.files.where((file) =>
-        file.path != null && (_isAudio(file.name) || _isVideo(file.name))).toList();
+      setState(() => _busy = true);
+      final directory = await _mediaDirectory('Library');
+      final imported = <PlatformFile>[];
+      for (final picked in result.files) {
+        if (picked.path == null || (!_isAudio(picked.name) && !_isVideo(picked.name))) continue;
+        final source = File(picked.path!);
+        if (!await source.exists()) continue;
+        final baseName = _safeFileName(picked.name);
+        var destination = File('${directory.path}/$baseName');
+        if (await destination.exists()) {
+          final dot = baseName.lastIndexOf('.');
+          final stem = dot > 0 ? baseName.substring(0, dot) : baseName;
+          final ext = dot > 0 ? baseName.substring(dot) : '';
+          destination = File('${directory.path}/${stem}_${DateTime.now().microsecondsSinceEpoch}$ext');
+        }
+        final saved = await source.copy(destination.path);
+        imported.add(PlatformFile(name: picked.name, size: await saved.length(), path: saved.path));
+      }
       if (!mounted) return;
       setState(() {
-        for (final file in accepted) {
+        for (final file in imported) {
           if (!_localMedia.any((item) => item.path == file.path)) _localMedia.add(file);
         }
       });
       await _saveLibraryPreferences();
-      if (accepted.isEmpty) _message('No supported audio or video files were selected.');
+      if (imported.isEmpty) _message('No supported, accessible audio or video files were imported.');
+      else _message('Added ${imported.length} item(s) to your offline SkyNest library.');
     } catch (error) {
-      _message('Could not open phone media: $error');
+      _message('Could not import phone media: $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -288,6 +327,10 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
     final path = file.path;
     if (path == null) {
       _message('This file is not available through a local file path. Select it again from storage.');
+      return;
+    }
+    if (!await File(path).exists()) {
+      _message('This saved file is no longer available. Please import it again from phone storage.');
       return;
     }
     if (_isAudio(file.name)) {
@@ -361,11 +404,22 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
     }
     final name = uri.pathSegments.isEmpty ? 'skynest_media' : uri.pathSegments.last;
     if (!_isAudio(name) && !_isVideo(name)) {
-      _message('Only direct audio/video file links can be downloaded here. Provider web pages are not download links.');
+      _message('Only direct audio/video file links can be downloaded here. Provider pages are not direct downloads.');
       return;
     }
+    await _downloadRemoteMedia(uri, name);
+  }
+
+  Future<void> _downloadArchiveTrack(InternetArchiveAudioTrack track) async {
+    await _downloadRemoteMedia(track.downloadUrl, track.fileName);
+  }
+
+  Future<void> _downloadRemoteMedia(Uri uri, String requestedName) async {
+    if (_busy) return;
     setState(() => _busy = true);
     HttpClient? client;
+    File? destination;
+    IOSink? sink;
     try {
       client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
       final request = await client.getUrl(uri);
@@ -379,33 +433,35 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
           contentType != 'application/octet-stream') {
         throw const FormatException('The server did not return an audio/video file.');
       }
-      final bytes = BytesBuilder(copy: false);
+      final directory = await _mediaDirectory('Downloads');
+      final name = _safeFileName(requestedName);
+      destination = File('${directory.path}/$name');
+      if (await destination.exists()) {
+        final dot = name.lastIndexOf('.');
+        final stem = dot > 0 ? name.substring(0, dot) : name;
+        final ext = dot > 0 ? name.substring(dot) : '';
+        destination = File('${directory.path}/${stem}_${DateTime.now().microsecondsSinceEpoch}$ext');
+      }
+      sink = destination.openWrite();
       var total = 0;
       await for (final chunk in response) {
         total += chunk.length;
         if (total > 250 * 1024 * 1024) {
           throw const FormatException('This download exceeds the 250 MB safety limit.');
         }
-        bytes.add(chunk);
+        sink.add(chunk);
       }
-      final data = bytes.takeBytes();
-      final savedPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save media to phone storage',
-        fileName: name,
-        bytes: data,
-      );
-      if (savedPath == null) {
-        _message('Download cancelled. No file was saved.');
-      } else {
-        final saved = PlatformFile(name: name, size: data.length, path: savedPath);
-        if (mounted) setState(() {
-          _downloadedMedia.removeWhere((item) => item.path == savedPath);
-          _downloadedMedia.insert(0, saved);
-        });
-        await _saveLibraryPreferences();
-        _message('Saved to phone storage: $savedPath');
-      }
+      await sink.flush();
+      await sink.close();
+      sink = null;
+      final saved = PlatformFile(name: name, size: total, path: destination.path);
+      if (!mounted) return;
+      setState(() => _downloadedMedia.insert(0, saved));
+      await _saveLibraryPreferences();
+      _message('Downloaded to SkyNest storage. It is available offline in Downloads.');
     } catch (error) {
+      await sink?.close();
+      if (destination != null && await destination.exists()) await destination.delete();
       _message('Download failed: $error');
     } finally {
       client?.close(force: true);
@@ -413,6 +469,46 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
     }
   }
 
+  Future<void> _searchArchive() async {
+    final query = _archiveQuery.text.trim();
+    setState(() {
+      _archiveBusy = true;
+      _archiveError = null;
+      _archiveTracks = [];
+    });
+    try {
+      final tracks = await _archiveService.search(query);
+      if (!mounted) return;
+      setState(() => _archiveTracks = tracks);
+      if (tracks.isEmpty) {
+        setState(() => _archiveError = 'No matching openly licensed audio was found. Try another search.');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _archiveError = 'Online catalogue could not be reached. Check your connection and try again.');
+      debugPrint('Internet Archive audio search failed: $error');
+    } finally {
+      if (mounted) setState(() => _archiveBusy = false);
+    }
+  }
+
+  Future<void> _playArchiveTrack(InternetArchiveAudioTrack track) async {
+    try {
+      await skyNestMediaPlayer.stop();
+      await skyNestMediaPlayer.play(UrlSource(track.downloadUrl.toString()));
+      if (mounted) setState(() => _playingName = track.title);
+      skyNestNowPlaying.value = track.title;
+    } catch (error) {
+      _message('This online track could not be streamed: $error');
+    }
+  }
+
+  Future<void> _openArchiveDetails(InternetArchiveAudioTrack track) async {
+    final uri = Uri.parse(track.detailsUrl);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      _message('Could not open the Internet Archive item page.');
+    }
+  }
   void _message(String value) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
@@ -504,11 +600,95 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
                 ListTile(
                   leading: const CircleAvatar(child: Icon(Icons.download_for_offline_outlined)),
                   title: const Text('Save a direct media link'),
-                  subtitle: const Text('Downloads are saved through Android’s storage picker'),
+                  subtitle: const Text('Downloads are stored in your SkyNest folder for offline playback'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => _url.text.isNotEmpty ? _downloadDirect() : _message('Enter a media link below first.'),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.public_rounded, color: Colors.cyan),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text('BROWSE ONLINE MUSIC',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w800, letterSpacing: 1.0))),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text('Search Internet Archive audio with declared CC BY, CC BY-SA or public-domain licences. Stream tracks or save them for offline listening.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _archiveQuery,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _searchArchive(),
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search_rounded),
+                      hintText: 'Search jazz, gospel, classical, podcasts…',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _archiveBusy ? null : _searchArchive,
+                      icon: _archiveBusy
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.search_rounded),
+                      label: Text(_archiveBusy ? 'Searching catalogue…' : 'Search online catalogue'),
+                    ),
+                  ),
+                  if (_archiveError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_archiveError!, style: TextStyle(color: colors.onSurfaceVariant)),
+                  ],
+                  if (_archiveTracks.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text('${_archiveTracks.length} licensed result(s)',
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(color: colors.onSurfaceVariant)),
+                    ..._archiveTracks.map((track) => Card(
+                      margin: const EdgeInsets.only(top: 8),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        leading: const CircleAvatar(child: Icon(Icons.music_note_rounded)),
+                        title: Text(track.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+                        subtitle: Text('${track.creator} · ${track.licenseLabel}',
+                          maxLines: 2, overflow: TextOverflow.ellipsis),
+                        trailing: Wrap(
+                          spacing: 0,
+                          children: [
+                            IconButton(
+                              tooltip: 'Stream online',
+                              icon: const Icon(Icons.play_circle_fill_rounded),
+                              onPressed: () => _playArchiveTrack(track),
+                            ),
+                            IconButton(
+                              tooltip: 'Download for offline listening',
+                              icon: const Icon(Icons.download_for_offline_rounded),
+                              onPressed: _busy ? null : () => _downloadArchiveTrack(track),
+                            ),
+                            IconButton(
+                              tooltip: 'View source and licence',
+                              icon: const Icon(Icons.open_in_new_rounded),
+                              onPressed: () => _openArchiveDetails(track),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )),
+                  ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -642,7 +822,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
               ),
             ),
           const SizedBox(height: 8),
-          Text('Online playback and downloads require genuine direct media URLs. A provider’s normal web page is opened externally; SkyNest does not bypass provider restrictions or DRM.',
+          Text('Online catalogue tracks are shown with their declared licence and source. Direct links must point to actual media files; SkyNest does not bypass provider restrictions or DRM.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
         ],
       ),
