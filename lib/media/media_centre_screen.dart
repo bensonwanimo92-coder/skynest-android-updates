@@ -3,14 +3,14 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
-
-final AudioPlayer skyNestMediaPlayer = AudioPlayer();
-final ValueNotifier<String?> skyNestNowPlaying = ValueNotifier<String?>(null);
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+final AudioPlayer skyNestMediaPlayer = AudioPlayer();
+final ValueNotifier<String?> skyNestNowPlaying = ValueNotifier<String?>(null);
 
 /// Media library for local files and direct, user-supplied media URLs.
 /// Web pages are never misrepresented as playable media or download links.
@@ -177,9 +177,10 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
     final name = uri.pathSegments.isEmpty ? uri.host : uri.pathSegments.last;
     if (_isAudio(name)) {
       try {
-        await _audio.stop();
-        await _audio.play(UrlSource(uri.toString()));
+        await skyNestMediaPlayer.stop();
+        await skyNestMediaPlayer.play(UrlSource(uri.toString()));
         if (mounted) setState(() => _playingName = name);
+        skyNestNowPlaying.value = name;
       } catch (error) {
         _message('This link could not be streamed as audio: $error');
       }
