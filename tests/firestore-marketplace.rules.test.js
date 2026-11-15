@@ -402,6 +402,36 @@ test("Recycle Bin is private to its owning active Landlord", async () => {
 });
 
 
+test("group creator can delete the group and its messages but another user cannot", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users", "group-owner"), {
+      role: "landlord", status: "active"
+    });
+    await setDoc(doc(db, "users", "group-outsider"), {
+      role: "landlord", status: "active"
+    });
+    await setDoc(doc(db, "groups", "owned-group"), {
+      name: "Residents", createdBy: "group-owner", landlordId: "group-owner",
+      memberIds: ["group-owner"]
+    });
+    await setDoc(doc(db, "groups", "owned-group", "messages", "message-1"), {
+      senderId: "another-member", ciphertext: "encrypted"
+    });
+    await setDoc(doc(db, "groups", "owned-group", "members", "another-member"), {
+      role: "tenant"
+    });
+  });
+
+  const owner = env.authenticatedContext("group-owner").firestore();
+  const outsider = env.authenticatedContext("group-outsider").firestore();
+  await assertFails(deleteDoc(doc(outsider, "groups", "owned-group")));
+  await assertFails(deleteDoc(doc(outsider, "groups", "owned-group", "messages", "message-1")));
+  await assertSucceeds(deleteDoc(doc(owner, "groups", "owned-group", "messages", "message-1")));
+  await assertSucceeds(deleteDoc(doc(owner, "groups", "owned-group", "members", "another-member")));
+  await assertSucceeds(deleteDoc(doc(owner, "groups", "owned-group")));
+});
+
 test("scheduled automations are restricted to their active Landlord owner", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
