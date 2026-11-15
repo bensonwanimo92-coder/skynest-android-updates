@@ -2812,7 +2812,7 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
         tenant.text = profile.data()?['displayName']?.toString() ?? '';
         house.text = profile.data()?['houseNo']?.toString() ?? '';
         phone.text = profile.data()?['phone']?.toString() ?? '';
-        userRole = 'tenant';
+        setState(() => userRole = 'tenant');
       }
     } catch (_) {}
   }
