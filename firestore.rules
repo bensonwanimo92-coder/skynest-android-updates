@@ -318,7 +318,7 @@ service cloud.firestore {
         allow read: if activeUser() && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
         allow create: if activeUser() && request.auth.uid == memberId &&
           request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
-        allow update, delete: if activeUser() && request.auth.uid == memberId;
+        allow update: if activeUser() && request.auth.uid == memberId;\n        allow delete: if activeUser() && (request.auth.uid == memberId || request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.createdBy);
       }
       match /messages/{messageId} {
         allow read: if activeUser() && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
