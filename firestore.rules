@@ -530,6 +530,31 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Landlord-owned soft-deleted business records. The original document is
+    // restored only by its owner; this bin is never visible to other accounts.
+    match /recycleBin/{itemId} {
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.keys().hasOnly([
+          'ownerId', 'originalCollection', 'originalId', 'recordType',
+          'title', 'originalData', 'deletedAt'
+        ]) &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.originalCollection in ['houses', 'tenants', 'calendarEvents', 'plans', 'pamphlets'] &&
+        request.resource.data.originalId is string &&
+        request.resource.data.recordType is string &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() <= 160 &&
+        request.resource.data.originalData is map &&
+        (
+          request.resource.data.originalData.createdBy == request.auth.uid ||
+          request.resource.data.originalData.landlordId == request.auth.uid
+        ) &&
+        request.resource.data.deletedAt is timestamp;
+      allow read, delete: if activeUser() && myRole() == 'landlord' &&
+        resource.data.ownerId == request.auth.uid;
+      allow update: if false;
+    }
+
     match /plans/{recordId} {
       allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
       allow read, delete: if signedIn() && resource.data.createdBy == request.auth.uid;

@@ -5,7 +5,7 @@ import {
   initializeTestEnvironment, assertFails, assertSucceeds
 } from "@firebase/rules-unit-testing";
 import {
-  collection, deleteField, doc, getDoc, serverTimestamp, setDoc, updateDoc, Timestamp
+  collection, deleteDoc, deleteField, doc, getDoc, serverTimestamp, setDoc, updateDoc, Timestamp
 } from "firebase/firestore";
 
 const projectId = "demo-skynest-marketplace";
@@ -363,4 +363,40 @@ test("landlords can edit pamphlet content without changing ownership", async () 
   await assertFails(updateDoc(doc(other, "pamphlets", "rent-reminder"), {
     title: "Attempted takeover"
   }));
+});
+
+test("Recycle Bin is private to its owning active Landlord", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users", "landlord-1"), { role: "landlord", status: "active" });
+    await setDoc(doc(db, "users", "landlord-2"), { role: "landlord", status: "active" });
+    await setDoc(doc(db, "users", "caretaker-1"), { role: "caretaker", status: "active", landlordId: "landlord-1" });
+  });
+
+  const record = {
+    ownerId: "landlord-1",
+    originalCollection: "houses",
+    originalId: "house-1",
+    recordType: "House",
+    title: "House A1",
+    originalData: { createdBy: "landlord-1", landlordId: "landlord-1", houseNo: "A1" },
+    deletedAt: serverTimestamp()
+  };
+  const owner = env.authenticatedContext("landlord-1").firestore();
+  const other = env.authenticatedContext("landlord-2").firestore();
+  const caretaker = env.authenticatedContext("caretaker-1").firestore();
+  const item = doc(owner, "recycleBin", "item-1");
+
+  await assertSucceeds(setDoc(item, record));
+  await assertSucceeds(getDoc(item));
+  await assertFails(getDoc(doc(other, "recycleBin", "item-1")));
+  await assertFails(setDoc(doc(other, "recycleBin", "forged"), {
+    ...record, ownerId: "landlord-1"
+  }));
+  await assertFails(setDoc(doc(caretaker, "recycleBin", "caretaker-item"), {
+    ...record, ownerId: "caretaker-1",
+    originalData: { createdBy: "caretaker-1" }
+  }));
+  await assertFails(deleteDoc(doc(other, "recycleBin", "item-1")));
+  await assertSucceeds(deleteDoc(item));
 });

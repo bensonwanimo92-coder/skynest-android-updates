@@ -12,6 +12,8 @@ import 'control_centre/notification_centre.dart';
 import 'control_centre/control_centre_screen.dart';
 import 'control_centre/automation_centre.dart';
 import 'control_centre/backup_export_screen.dart';
+import 'control_centre/recycle_bin_screen.dart';
+import 'services/recycle_bin_service.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -1287,6 +1289,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Activity log', Icons.fact_check_outlined, Colors.blueGrey, const ActivityLogScreen()),
         _MenuItem('Automation centre', Icons.auto_awesome_rounded, Colors.cyan, const AutomationCentreScreen()),
         _MenuItem('Backup & export', Icons.cloud_download_outlined, Colors.blueGrey, const BackupExportScreen()),
+        _MenuItem('Recycle Bin', Icons.delete_sweep_outlined, Colors.redAccent, const RecycleBinScreen()),
         _MenuItem('Reports', Icons.analytics_outlined, Colors.deepPurple, const ReportsScreen()),
         _MenuItem('Calculator', Icons.calculate_outlined, Colors.purple, const CalculatorScreen()),
         _MenuItem('Calendar', Icons.calendar_month, Colors.cyan, const CalendarScreen()),
@@ -2419,7 +2422,16 @@ class HousesScreen extends StatelessWidget {
                       IconButton(
                         tooltip: 'Delete house',
                         color: Colors.white,
-                        onPressed: () => confirmDelete(context, 'Delete this house?', () => doc.reference.delete()),
+                        onPressed: () => confirmDelete(
+                          context,
+                          'Move this house to Recycle Bin? You can restore it later.',
+                          () => SkyNestRecycleBinService.moveToTrash(
+                            ownerId: FirebaseAuth.instance.currentUser?.uid ?? '',
+                            collectionName: 'houses',
+                            doc: doc,
+                            recordType: 'House',
+                          ),
+                        ),
                         icon: const Icon(Icons.more_horiz_rounded),
                       ),
                     ])),
@@ -2569,7 +2581,16 @@ class _TenantsScreenState extends State<TenantsScreen> {
                         if (action == 'call') _contactTenant(context, d['phone']?.toString() ?? '', whatsapp: false);
                         if (action == 'whatsapp') _contactTenant(context, d['phone']?.toString() ?? '', whatsapp: true);
                         if (action == 'details') _showTenantDetails(context, d);
-                        if (action == 'remove') confirmDelete(context, 'Remove ' + (d['name']?.toString() ?? 'this tenant') + '? Payment records will remain.', () => doc.reference.delete());
+                        if (action == 'remove') confirmDelete(
+                          context,
+                          'Move ' + (d['name']?.toString() ?? 'this tenant') + ' to Recycle Bin? Payment records will remain.',
+                          () => SkyNestRecycleBinService.moveToTrash(
+                            ownerId: FirebaseAuth.instance.currentUser?.uid ?? '',
+                            collectionName: 'tenants',
+                            doc: doc,
+                            recordType: 'Tenant',
+                          ),
+                        );
                       },
                       itemBuilder: (_) => const [
                         PopupMenuItem(value: 'details', child: ListTile(dense: true, leading: Icon(Icons.badge_outlined), title: Text('View details'))),
@@ -3397,20 +3418,26 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete calendar event?'),
-        content: const Text('This removes the event from your calendar.'),
+        title: const Text('Move calendar event to Recycle Bin?'),
+        content: const Text('You can restore this event later from Recycle Bin.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Move to Recycle Bin')),
         ],
       ),
     );
     if (confirm != true) return;
     try {
-      await FirebaseFirestore.instance.collection('calendarEvents').doc(id).delete();
-      if (mounted) snack(context, 'Event deleted.');
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) throw StateError('Sign in again before deleting this event.');
+      final event = await FirebaseFirestore.instance.collection('calendarEvents').doc(id).get();
+      if (!event.exists) throw StateError('This event no longer exists.');
+      await SkyNestRecycleBinService.moveToTrash(
+        ownerId: uid, collectionName: 'calendarEvents', doc: event, recordType: 'Calendar event',
+      );
+      if (mounted) snack(context, 'Event moved to Recycle Bin.');
     } catch (error) {
-      if (mounted) snack(context, 'Could not delete event: ' + error.toString());
+      if (mounted) snack(context, 'Could not move event: ' + error.toString());
     }
   }
 
@@ -3692,19 +3719,23 @@ class _PlansScreenState extends State<PlansScreen> {
 
   Future<void> _deleteEntry(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
     final confirmed = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
-      title: const Text('Delete this item?'),
-      content: Text('“${doc.data()['title'] ?? 'Plan'}” will be permanently deleted.'),
+      title: const Text('Move this item to Recycle Bin?'),
+      content: Text('“${doc.data()['title'] ?? 'Plan'}” can be restored later.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete')),
+        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Move to Recycle Bin')),
       ],
     ));
     if (confirmed != true) return;
     try {
-      await doc.reference.delete();
-      if (mounted) snack(context, 'Item deleted.');
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) throw StateError('Sign in again before deleting this item.');
+      await SkyNestRecycleBinService.moveToTrash(
+        ownerId: uid, collectionName: 'plans', doc: doc, recordType: 'Plan',
+      );
+      if (mounted) snack(context, 'Item moved to Recycle Bin.');
     } catch (error) {
-      if (mounted) snack(context, 'Could not delete item: $error');
+      if (mounted) snack(context, 'Could not move item: $error');
     }
   }
 
@@ -3712,22 +3743,24 @@ class _PlansScreenState extends State<PlansScreen> {
     final selected = docs.where((doc) => _selectedPlanIds.contains(doc.id)).toList();
     if (selected.isEmpty) return;
     final confirmed = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
-      title: Text('Delete ${selected.length} selected items?'),
-      content: const Text('This action cannot be undone.'),
+      title: Text('Move ${selected.length} selected items to Recycle Bin?'),
+      content: const Text('You can restore these items later.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete all')),
+        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Move all')),
       ],
     ));
     if (confirmed != true) return;
     try {
-      final batch = FirebaseFirestore.instance.batch();
-      for (final doc in selected) { batch.delete(doc.reference); }
-      await batch.commit();
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) throw StateError('Sign in again before deleting these items.');
+      await SkyNestRecycleBinService.moveManyToTrash(
+        ownerId: uid, collectionName: 'plans', docs: selected, recordType: 'Plan',
+      );
       if (mounted) setState(() { _selectedPlanIds.clear(); _selectionEnabled = false; });
-      if (mounted) snack(context, '${selected.length} items deleted.');
+      if (mounted) snack(context, '${selected.length} items moved to Recycle Bin.');
     } catch (error) {
-      if (mounted) snack(context, 'Bulk delete failed: $error');
+      if (mounted) snack(context, 'Bulk move failed: $error');
     }
   }
 
@@ -4715,14 +4748,15 @@ class _PamphletsScreenState extends State<PamphletsScreen> {
     );
     if (confirmed != true) return;
     try {
-      await doc.reference.delete();
       final landlordId = doc.data()['landlordId']?.toString();
-      if (landlordId != null && landlordId.isNotEmpty) {
-        await recordActivity(landlordId, 'Deleted pamphlet: ' + (doc.data()['title']?.toString() ?? 'Untitled'));
-      }
+      if (landlordId == null || landlordId.isEmpty) throw StateError('This pamphlet has no owner.');
+      await SkyNestRecycleBinService.moveToTrash(
+        ownerId: landlordId, collectionName: 'pamphlets', doc: doc, recordType: 'Pamphlet',
+      );
+      await recordActivity(landlordId, 'Moved pamphlet to Recycle Bin: ' + (doc.data()['title']?.toString() ?? 'Untitled'));
       if (mounted) setState(() => selectedIds.remove(doc.id));
     } catch (e) {
-      if (mounted) snack(context, 'Could not delete pamphlet: ' + e.toString());
+      if (mounted) snack(context, 'Could not move pamphlet to Recycle Bin: ' + e.toString());
     }
   }
 
