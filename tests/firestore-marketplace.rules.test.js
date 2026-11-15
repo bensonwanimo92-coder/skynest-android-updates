@@ -456,3 +456,40 @@ test("scheduled automations are restricted to their active Landlord owner", asyn
     ownerId: "landlord-automation-1"
   }));
 });
+
+
+test("activity audit entries are owner-scoped and cannot be forged for another actor", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users", "audit-landlord-1"), {
+      role: "landlord", status: "active"
+    });
+    await setDoc(doc(db, "users", "audit-landlord-2"), {
+      role: "landlord", status: "active"
+    });
+  });
+
+  const owner = env.authenticatedContext("audit-landlord-1").firestore();
+  const other = env.authenticatedContext("audit-landlord-2").firestore();
+  const entry = {
+    landlordId: "audit-landlord-1",
+    actorId: "audit-landlord-1",
+    actorName: "Landlord",
+    actorRole: "landlord",
+    action: "Permanently deleted House: A1",
+    isSuspicious: true,
+    createdAt: serverTimestamp()
+  };
+
+  await assertSucceeds(setDoc(doc(owner, "activityLogs", "audit-1"), entry));
+  await assertSucceeds(getDoc(doc(owner, "activityLogs", "audit-1")));
+  await assertFails(getDoc(doc(other, "activityLogs", "audit-1")));
+  await assertFails(setDoc(doc(other, "activityLogs", "forged-audit"), {
+    ...entry,
+    actorId: "audit-landlord-1"
+  }));
+  await assertFails(updateDoc(doc(owner, "activityLogs", "audit-1"), {
+    action: "Changed audit history"
+  }));
+  await assertFails(deleteDoc(doc(owner, "activityLogs", "audit-1")));
+});
