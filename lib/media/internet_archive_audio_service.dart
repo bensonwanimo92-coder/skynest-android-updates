@@ -36,8 +36,6 @@ class InternetArchiveAudioTrack {
 /// Uses Internet Archive's public Advanced Search and Metadata read APIs.
 /// It never scrapes provider pages or attempts to bypass DRM/access controls.
 class InternetArchiveAudioService {
-  static const _searchEndpoint = 'https://archive.org/advancedsearch.php';
-
   Future<List<InternetArchiveAudioTrack>> search(String query, {int limit = 12}) async {
     final term = query.trim();
     final licenceQuery =
@@ -113,9 +111,8 @@ class InternetArchiveAudioService {
         creator: (metadata['creator'] ?? document['creator'] ?? 'Unknown creator').toString(),
         licenseUrl: license,
         fileName: fileName,
-        downloadUrl: Uri.https(
-          'archive.org',
-          '/download/$identifier/${Uri.encodeComponent(fileName)}',
+        downloadUrl: Uri.parse(
+          'https://archive.org/download/$identifier/${Uri.encodeComponent(fileName)}',
         ),
       );
     } catch (_) {
