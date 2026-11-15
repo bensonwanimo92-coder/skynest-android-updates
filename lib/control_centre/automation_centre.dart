@@ -131,7 +131,7 @@ class _AutomationCentreScreenState extends State<AutomationCentreScreen> {
   Future<void> _toggle(DocumentSnapshot<Map<String, dynamic>> doc, bool enabled) async {
     final data = doc.data() ?? {};
     var nextRunAt = data['nextRunAt'];
-    if (enabled && nextRunAt is Timestamp && !nextRunAt.toDate().isAfter(DateTime.now())) {
+    if (enabled && (nextRunAt is! Timestamp || !nextRunAt.toDate().isAfter(DateTime.now()))) {
       nextRunAt = Timestamp.fromDate(DateTime.now().add(const Duration(minutes: 2)));
     }
     await doc.reference.update({
@@ -146,7 +146,7 @@ class _AutomationCentreScreenState extends State<AutomationCentreScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete this automation?'),
-        content: const Text('The reminder and its run history will be permanently deleted.'),
+        content: const Text('The reminder will be removed. Existing execution history is retained for audit purposes.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
