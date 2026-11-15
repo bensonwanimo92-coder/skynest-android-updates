@@ -1,4 +1,6 @@
 import 'package:chuka/control_centre/control_centre_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../lib/control_centre/backup_export_centre.dart';
 import '../lib/control_centre/notification_centre.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -92,6 +94,38 @@ void main() {
     await SkyNestNotificationStore.emptyTrash('account-a');
     final remaining = await SkyNestNotificationStore.load('account-a');
     expect(remaining.map((item) => item.title), ['Inbox item']);
+  });
+
+
+  test('backup serializer converts Firestore values into JSON-safe values', () {
+    final timestamp = Timestamp.fromDate(DateTime.utc(2026, 11, 15, 9, 30));
+    final normalized = SkyNestBackupSerializer.normalize({
+      'createdAt': timestamp,
+      'location': const GeoPoint(-1.2864, 36.8172),
+      'nested': {'values': [1, true, null, timestamp]},
+    }) as Map<String, dynamic>;
+
+    expect(normalized['createdAt'], '2026-11-15T09:30:00.000Z');
+    expect(normalized['location'], {
+      'latitude': -1.2864,
+      'longitude': 36.8172,
+    });
+    expect(
+      (normalized['nested'] as Map<String, dynamic>)['values'],
+      [1, true, null, '2026-11-15T09:30:00.000Z'],
+    );
+    expect(() => SkyNestBackupSerializer.encode(normalized), returnsNormally);
+  });
+
+  test('backup serializer produces readable valid JSON', () {
+    final encoded = SkyNestBackupSerializer.encode({
+      'format': 'skynest-backup',
+      'schemaVersion': 1,
+      'records': [{'id': 'house-1', 'data': {'houseNo': 'A1', 'rent': 8500}}],
+    });
+
+    expect(encoded, contains('\\n'));
+    expect(encoded, contains('"schemaVersion": 1'));
   });
 
 }
