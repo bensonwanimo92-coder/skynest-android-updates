@@ -127,7 +127,7 @@ class _ControlCentreScreenState extends State<ControlCentreScreen> {
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: widget.onOpenAutomations,
               ),
-              if (widget.moduleTitles.contains('Recycle Bin')) ...[
+              ...[
                 const Divider(height: 1, indent: 64),
                 ListTile(
                   leading: CircleAvatar(backgroundColor: colors.errorContainer,
