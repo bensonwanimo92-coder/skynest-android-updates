@@ -26,6 +26,7 @@ void main() {
         onOpenNotifications: () {},
         onOpenActivityLog: () {},
         onOpenAutomations: () {},
+        onOpenBackup: () {},
       ),
     ));
 
