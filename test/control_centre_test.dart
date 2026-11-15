@@ -36,11 +36,6 @@ void main() {
 
     await tester.scrollUntilVisible(
       find.text('Save dashboard layout'),
-      280,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.scrollUntilVisible(
-      find.text('Save dashboard layout'),
       300,
       scrollable: find.byType(Scrollable).first,
     );
@@ -63,6 +58,7 @@ void main() {
         onOpenNotifications: () => opened = true,
         onOpenActivityLog: () {},
         onOpenAutomations: () {},
+        onOpenBackup: () {},
       ),
     ));
 
