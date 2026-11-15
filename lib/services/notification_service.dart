@@ -31,12 +31,16 @@ class SkyNestNotificationService {
   }) async {
     if (!_initialized) await initialize();
     // Persist before displaying so the notification remains manageable in-app.
-    await SkyNestNotificationStore.add(
-      ownerId: ownerId,
-      title: title,
-      body: body,
-      payload: payload,
-    );
+    try {
+      await SkyNestNotificationStore.add(
+        ownerId: ownerId,
+        title: title,
+        body: body,
+        payload: payload,
+      );
+    } catch (_) {
+      // A local history write must never prevent delivery of the OS notification.
+    }
     await _plugin.show(
       DateTime.now().millisecondsSinceEpoch.remainder(2147483647), title, body,
       const NotificationDetails(android: AndroidNotificationDetails(
