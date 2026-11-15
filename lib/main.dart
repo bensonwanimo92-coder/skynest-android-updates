@@ -1204,6 +1204,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     banner?.dispose();
     _dashboardPageController.dispose();
     super.dispose();
+  }
 
   void _open(BuildContext context, _MenuItem item) {
     Navigator.push(
