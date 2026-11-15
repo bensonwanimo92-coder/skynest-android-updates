@@ -33,6 +33,7 @@ dependencies:
   video_player: ^2.10.0
   flutter_sound: ^9.16.3
   permission_handler: ^11.3.1
+  video_player: ^2.9.2
   flutter_local_notifications: ^18.0.1
 
 dev_dependencies:
