@@ -8,6 +8,7 @@ import 'settings/sound_settings.dart';
 import 'services/sound_service.dart';
 import 'services/voice_service.dart';
 import 'services/notification_service.dart';
+import 'control_centre/notification_centre.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -68,7 +69,7 @@ Future<void> initializePushNotifications() async {
       FirebaseMessaging.onMessage.listen((message) {
         final title = message.notification?.title ?? 'SkyNest';
         final body = message.notification?.body ?? 'You have a new notification.';
-        unawaited(SkyNestNotificationService.showMessage(title: title, body: body, payload: message.data['groupId']?.toString()));
+        unawaited(SkyNestNotificationService.showMessage(ownerId: user.uid, title: title, body: body, payload: message.data['groupId']?.toString()));
       });
       _pushForegroundListenerRegistered = true;
     }
@@ -1254,6 +1255,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     items.add(_MenuItem('Discovery', Icons.explore_rounded, const Color(0xFF06B6D4), const MarketDiscoveryScreen()));
     items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
     items.add(_MenuItem('Security & fingerprint', Icons.fingerprint_rounded, Colors.blueGrey, const SecuritySettingsScreen()));
+    items.add(_MenuItem('Notification centre', Icons.notifications_active_outlined, Colors.deepPurple, NotificationCentreScreen(ownerId: FirebaseAuth.instance.currentUser?.uid ?? 'guest')));
 
     final query = searchQuery.trim().toLowerCase();
     final filteredItems = items.where((item) => item.title.toLowerCase().contains(query)).toList();
@@ -1301,11 +1303,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Notices and announcements',
+            tooltip: 'Notification centre',
             icon: const Icon(Icons.notifications_none_rounded),
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute<void>(builder: (_) => const NoticesScreen()),
+              MaterialPageRoute<void>(builder: (_) => NotificationCentreScreen(
+                ownerId: FirebaseAuth.instance.currentUser?.uid ?? 'guest',
+              )),
             ),
           ),
           Padding(
