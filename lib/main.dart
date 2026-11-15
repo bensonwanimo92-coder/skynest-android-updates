@@ -6984,7 +6984,33 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
                     subtitle: Padding(padding: const EdgeInsets.only(top: 5),
                       child: Text('$actor • $role\n$dateLabel${location.isEmpty ? '' : ' • $location'}')),
                     isThreeLine: true,
-                    trailing: flagged ? const Tooltip(message: 'Potentially sensitive activity', child: Icon(Icons.flag, color: Colors.red)) : null));
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      if (flagged) const Tooltip(message: 'Potentially sensitive activity', child: Icon(Icons.flag, color: Colors.red)),
+                      IconButton(
+                        tooltip: 'Delete activity entry',
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        onPressed: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (dialogContext) => AlertDialog(
+                              title: const Text('Delete activity entry?'),
+                              content: const Text('This removes this entry from your account activity history. This action cannot be undone.'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+                                FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
+                              ],
+                            ),
+                          );
+                          if (confirmed != true) return;
+                          try {
+                            await filtered[index].reference.delete();
+                            if (context.mounted) snack(context, 'Activity entry deleted.');
+                          } catch (error) {
+                            if (context.mounted) snack(context, 'Could not delete activity entry: $error');
+                          }
+                        },
+                      ),
+                    ])));
               });
           })),
       ]),
