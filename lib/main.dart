@@ -11,6 +11,7 @@ import 'services/notification_service.dart';
 import 'control_centre/notification_centre.dart';
 import 'control_centre/control_centre_screen.dart';
 import 'control_centre/automation_centre.dart';
+import 'control_centre/backup_export_centre.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -1321,6 +1322,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
     items.add(_MenuItem('Security & fingerprint', Icons.fingerprint_rounded, Colors.blueGrey, const SecuritySettingsScreen()));
     items.add(_MenuItem('Notification centre', Icons.notifications_active_outlined, Colors.deepPurple, NotificationCentreScreen(ownerId: FirebaseAuth.instance.currentUser?.uid ?? 'guest')));
+    if (userRole == 'landlord') items.add(_MenuItem('Backup & Export', Icons.backup_outlined, Colors.teal, const BackupExportCentreScreen()));
 
     final query = searchQuery.trim().toLowerCase();
     final orderedItems = List<_MenuItem>.from(items);
