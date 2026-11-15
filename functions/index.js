@@ -385,48 +385,100 @@ exports.runScheduledAutomations = onSchedule({
         message: String(data.message || "").slice(0, 500),
         dueAt,
         frequency,
+        retryDeviceIds: Array.isArray(data.retryDeviceIds) ? data.retryDeviceIds : null,
+        retryAttempts: Number.isInteger(data.retryAttempts) ? data.retryAttempts : 0,
       };
     });
     if (!claimed || !claimed.ownerId) continue;
 
     let status = "sent";
     let errorMessage = null;
+    let failedDeviceIds = [];
+    let terminalFailureCount = 0;
+    let successCount = 0;
+    const retryAttempt = claimed.retryAttempts + 1;
     try {
       const devices = await db.collection("users").doc(claimed.ownerId)
         .collection("devices").get();
-      const tokens = devices.docs.map((device) => ({
-        token: device.get("token"), ref: device.ref,
+      const registered = devices.docs.map((device) => ({
+        id: device.id,
+        token: device.get("token"),
+        ref: device.ref,
       })).filter((device) => typeof device.token === "string" && device.token.length > 0);
-      if (!tokens.length) throw new Error("No registered devices are available for this account.");
-      for (let offset = 0; offset < tokens.length; offset += 500) {
-        const batch = tokens.slice(offset, offset + 500);
+      const targets = claimed.retryDeviceIds
+        ? registered.filter((device) => claimed.retryDeviceIds.includes(device.id))
+        : registered;
+      if (!targets.length) throw new Error("No registered devices are available for this account or retry.");
+
+      for (let offset = 0; offset < targets.length; offset += 500) {
+        const batch = targets.slice(offset, offset + 500);
         const result = await getMessaging().sendEachForMulticast({
           tokens: batch.map((item) => item.token),
           notification: { title: claimed.title, body: claimed.message },
           data: { type: "automation_reminder", automationId: ref.id },
           android: { priority: "high", notification: { channelId: "skynest_messages_v2", sound: "pop" } },
         });
+
         const stale = [];
         result.responses.forEach((response, index) => {
-          if (!response.success && response.error &&
+          if (response.success) {
+            successCount += 1;
+          } else if (response.error &&
               ["messaging/registration-token-not-registered", "messaging/invalid-registration-token"].includes(response.error.code)) {
+            terminalFailureCount += 1;
             stale.push(batch[index].ref.delete());
+          } else {
+            failedDeviceIds.push(batch[index].id);
           }
         });
         if (stale.length) await Promise.all(stale);
-        if (result.failureCount === batch.length) {
-          throw new Error("Push delivery failed for every registered device in this batch.");
+      }
+
+      if (failedDeviceIds.length) {
+        status = successCount > 0 ? "partial" : "failed";
+        errorMessage = failedDeviceIds.length + " device(s) did not accept the reminder; retry scheduled.";
+        if (retryAttempt < 3) {
+          await ref.set({
+            enabled: true,
+            nextRunAt: claimed.dueAt,
+            retryDeviceIds: failedDeviceIds,
+            retryAttempts: retryAttempt,
+          }, { merge: true });
+        } else {
+          await ref.set({
+            enabled: claimed.frequency !== "once",
+            retryDeviceIds: FieldValue.delete(),
+            retryAttempts: 0,
+          }, { merge: true });
+          errorMessage = failedDeviceIds.length + " device(s) still failed after three attempts.";
         }
+      } else {
+        if (terminalFailureCount > 0) {
+          status = successCount > 0 ? "partial" : "failed";
+          errorMessage = terminalFailureCount + " stale device token(s) were removed.";
+        }
+        await ref.set({
+          retryDeviceIds: FieldValue.delete(),
+          retryAttempts: 0,
+        }, { merge: true });
       }
     } catch (error) {
       status = "failed";
       errorMessage = String(error && error.message ? error.message : error).slice(0, 500);
-      // Re-enable the reminder at its original due time so the next scheduler
-      // pass retries it. The transaction claim prevents concurrent duplicates.
-      await ref.set({
-        enabled: true,
-        nextRunAt: claimed.dueAt,
-      }, { merge: true });
+      if (retryAttempt < 3) {
+        await ref.set({
+          enabled: true,
+          nextRunAt: claimed.dueAt,
+          retryAttempts: retryAttempt,
+        }, { merge: true });
+      } else {
+        await ref.set({
+          enabled: claimed.frequency !== "once",
+          retryDeviceIds: FieldValue.delete(),
+          retryAttempts: 0,
+        }, { merge: true });
+        errorMessage = "Stopped after three attempts: " + errorMessage;
+      }
     }
 
     const completedAt = FieldValue.serverTimestamp();
@@ -442,6 +494,9 @@ exports.runScheduledAutomations = onSchedule({
       scheduledFor: claimed.dueAt,
       completedAt,
       createdAt: completedAt,
+      retryAttempt,
+      deliveredDeviceCount: successCount,
+      failedDeviceCount: failedDeviceIds.length + terminalFailureCount,
     });
   }
 });
