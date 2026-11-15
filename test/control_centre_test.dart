@@ -33,7 +33,11 @@ void main() {
     expect(find.text('Payments'), findsOneWidget);
     expect(find.text('Reports'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('Save dashboard layout'));
+    await tester.scrollUntilVisible(
+      find.text('Save dashboard layout'),
+      280,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.scrollUntilVisible(
       find.text('Save dashboard layout'),
       300,
