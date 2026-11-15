@@ -264,6 +264,7 @@ jobs:
               "android.permission.POST_NOTIFICATIONS",
               "android.permission.READ_MEDIA_IMAGES",
               "android.permission.READ_MEDIA_VIDEO",
+              "android.permission.READ_MEDIA_AUDIO",
           ]
           present = {p.get(android + "name") for p in root.findall("uses-permission")}
           # Camera is optional at install time; voice calling remains available on devices without one.
