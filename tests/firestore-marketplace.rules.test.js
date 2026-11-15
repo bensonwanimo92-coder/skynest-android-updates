@@ -400,3 +400,59 @@ test("Recycle Bin is private to its owning active Landlord", async () => {
   await assertFails(deleteDoc(doc(other, "recycleBin", "item-1")));
   await assertSucceeds(deleteDoc(item));
 });
+
+
+test("scheduled automations are restricted to their active Landlord owner", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users", "landlord-automation-1"), {
+      role: "landlord", status: "active"
+    });
+    await setDoc(doc(db, "users", "landlord-automation-2"), {
+      role: "landlord", status: "active"
+    });
+    await setDoc(doc(db, "users", "inactive-landlord"), {
+      role: "landlord", status: "suspended"
+    });
+  });
+
+  const owner = env.authenticatedContext("landlord-automation-1").firestore();
+  const other = env.authenticatedContext("landlord-automation-2").firestore();
+  const inactive = env.authenticatedContext("inactive-landlord").firestore();
+  const reminder = {
+    ownerId: "landlord-automation-1",
+    title: "Monthly rent reminder",
+    message: "Check rent collection for this month.",
+    frequency: "monthly",
+    nextRunAt: Timestamp.fromDate(new Date(Date.now() + 86400000)),
+    enabled: true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    attemptCount: 0
+  };
+
+  const ref = doc(owner, "automations", "rent-reminder");
+  await assertSucceeds(setDoc(ref, reminder));
+  await assertSucceeds(getDoc(ref));
+  await assertFails(getDoc(doc(other, "automations", "rent-reminder")));
+  await assertFails(getDoc(doc(inactive, "automations", "rent-reminder")));
+
+  await assertSucceeds(updateDoc(ref, {
+    enabled: false,
+    updatedAt: serverTimestamp()
+  }));
+  await assertFails(updateDoc(doc(other, "automations", "rent-reminder"), {
+    enabled: false,
+    updatedAt: serverTimestamp()
+  }));
+  await assertFails(updateDoc(ref, {
+    ownerId: "landlord-automation-2",
+    updatedAt: serverTimestamp()
+  }));
+
+  await assertSucceeds(deleteDoc(ref));
+  await assertFails(setDoc(doc(other, "automations", "forged-reminder"), {
+    ...reminder,
+    ownerId: "landlord-automation-1"
+  }));
+});
