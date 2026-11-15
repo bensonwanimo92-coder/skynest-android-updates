@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SkyNestRecycleBinService {
   SkyNestRecycleBinService._();
@@ -19,6 +20,28 @@ class SkyNestRecycleBinService {
     'pamphlets': 'Pamphlet',
   };
 
+  /// Audit entries are best-effort: a logging outage must never undo a
+  /// successful user-requested recycle-bin operation.
+  static Future<void> _recordAuditEvent(String ownerId, String action) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final db = FirebaseFirestore.instance;
+      final profile = await db.collection('users').doc(user.uid).get();
+      final profileData = profile.data() ?? <String, dynamic>{};
+      await db.collection('activityLogs').add({
+        'landlordId': ownerId,
+        'actorId': user.uid,
+        'actorName': profileData['displayName'] ?? user.displayName ?? 'Account',
+        'actorRole': profileData['role'] ?? 'unknown',
+        'action': action,
+        'isSuspicious': action.toLowerCase().contains('permanently deleted') || action.toLowerCase().contains('emptied'),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // Keep the primary operation successful even if audit logging is unavailable.
+    }
+  }
   static String _titleFor(String collectionName, Map<String, dynamic> data) {
     switch (collectionName) {
       case 'houses':
@@ -74,6 +97,8 @@ class SkyNestRecycleBinService {
         batch.delete(doc.reference);
       }
       await batch.commit();
+      final count = docs.skip(start).take(200).where((doc) => doc.exists && doc.data() != null).length;
+      if (count > 0) await _recordAuditEvent(ownerId, 'Moved $count $recordType record(s) to Recycle Bin');
     }
   }
 
@@ -107,6 +132,7 @@ class SkyNestRecycleBinService {
       transaction.set(originalRef, Map<String, dynamic>.from(originalData));
       transaction.delete(item.reference);
     });
+    await _recordAuditEvent(ownerId, 'Restored ' + (data['recordType']?.toString() ?? 'record') + ': ' + (data['title']?.toString() ?? originalId));
   }
 
   static Future<void> deletePermanently({
@@ -117,6 +143,8 @@ class SkyNestRecycleBinService {
       throw StateError('This Recycle Bin item does not belong to your account.');
     }
     await item.reference.delete();
+    final data = item.data() ?? <String, dynamic>{};
+    await _recordAuditEvent(ownerId, 'Permanently deleted ' + (data['recordType']?.toString() ?? 'record') + ': ' + (data['title']?.toString() ?? item.id));
   }
 
   static Future<void> empty({
@@ -133,5 +161,6 @@ class SkyNestRecycleBinService {
       }
       await batch.commit();
     }
+    if (items.isNotEmpty) await _recordAuditEvent(ownerId, 'Emptied Recycle Bin: permanently deleted ' + items.length.toString() + ' record(s)');
   }
 }
