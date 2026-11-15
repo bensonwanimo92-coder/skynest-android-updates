@@ -5,7 +5,7 @@ import {
   initializeTestEnvironment, assertFails, assertSucceeds
 } from "@firebase/rules-unit-testing";
 import {
-  collection, deleteField, doc, getDoc, serverTimestamp, setDoc, updateDoc, Timestamp
+  collection, deleteDoc, deleteField, doc, getDoc, serverTimestamp, setDoc, updateDoc, Timestamp
 } from "firebase/firestore";
 
 const projectId = "demo-skynest-marketplace";
@@ -363,4 +363,198 @@ test("landlords can edit pamphlet content without changing ownership", async () 
   await assertFails(updateDoc(doc(other, "pamphlets", "rent-reminder"), {
     title: "Attempted takeover"
   }));
+});
+
+test("Recycle Bin is private to its owning active Landlord", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users", "landlord-1"), { role: "landlord", status: "active" });
+    await setDoc(doc(db, "users", "landlord-2"), { role: "landlord", status: "active" });
+    await setDoc(doc(db, "users", "caretaker-1"), { role: "caretaker", status: "active", landlordId: "landlord-1" });
+  });
+
+  const record = {
+    ownerId: "landlord-1",
+    originalCollection: "houses",
+    originalId: "house-1",
+    recordType: "House",
+    title: "House A1",
+    originalData: { createdBy: "landlord-1", landlordId: "landlord-1", houseNo: "A1" },
+    deletedAt: serverTimestamp()
+  };
+  const owner = env.authenticatedContext("landlord-1").firestore();
+  const other = env.authenticatedContext("landlord-2").firestore();
+  const caretaker = env.authenticatedContext("caretaker-1").firestore();
+  const item = doc(owner, "recycleBin", "item-1");
+
+  await assertSucceeds(setDoc(item, record));
+  await assertSucceeds(getDoc(item));
+  await assertFails(getDoc(doc(other, "recycleBin", "item-1")));
+  await assertFails(setDoc(doc(other, "recycleBin", "forged"), {
+    ...record, ownerId: "landlord-1"
+  }));
+  await assertFails(setDoc(doc(caretaker, "recycleBin", "caretaker-item"), {
+    ...record, ownerId: "caretaker-1",
+    originalData: { createdBy: "caretaker-1" }
+  }));
+  await assertFails(deleteDoc(doc(other, "recycleBin", "item-1")));
+  await assertSucceeds(deleteDoc(item));
+});
+
+
+test("group creator can delete the group and its messages but another user cannot", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users", "group-owner"), {
+      role: "landlord", status: "active"
+    });
+    await setDoc(doc(db, "users", "group-outsider"), {
+      role: "landlord", status: "active"
+    });
+    await setDoc(doc(db, "groups", "owned-group"), {
+      name: "Residents", createdBy: "group-owner", landlordId: "group-owner",
+      memberIds: ["group-owner"]
+    });
+    await setDoc(doc(db, "groups", "owned-group", "messages", "message-1"), {
+      senderId: "another-member", ciphertext: "encrypted"
+    });
+    await setDoc(doc(db, "groups", "owned-group", "members", "another-member"), {
+      role: "tenant"
+    });
+  });
+
+  const owner = env.authenticatedContext("group-owner").firestore();
+  const outsider = env.authenticatedContext("group-outsider").firestore();
+  await assertFails(deleteDoc(doc(outsider, "groups", "owned-group")));
+  await assertFails(deleteDoc(doc(outsider, "groups", "owned-group", "messages", "message-1")));
+  await assertSucceeds(deleteDoc(doc(owner, "groups", "owned-group", "messages", "message-1")));
+  await assertSucceeds(deleteDoc(doc(owner, "groups", "owned-group", "members", "another-member")));
+  await assertSucceeds(deleteDoc(doc(owner, "groups", "owned-group")));
+});
+
+test("scheduled automations are restricted to their active Landlord owner", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users", "landlord-automation-1"), {
+      role: "landlord", status: "active"
+    });
+    await setDoc(doc(db, "users", "landlord-automation-2"), {
+      role: "landlord", status: "active"
+    });
+    await setDoc(doc(db, "users", "inactive-landlord"), {
+      role: "landlord", status: "suspended"
+    });
+  });
+
+  const owner = env.authenticatedContext("landlord-automation-1").firestore();
+  const other = env.authenticatedContext("landlord-automation-2").firestore();
+  const inactive = env.authenticatedContext("inactive-landlord").firestore();
+  const reminder = {
+    ownerId: "landlord-automation-1",
+    title: "Monthly rent reminder",
+    message: "Check rent collection for this month.",
+    frequency: "monthly",
+    nextRunAt: Timestamp.fromDate(new Date(Date.now() + 86400000)),
+    enabled: true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    attemptCount: 0
+  };
+
+  const ref = doc(owner, "automations", "rent-reminder");
+  await assertSucceeds(setDoc(ref, reminder));
+  await assertSucceeds(getDoc(ref));
+  await assertFails(getDoc(doc(other, "automations", "rent-reminder")));
+  await assertFails(getDoc(doc(inactive, "automations", "rent-reminder")));
+
+  await assertSucceeds(updateDoc(ref, {
+    enabled: false,
+    updatedAt: serverTimestamp()
+  }));
+  await assertFails(updateDoc(doc(other, "automations", "rent-reminder"), {
+    enabled: false,
+    updatedAt: serverTimestamp()
+  }));
+  await assertFails(updateDoc(ref, {
+    ownerId: "landlord-automation-2",
+    updatedAt: serverTimestamp()
+  }));
+
+  await assertSucceeds(deleteDoc(ref));
+  await assertFails(setDoc(doc(other, "automations", "forged-reminder"), {
+    ...reminder,
+    ownerId: "landlord-automation-1"
+  }));
+});
+
+
+test("linked tenants can record their own payment activity but cannot forge another actor or landlord", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users", "audit-landlord-tenant-owner"), {
+      role: "landlord", status: "active"
+    });
+    await setDoc(doc(db, "users", "audit-tenant-1"), {
+      role: "tenant", status: "active", landlordId: "audit-landlord-tenant-owner"
+    });
+  });
+
+  const tenant = env.authenticatedContext("audit-tenant-1").firestore();
+  const ownEvent = {
+    landlordId: "audit-landlord-tenant-owner",
+    actorId: "audit-tenant-1",
+    actorName: "Tenant",
+    actorRole: "tenant",
+    action: "Submitted rent payment",
+    isSuspicious: false,
+    createdAt: serverTimestamp()
+  };
+
+  await assertSucceeds(setDoc(doc(tenant, "activityLogs", "tenant-audit-1"), ownEvent));
+  await assertFails(getDoc(doc(tenant, "activityLogs", "tenant-audit-1")));
+  await assertFails(setDoc(doc(tenant, "activityLogs", "forged-landlord"), {
+    ...ownEvent,
+    landlordId: "another-landlord"
+  }));
+  await assertFails(setDoc(doc(tenant, "activityLogs", "forged-actor"), {
+    ...ownEvent,
+    actorId: "audit-landlord-tenant-owner"
+  }));
+});
+
+test("activity audit entries are owner-scoped and cannot be forged for another actor", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users", "audit-landlord-1"), {
+      role: "landlord", status: "active"
+    });
+    await setDoc(doc(db, "users", "audit-landlord-2"), {
+      role: "landlord", status: "active"
+    });
+  });
+
+  const owner = env.authenticatedContext("audit-landlord-1").firestore();
+  const other = env.authenticatedContext("audit-landlord-2").firestore();
+  const entry = {
+    landlordId: "audit-landlord-1",
+    actorId: "audit-landlord-1",
+    actorName: "Landlord",
+    actorRole: "landlord",
+    action: "Permanently deleted House: A1",
+    isSuspicious: true,
+    createdAt: serverTimestamp()
+  };
+
+  await assertSucceeds(setDoc(doc(owner, "activityLogs", "audit-1"), entry));
+  await assertSucceeds(getDoc(doc(owner, "activityLogs", "audit-1")));
+  await assertFails(getDoc(doc(other, "activityLogs", "audit-1")));
+  await assertFails(setDoc(doc(other, "activityLogs", "forged-audit"), {
+    ...entry,
+    actorId: "audit-landlord-1"
+  }));
+  await assertFails(updateDoc(doc(owner, "activityLogs", "audit-1"), {
+    action: "Changed audit history"
+  }));
+  await assertFails(deleteDoc(doc(other, "activityLogs", "audit-1")));
+  await assertSucceeds(deleteDoc(doc(owner, "activityLogs", "audit-1")));
 });

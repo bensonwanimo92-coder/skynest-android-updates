@@ -3,11 +3,20 @@ import 'calls/skynest_call_screen.dart';
 import 'security/message_encryption.dart';
 import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
+import 'media/media_centre_screen.dart';
+// ignore: duplicate_import -- retained for the legacy direct-message route.
 import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
 import 'services/sound_service.dart';
 import 'services/voice_service.dart';
 import 'services/notification_service.dart';
+import 'control_centre/notification_centre.dart';
+import 'control_centre/control_centre_screen.dart';
+import 'control_centre/automation_centre.dart';
+import 'control_centre/backup_export_screen.dart';
+import 'control_centre/global_search_screen.dart';
+import 'control_centre/recycle_bin_screen.dart';
+import 'services/recycle_bin_service.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -68,7 +77,7 @@ Future<void> initializePushNotifications() async {
       FirebaseMessaging.onMessage.listen((message) {
         final title = message.notification?.title ?? 'SkyNest';
         final body = message.notification?.body ?? 'You have a new notification.';
-        unawaited(SkyNestNotificationService.showMessage(title: title, body: body, payload: message.data['groupId']?.toString()));
+        unawaited(SkyNestNotificationService.showMessage(ownerId: user.uid, title: title, body: body, payload: message.data['groupId']?.toString()));
       });
       _pushForegroundListenerRegistered = true;
     }
@@ -405,6 +414,12 @@ class SkynestApp extends StatelessWidget {
                   : Colors.white.withOpacity(0.70),
             ),
             if (child != null) IncomingCallHost(child: child),
+            const Positioned(
+              left: 12,
+              right: 12,
+              bottom: 14,
+              child: SkyNestGlobalMiniPlayer(),
+            ),
           ],
         ),
         home: StartupGate(enableRemoteImages: enableRemoteBackdrops),
@@ -1059,10 +1074,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool loaded = false;
   String userRole = 'landlord';
   String searchQuery = '';
+  List<String> _dashboardOrder = [];
+  Set<String> _hiddenDashboardTiles = {};
+  final PageController _dashboardPageController = PageController(viewportFraction: 0.78);
+  int _activeDashboardIndex = 0;
 
   @override
   void initState() {
     super.initState();
+    _loadDashboardPreferences();
     _loadUserRole();
     initializePushNotifications();
     // Ads are optional and must never block the dashboard.
@@ -1090,6 +1110,90 @@ class _DashboardScreenState extends State<DashboardScreen> {
     )..load();
   }
 
+  String get _dashboardPreferenceKey {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    return 'skynest_dashboard_layout_v1_$uid';
+  }
+
+  Future<void> _loadDashboardPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final order = prefs.getStringList('${_dashboardPreferenceKey}_order') ?? [];
+      final hidden = prefs.getStringList('${_dashboardPreferenceKey}_hidden') ?? [];
+      if (!mounted) return;
+      setState(() {
+        _dashboardOrder = order;
+        _hiddenDashboardTiles = hidden.toSet();
+      });
+    } catch (error) {
+      debugPrint('Dashboard preferences could not be loaded: $error');
+    }
+  }
+
+  Future<void> _saveDashboardPreferences(List<String> order, Set<String> hidden) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('${_dashboardPreferenceKey}_order', order);
+    await prefs.setStringList('${_dashboardPreferenceKey}_hidden', hidden.toList());
+    if (!mounted) return;
+    setState(() {
+      _dashboardOrder = List<String>.from(order);
+      _hiddenDashboardTiles = Set<String>.from(hidden);
+    });
+  }
+
+  void _openControlCentre(BuildContext context, List<_MenuItem> items) {
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => ControlCentreScreen(
+          moduleTitles: items.map((item) => item.title).toList(),
+          initialOrder: _dashboardOrder,
+          initialHidden: _hiddenDashboardTiles,
+          onSave: _saveDashboardPreferences,
+          onOpenNotifications: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => NotificationCentreScreen(
+              ownerId: FirebaseAuth.instance.currentUser?.uid ?? 'guest',
+            )),
+          ),
+          onOpenActivityLog: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const ActivityLogScreen()),
+          ),
+          onOpenAutomations: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const AutomationCentreScreen()),
+          ),
+          onOpenBackup: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const BackupExportScreen()),
+          ),
+          onOpenGlobalSearch: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => GlobalSearchScreen(onOpenCollection: (collection) {
+              final Widget destination;
+              switch (collection) {
+                case 'houses': destination = const HousesScreen(); break;
+                case 'tenants': destination = const TenantsScreen(); break;
+                case 'payments': destination = const PaymentsScreen(); break;
+                case 'plans': destination = const PlansScreen(); break;
+                case 'calendarEvents': destination = const CalendarScreen(); break;
+                case 'activityLogs': destination = const ActivityLogScreen(); break;
+                case 'complaints': destination = const ComplaintsScreen(); break;
+                default: destination = const ReportsScreen();
+              }
+              Navigator.push(context, MaterialPageRoute<void>(builder: (_) => destination));
+            })),
+          ),
+          onOpenRecycleBin: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const RecycleBinScreen()),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _loadUserRole() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || !firebaseReady) return;
@@ -1104,6 +1208,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     banner?.dispose();
+    _dashboardPageController.dispose();
     super.dispose();
   }
 
@@ -1215,6 +1320,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
         _MenuItem('Electricity', Icons.electric_bolt, Colors.amber, const ElectricityScreen()),
         _MenuItem('Activity log', Icons.fact_check_outlined, Colors.blueGrey, const ActivityLogScreen()),
+        _MenuItem('Automation centre', Icons.auto_awesome_rounded, Colors.cyan, const AutomationCentreScreen()),
+        _MenuItem('Backup & export', Icons.cloud_download_outlined, Colors.blueGrey, const BackupExportScreen()),
+        _MenuItem('Global search', Icons.search_rounded, Colors.teal, GlobalSearchScreen(onOpenCollection: (collection) {
+          final Widget destination;
+          switch (collection) {
+            case 'houses': destination = const HousesScreen(); break;
+            case 'tenants': destination = const TenantsScreen(); break;
+            case 'payments': destination = const PaymentsScreen(); break;
+            case 'plans': destination = const PlansScreen(); break;
+            case 'calendarEvents': destination = const CalendarScreen(); break;
+            case 'activityLogs': destination = const ActivityLogScreen(); break;
+            case 'complaints': destination = const ComplaintsScreen(); break;
+            default: destination = const ReportsScreen();
+          }
+          Navigator.push(context, MaterialPageRoute<void>(builder: (_) => destination));
+        })),
         _MenuItem('Reports', Icons.analytics_outlined, Colors.deepPurple, const ReportsScreen()),
         _MenuItem('Calculator', Icons.calculate_outlined, Colors.purple, const CalculatorScreen()),
         _MenuItem('Calendar', Icons.calendar_month, Colors.cyan, const CalendarScreen()),
@@ -1252,11 +1373,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     items.add(_MenuItem('Discovery', Icons.explore_rounded, const Color(0xFF06B6D4), const MarketDiscoveryScreen()));
+    items.add(_MenuItem('Media Centre', Icons.library_music_rounded, const Color(0xFF22D3EE), const MediaCentreScreen()));
     items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
     items.add(_MenuItem('Security & fingerprint', Icons.fingerprint_rounded, Colors.blueGrey, const SecuritySettingsScreen()));
+    items.add(_MenuItem('Notification centre', Icons.notifications_active_outlined, Colors.deepPurple, NotificationCentreScreen(ownerId: FirebaseAuth.instance.currentUser?.uid ?? 'guest')));
 
     final query = searchQuery.trim().toLowerCase();
-    final filteredItems = items.where((item) => item.title.toLowerCase().contains(query)).toList();
+    final orderedItems = List<_MenuItem>.from(items);
+    final orderIndex = <String, int>{for (var i = 0; i < _dashboardOrder.length; i++) _dashboardOrder[i]: i};
+    orderedItems.sort((a, b) => (orderIndex[a.title] ?? 9999).compareTo(orderIndex[b.title] ?? 9999));
+    // Utility destinations stay in the app bar/control centre, not in the rotating card deck.
+    final filteredItems = orderedItems.where((item) =>
+      item.title != 'Recycle Bin' &&
+      !_hiddenDashboardTiles.contains(item.title) &&
+      item.title.toLowerCase().contains(query)).toList();
     final displayName = FirebaseAuth.instance.currentUser?.displayName?.trim();
     final initial = displayName != null && displayName.isNotEmpty
         ? displayName.characters.first.toUpperCase()
@@ -1301,11 +1431,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Notices and announcements',
+            tooltip: 'SkyNest Control Centre',
+            icon: const Icon(Icons.tune_rounded),
+            onPressed: () => _openControlCentre(context, items),
+          ),
+          IconButton(
+            tooltip: 'Recycle Bin',
+            icon: const Icon(Icons.delete_sweep_outlined),
+            onPressed: () => Navigator.push<void>(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const RecycleBinScreen()),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Notification centre',
             icon: const Icon(Icons.notifications_none_rounded),
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute<void>(builder: (_) => const NoticesScreen()),
+              MaterialPageRoute<void>(builder: (_) => NotificationCentreScreen(
+                ownerId: FirebaseAuth.instance.currentUser?.uid ?? 'guest',
+              )),
             ),
           ),
           Padding(
@@ -1498,28 +1643,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                       )
-                    : GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(14, 6, 14, 20),
+                    : PageView.builder(
+                        controller: _dashboardPageController,
+                        padEnds: true,
+                        onPageChanged: (index) => setState(() => _activeDashboardIndex = index),
                         itemCount: filteredItems.length,
-                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 250,
-                          childAspectRatio: 0.88,
-                          crossAxisSpacing: 14,
-                          mainAxisSpacing: 14,
-                        ),
                         itemBuilder: (context, index) {
                           final item = filteredItems[index];
                           final scheme = Theme.of(context).colorScheme;
+                          final cardOffset = (index - _activeDashboardIndex).toDouble();
+                          final cardDepth = cardOffset.abs().clamp(0.0, 1.0);
                           var hovered = false;
                           return StatefulBuilder(
                             builder: (context, setTileState) => MouseRegion(
                               onEnter: (_) => setTileState(() => hovered = true),
                               onExit: (_) => setTileState(() => hovered = false),
                               child: AnimatedScale(
-                                scale: hovered ? 1.025 : 1,
+                                scale: hovered ? 1.035 : (index == _activeDashboardIndex ? 1.0 : 0.86),
                                 duration: const Duration(milliseconds: 190),
                                 curve: Curves.easeOutCubic,
-                                child: AnimatedContainer(
+                                child: Transform(
+                                  alignment: Alignment.center,
+                                  transform: Matrix4.identity()
+                                    ..setEntry(3, 2, 0.0012)
+                                    ..translate(math.sin(cardOffset * 0.85) * 42.0, cardDepth * 12.0)
+                                    ..rotateY(-cardOffset * 0.28),
+                                  child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 190),
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(25),
@@ -1546,6 +1695,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     child: Material(
                                       color: const Color(0xFF09172B),
                                       child: InkWell(
+                                        onLongPress: () => _openControlCentre(context, items),
                                         onTap: () async {
                                           await SkyNestFeedback.playTap();
                                           if (!context.mounted) return;
@@ -1708,12 +1858,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       ),
                                     ),
                                   ),
+                                  ),
                                 ),
                               ),
                             ),
                           );
                         },
-                      )
+                      ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8, top: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.swipe_rounded, size: 15, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 7),
+                    Text('Swipe to spin · Hold a card to arrange',
+                      style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  ],
+                ),
               ),
             ],
           ),
@@ -2335,7 +2498,16 @@ class HousesScreen extends StatelessWidget {
                       IconButton(
                         tooltip: 'Delete house',
                         color: Colors.white,
-                        onPressed: () => confirmDelete(context, 'Delete this house?', () => doc.reference.delete()),
+                        onPressed: () => confirmDelete(
+                          context,
+                          'Move this house to Recycle Bin? You can restore it later.',
+                          () => SkyNestRecycleBinService.moveToTrash(
+                            ownerId: FirebaseAuth.instance.currentUser?.uid ?? '',
+                            collectionName: 'houses',
+                            doc: doc,
+                            recordType: 'House',
+                          ),
+                        ),
                         icon: const Icon(Icons.more_horiz_rounded),
                       ),
                     ])),
@@ -2485,7 +2657,16 @@ class _TenantsScreenState extends State<TenantsScreen> {
                         if (action == 'call') _contactTenant(context, d['phone']?.toString() ?? '', whatsapp: false);
                         if (action == 'whatsapp') _contactTenant(context, d['phone']?.toString() ?? '', whatsapp: true);
                         if (action == 'details') _showTenantDetails(context, d);
-                        if (action == 'remove') confirmDelete(context, 'Remove ' + (d['name']?.toString() ?? 'this tenant') + '? Payment records will remain.', () => doc.reference.delete());
+                        if (action == 'remove') confirmDelete(
+                          context,
+                          'Move ' + (d['name']?.toString() ?? 'this tenant') + ' to Recycle Bin? Payment records will remain.',
+                          () => SkyNestRecycleBinService.moveToTrash(
+                            ownerId: FirebaseAuth.instance.currentUser?.uid ?? '',
+                            collectionName: 'tenants',
+                            doc: doc,
+                            recordType: 'Tenant',
+                          ),
+                        );
                       },
                       itemBuilder: (_) => const [
                         PopupMenuItem(value: 'details', child: ListTile(dense: true, leading: Icon(Icons.badge_outlined), title: Text('View details'))),
@@ -2519,6 +2700,8 @@ class PaymentsScreen extends StatelessWidget {
     if (confirmed != true) return false;
     try {
       await doc.reference.update({'status': 'Paid', 'confirmedAt': FieldValue.serverTimestamp(), 'confirmedBy': FirebaseAuth.instance.currentUser?.uid});
+      final ownerId = doc.data()['landlordId']?.toString() ?? FirebaseAuth.instance.currentUser?.uid;
+      if (ownerId != null) await recordActivity(ownerId, 'Confirmed rent payment for house ' + (doc.data()['houseNo'] ?? '').toString());
       HapticFeedback.mediumImpact();
       if (context.mounted) snack(context, 'Payment marked as received.');
     } catch (e) {
@@ -2664,6 +2847,7 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
           });
         }
         await batch.commit();
+        await recordActivity(landlordId, 'Tenant submitted rent payment for house ' + house.text.trim());
         if (mounted) { amount.clear(); snack(context, 'Payment details sent to your landlord for verification. No automatic M-Pesa payment was made.'); }
       } else {
         final paymentRef = await FirebaseFirestore.instance.collection('payments').add({
@@ -2683,6 +2867,7 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
             });
           }
         }
+        await recordActivity(uid, 'Created pending rent payment record for house ' + house.text.trim());
         if (mounted) { amount.clear(); snack(context, 'Payment record saved. Confirm actual receipt before marking it received.'); }
       }
     } catch (e) { if (mounted) snack(context, 'Could not submit payment: ' + e.toString()); }
@@ -2775,6 +2960,8 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
         await FirebaseFirestore.instance.collection('paymentSubmissions').doc(id).update({
           'status': 'rejected', 'reviewedAt': FieldValue.serverTimestamp(),
         });
+        final ownerId = data['landlordId']?.toString() ?? FirebaseAuth.instance.currentUser?.uid;
+        if (ownerId != null) await recordActivity(ownerId, 'Rejected tenant payment submission for house ' + (data['houseNo'] ?? '').toString());
         if (context.mounted) snack(context, 'Payment submission rejected.');
       } catch (e) {
         if (context.mounted) snack(context, 'Could not reject submission: ' + e.toString());
@@ -2796,6 +2983,7 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
       await FirebaseFirestore.instance.collection('paymentSubmissions').doc(id).update({
         'status': 'received', 'ledgerPaymentId': payment.id, 'reviewedAt': FieldValue.serverTimestamp(),
       });
+      await recordActivity(uid, 'Verified tenant rent payment for house ' + (data['houseNo'] ?? '').toString());
       if (context.mounted) snack(context, 'Payment added to the landlord ledger.');
     } catch (e) { if (context.mounted) snack(context, 'Could not verify payment: ' + e.toString()); }
   }
@@ -2843,6 +3031,8 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
       }
       if (count == 0) throw StateError('No selected submissions are still pending.');
       await batch.commit();
+      final ownerId = FirebaseAuth.instance.currentUser?.uid;
+      if (ownerId != null) await recordActivity(ownerId, 'Bulk verified $count tenant rent payment submission(s)');
       if (mounted) {
         setState(() => selectedSubmissionIds.clear());
         snack(context, '$count payment submission(s) verified and added to the ledger.');
@@ -2940,10 +3130,19 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
                     currency.format((d['amount'] as num?)?.toDouble() ?? 0) + ' • ' + status + '\n' + ageLabel),
                   isThreeLine: true,
                   trailing: PopupMenuButton<String>(
-                    onSelected: (value) {
+                    onSelected: (value) async {
                       if (value == 'assign') assignCaretaker(context, doc.id, d);
                       if (value == 'received') markReceived(context, doc.id, d);
-                      if (value == 'reject') doc.reference.update({'status': 'rejected', 'reviewedAt': FieldValue.serverTimestamp()});
+                      if (value == 'reject') {
+                        await doc.reference.update({
+                          'status': 'rejected',
+                          'reviewedAt': FieldValue.serverTimestamp(),
+                        });
+                        final ownerId = d['landlordId']?.toString();
+                        if (ownerId != null && ownerId.isNotEmpty) {
+                          await recordActivity(ownerId, 'Rejected tenant payment submission for house ' + (d['houseNo'] ?? '').toString());
+                        }
+                      }
                     },
                     itemBuilder: (_) => const [
                       PopupMenuItem(value: 'assign', child: Text('Send to caretaker')),
@@ -3313,20 +3512,26 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete calendar event?'),
-        content: const Text('This removes the event from your calendar.'),
+        title: const Text('Move calendar event to Recycle Bin?'),
+        content: const Text('You can restore this event later from Recycle Bin.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Move to Recycle Bin')),
         ],
       ),
     );
     if (confirm != true) return;
     try {
-      await FirebaseFirestore.instance.collection('calendarEvents').doc(id).delete();
-      if (mounted) snack(context, 'Event deleted.');
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) throw StateError('Sign in again before deleting this event.');
+      final event = await FirebaseFirestore.instance.collection('calendarEvents').doc(id).get();
+      if (!event.exists) throw StateError('This event no longer exists.');
+      await SkyNestRecycleBinService.moveToTrash(
+        ownerId: uid, collectionName: 'calendarEvents', doc: event, recordType: 'Calendar event',
+      );
+      if (mounted) snack(context, 'Event moved to Recycle Bin.');
     } catch (error) {
-      if (mounted) snack(context, 'Could not delete event: ' + error.toString());
+      if (mounted) snack(context, 'Could not move event: ' + error.toString());
     }
   }
 
@@ -3608,19 +3813,23 @@ class _PlansScreenState extends State<PlansScreen> {
 
   Future<void> _deleteEntry(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
     final confirmed = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
-      title: const Text('Delete this item?'),
-      content: Text('“${doc.data()['title'] ?? 'Plan'}” will be permanently deleted.'),
+      title: const Text('Move this item to Recycle Bin?'),
+      content: Text('“${doc.data()['title'] ?? 'Plan'}” can be restored later.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete')),
+        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Move to Recycle Bin')),
       ],
     ));
     if (confirmed != true) return;
     try {
-      await doc.reference.delete();
-      if (mounted) snack(context, 'Item deleted.');
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) throw StateError('Sign in again before deleting this item.');
+      await SkyNestRecycleBinService.moveToTrash(
+        ownerId: uid, collectionName: 'plans', doc: doc, recordType: 'Plan',
+      );
+      if (mounted) snack(context, 'Item moved to Recycle Bin.');
     } catch (error) {
-      if (mounted) snack(context, 'Could not delete item: $error');
+      if (mounted) snack(context, 'Could not move item: $error');
     }
   }
 
@@ -3628,22 +3837,24 @@ class _PlansScreenState extends State<PlansScreen> {
     final selected = docs.where((doc) => _selectedPlanIds.contains(doc.id)).toList();
     if (selected.isEmpty) return;
     final confirmed = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
-      title: Text('Delete ${selected.length} selected items?'),
-      content: const Text('This action cannot be undone.'),
+      title: Text('Move ${selected.length} selected items to Recycle Bin?'),
+      content: const Text('You can restore these items later.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete all')),
+        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Move all')),
       ],
     ));
     if (confirmed != true) return;
     try {
-      final batch = FirebaseFirestore.instance.batch();
-      for (final doc in selected) { batch.delete(doc.reference); }
-      await batch.commit();
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) throw StateError('Sign in again before deleting these items.');
+      await SkyNestRecycleBinService.moveManyToTrash(
+        ownerId: uid, collectionName: 'plans', docs: selected, recordType: 'Plan',
+      );
       if (mounted) setState(() { _selectedPlanIds.clear(); _selectionEnabled = false; });
-      if (mounted) snack(context, '${selected.length} items deleted.');
+      if (mounted) snack(context, '${selected.length} items moved to Recycle Bin.');
     } catch (error) {
-      if (mounted) snack(context, 'Bulk delete failed: $error');
+      if (mounted) snack(context, 'Bulk move failed: $error');
     }
   }
 
@@ -4631,14 +4842,15 @@ class _PamphletsScreenState extends State<PamphletsScreen> {
     );
     if (confirmed != true) return;
     try {
-      await doc.reference.delete();
       final landlordId = doc.data()['landlordId']?.toString();
-      if (landlordId != null && landlordId.isNotEmpty) {
-        await recordActivity(landlordId, 'Deleted pamphlet: ' + (doc.data()['title']?.toString() ?? 'Untitled'));
-      }
+      if (landlordId == null || landlordId.isEmpty) throw StateError('This pamphlet has no owner.');
+      await SkyNestRecycleBinService.moveToTrash(
+        ownerId: landlordId, collectionName: 'pamphlets', doc: doc, recordType: 'Pamphlet',
+      );
+      await recordActivity(landlordId, 'Moved pamphlet to Recycle Bin: ' + (doc.data()['title']?.toString() ?? 'Untitled'));
       if (mounted) setState(() => selectedIds.remove(doc.id));
     } catch (e) {
-      if (mounted) snack(context, 'Could not delete pamphlet: ' + e.toString());
+      if (mounted) snack(context, 'Could not move pamphlet to Recycle Bin: ' + e.toString());
     }
   }
 
@@ -5239,6 +5451,52 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
     } catch (e) { if (mounted) snack(context, 'Could not create group: ' + e.toString()); }
     finally { if (mounted) setState(() => saving = false); }
   }
+  Future<void> _deleteOwnedGroup(String groupId, Map<String, dynamic> groupData) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || groupData['createdBy'] != uid) {
+      snack(context, 'Only the group creator can delete this group.');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this group?'),
+        content: const Text('The group, its messages and membership records will be deleted. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete group')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final db = FirebaseFirestore.instance;
+      final groupRef = db.collection('groups').doc(groupId);
+      final messages = await groupRef.collection('messages').get();
+      final members = await groupRef.collection('members').get();
+      for (final message in messages.docs) {
+        final attachment = message.data()['attachment'];
+        final path = attachment is Map ? attachment['storagePath']?.toString() : null;
+        if (path != null && path.isNotEmpty) {
+          try { await FirebaseStorage.instance.ref(path).delete(); } catch (_) {}
+        }
+      }
+      final allRefs = <DocumentReference<Map<String, dynamic>>>[
+        ...messages.docs.map((doc) => doc.reference),
+        ...members.docs.map((doc) => doc.reference),
+      ];
+      for (var start = 0; start < allRefs.length; start += 400) {
+        final batch = db.batch();
+        for (final ref in allRefs.skip(start).take(400)) { batch.delete(ref); }
+        await batch.commit();
+      }
+      await groupRef.delete();
+      if (mounted) snack(context, 'Group and its messages deleted.');
+    } catch (error) {
+      if (mounted) snack(context, 'Could not delete group: $error');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -5346,6 +5604,22 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                           else
                             Text(seenBy > 0 ? 'Seen ' + seenBy.toString() + '/' + members.length.toString() : members.length.toString() + ' members',
                               style: const TextStyle(fontSize: 9, color: Color(0xFF6B7280))),
+                          if (data['createdBy'] == uid)
+                            PopupMenuButton<String>(
+                              tooltip: 'Group options',
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(Icons.more_horiz, color: Colors.white70, size: 20),
+                              onSelected: (value) {
+                                if (value == 'delete') _deleteOwnedGroup(doc.id, data);
+                              },
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(value: 'delete', child: Row(children: [
+                                  Icon(Icons.delete_outline, color: Colors.red),
+                                  SizedBox(width: 8),
+                                  Text('Delete group'),
+                                ])),
+                              ],
+                            ),
                         ]),
                       ]))),
                     ]))),
@@ -6812,7 +7086,33 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
                     subtitle: Padding(padding: const EdgeInsets.only(top: 5),
                       child: Text('$actor • $role\n$dateLabel${location.isEmpty ? '' : ' • $location'}')),
                     isThreeLine: true,
-                    trailing: flagged ? const Tooltip(message: 'Potentially sensitive activity', child: Icon(Icons.flag, color: Colors.red)) : null));
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      if (flagged) const Tooltip(message: 'Potentially sensitive activity', child: Icon(Icons.flag, color: Colors.red)),
+                      IconButton(
+                        tooltip: 'Delete activity entry',
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        onPressed: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (dialogContext) => AlertDialog(
+                              title: const Text('Delete activity entry?'),
+                              content: const Text('This removes this entry from your account activity history. This action cannot be undone.'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+                                FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
+                              ],
+                            ),
+                          );
+                          if (confirmed != true) return;
+                          try {
+                            await filtered[index].reference.delete();
+                            if (context.mounted) snack(context, 'Activity entry deleted.');
+                          } catch (error) {
+                            if (context.mounted) snack(context, 'Could not delete activity entry: $error');
+                          }
+                        },
+                      ),
+                    ])));
               });
           })),
       ]),

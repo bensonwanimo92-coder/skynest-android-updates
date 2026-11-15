@@ -1,3 +1,4 @@
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
@@ -325,4 +326,177 @@ exports.changeAccountRole = onCall(async (request) => {
     throw new HttpsError("failed-precondition",
       "This account type cannot be changed through self-service. Contact your property administrator.");
   });
+});
+
+
+// User-managed reminders. The scheduled worker runs in Nairobi time and sends
+// reminders to the owning Landlord's registered devices only.
+exports.runScheduledAutomations = onSchedule({
+  schedule: "every 5 minutes",
+  timeZone: "Africa/Nairobi",
+  region: "africa-south1",
+  maxInstances: 1,
+}, async () => {
+  const db = getFirestore();
+  const now = new Date();
+  const due = await db.collection("automations")
+    .where("enabled", "==", true)
+    .where("nextRunAt", "<=", now)
+    .limit(100)
+    .get();
+
+  const nextOccurrence = (date, frequency) => {
+    const next = new Date(date.getTime());
+    if (frequency === "daily") next.setUTCDate(next.getUTCDate() + 1);
+    else if (frequency === "weekly") next.setUTCDate(next.getUTCDate() + 7);
+    else if (frequency === "monthly") {
+      const day = next.getUTCDate();
+      next.setUTCDate(1);
+      next.setUTCMonth(next.getUTCMonth() + 1);
+      const lastDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+      next.setUTCDate(Math.min(day, lastDay));
+    }
+    return next;
+  };
+
+  for (const snapshot of due.docs) {
+    const ref = snapshot.ref;
+    const claimed = await db.runTransaction(async (transaction) => {
+      const fresh = await transaction.get(ref);
+      if (!fresh.exists) return null;
+      const data = fresh.data();
+      const dueAt = data.nextRunAt && data.nextRunAt.toDate();
+      if (data.enabled !== true || !dueAt || dueAt.getTime() > Date.now()) return null;
+      const frequency = ["once", "daily", "weekly", "monthly"].includes(data.frequency)
+        ? data.frequency : "once";
+      const nextRunAt = frequency === "once"
+        ? null : nextOccurrence(dueAt, frequency);
+      transaction.update(ref, {
+        enabled: frequency === "once" ? false : true,
+        nextRunAt: nextRunAt,
+        lastStatus: "sending",
+        lastAttemptAt: FieldValue.serverTimestamp(),
+        attemptCount: FieldValue.increment(1),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return {
+        ownerId: data.ownerId,
+        title: String(data.title || "SkyNest reminder").slice(0, 100),
+        message: String(data.message || "").slice(0, 500),
+        dueAt,
+        frequency,
+        retryDeviceIds: Array.isArray(data.retryDeviceIds) ? data.retryDeviceIds : null,
+        retryAttempts: Number.isInteger(data.retryAttempts) ? data.retryAttempts : 0,
+      };
+    });
+    if (!claimed || !claimed.ownerId) continue;
+
+    let status = "sent";
+    let errorMessage = null;
+    let failedDeviceIds = [];
+    let terminalFailureCount = 0;
+    let successCount = 0;
+    const retryAttempt = claimed.retryAttempts + 1;
+    try {
+      const devices = await db.collection("users").doc(claimed.ownerId)
+        .collection("devices").get();
+      const registered = devices.docs.map((device) => ({
+        id: device.id,
+        token: device.get("token"),
+        ref: device.ref,
+      })).filter((device) => typeof device.token === "string" && device.token.length > 0);
+      const targets = claimed.retryDeviceIds
+        ? registered.filter((device) => claimed.retryDeviceIds.includes(device.id))
+        : registered;
+      if (!targets.length) throw new Error("No registered devices are available for this account or retry.");
+
+      for (let offset = 0; offset < targets.length; offset += 500) {
+        const batch = targets.slice(offset, offset + 500);
+        const result = await getMessaging().sendEachForMulticast({
+          tokens: batch.map((item) => item.token),
+          notification: { title: claimed.title, body: claimed.message },
+          data: { type: "automation_reminder", automationId: ref.id },
+          android: { priority: "high", notification: { channelId: "skynest_messages_v2", sound: "pop" } },
+        });
+
+        const stale = [];
+        result.responses.forEach((response, index) => {
+          if (response.success) {
+            successCount += 1;
+          } else if (response.error &&
+              ["messaging/registration-token-not-registered", "messaging/invalid-registration-token"].includes(response.error.code)) {
+            terminalFailureCount += 1;
+            stale.push(batch[index].ref.delete());
+          } else {
+            failedDeviceIds.push(batch[index].id);
+          }
+        });
+        if (stale.length) await Promise.all(stale);
+      }
+
+      if (failedDeviceIds.length) {
+        status = successCount > 0 ? "partial" : "failed";
+        errorMessage = failedDeviceIds.length + " device(s) did not accept the reminder; retry scheduled.";
+        if (retryAttempt < 3) {
+          await ref.set({
+            enabled: true,
+            nextRunAt: claimed.dueAt,
+            retryDeviceIds: failedDeviceIds,
+            retryAttempts: retryAttempt,
+          }, { merge: true });
+        } else {
+          await ref.set({
+            enabled: claimed.frequency !== "once",
+            retryDeviceIds: FieldValue.delete(),
+            retryAttempts: 0,
+          }, { merge: true });
+          errorMessage = failedDeviceIds.length + " device(s) still failed after three attempts.";
+        }
+      } else {
+        if (terminalFailureCount > 0) {
+          status = successCount > 0 ? "partial" : "failed";
+          errorMessage = terminalFailureCount + " stale device token(s) were removed.";
+        }
+        await ref.set({
+          retryDeviceIds: FieldValue.delete(),
+          retryAttempts: 0,
+        }, { merge: true });
+      }
+    } catch (error) {
+      status = "failed";
+      errorMessage = String(error && error.message ? error.message : error).slice(0, 500);
+      if (retryAttempt < 3) {
+        await ref.set({
+          enabled: true,
+          nextRunAt: claimed.dueAt,
+          retryAttempts: retryAttempt,
+        }, { merge: true });
+      } else {
+        await ref.set({
+          enabled: claimed.frequency !== "once",
+          retryDeviceIds: FieldValue.delete(),
+          retryAttempts: 0,
+        }, { merge: true });
+        errorMessage = "Stopped after three attempts: " + errorMessage;
+      }
+    }
+
+    const completedAt = FieldValue.serverTimestamp();
+    await ref.set({
+      lastStatus: status,
+      lastRunAt: completedAt,
+      lastError: errorMessage,
+      updatedAt: completedAt,
+    }, { merge: true });
+    await ref.collection("runs").add({
+      status,
+      error: errorMessage,
+      scheduledFor: claimed.dueAt,
+      completedAt,
+      createdAt: completedAt,
+      retryAttempt,
+      deliveredDeviceCount: successCount,
+      failedDeviceCount: failedDeviceIds.length + terminalFailureCount,
+    });
+  }
 });

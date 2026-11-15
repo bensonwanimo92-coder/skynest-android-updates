@@ -1,0 +1,61 @@
+name: Deploy SkyNest reminder automation (manual approval)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_deploy:
+        description: "Confirm deployment of runScheduledAutomations to the configured Firebase project"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-reminder-worker:
+    if: ${{ inputs.confirm_deploy == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        env:
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.SKYNEST_FIREBASE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_PROJECT_ID" || { echo "::error::Add FIREBASE_PROJECT_ID as a repository variable or secret."; exit 1; }
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || { echo "::error::Repository secret SKYNEST_FIREBASE_KEY is missing."; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
+          python3 - "$RUNNER_TEMP/firebase-service-account.json" "$FIREBASE_PROJECT_ID" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              account = json.load(handle)
+          if account.get("type") != "service_account":
+              raise SystemExit("Credential JSON is not a service-account key.")
+          if account.get("project_id") != sys.argv[2]:
+              raise SystemExit("FIREBASE_PROJECT_ID does not match the service-account project_id.")
+          if not account.get("client_email") or not account.get("private_key"):
+              raise SystemExit("Service-account JSON is missing required fields.")
+          print("Deployment credentials validated; secret values are not displayed.")
+          PY
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.SKYNEST_FIREBASE_KEY }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Deploy only the scheduled reminder worker
+        env:
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          firebase deploy --only functions:runScheduledAutomations --project "$FIREBASE_PROJECT_ID" --non-interactive

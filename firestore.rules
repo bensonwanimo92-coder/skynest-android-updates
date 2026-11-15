@@ -318,7 +318,11 @@ service cloud.firestore {
         allow read: if activeUser() && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
         allow create: if activeUser() && request.auth.uid == memberId &&
           request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
-        allow update, delete: if activeUser() && request.auth.uid == memberId;
+        allow update: if activeUser() && request.auth.uid == memberId;
+        allow delete: if activeUser() && (
+          request.auth.uid == memberId ||
+          request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.createdBy
+        );
       }
       match /messages/{messageId} {
         allow read: if activeUser() && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
@@ -357,9 +361,13 @@ service cloud.firestore {
           ) &&
           !request.resource.data.keys().hasAny(['text']);
         allow update: if false;
-        allow delete: if activeUser() &&
-          request.auth.uid == resource.data.senderId &&
-          request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+        allow delete: if activeUser() && (
+          (
+            request.auth.uid == resource.data.senderId &&
+            request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds
+          ) ||
+          request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.createdBy
+        );
       }
     }
 
@@ -478,11 +486,90 @@ service cloud.firestore {
         resource.data.landlordId == request.auth.uid;
     }
 
+    // Landlord-owned scheduled reminders. Only the owning Landlord can
+    // manage reminder definitions; Cloud Functions owns execution history.
+    match /automations/{automationId} {
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.keys().hasOnly(['ownerId', 'title', 'message', 'frequency', 'nextRunAt', 'enabled', 'createdAt', 'updatedAt', 'attemptCount']) &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 100 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() > 0 &&
+        request.resource.data.message.size() <= 500 &&
+        request.resource.data.frequency in ['once', 'daily', 'weekly', 'monthly'] &&
+        request.resource.data.nextRunAt is timestamp &&
+        request.resource.data.enabled is bool &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp &&
+        request.resource.data.attemptCount is int &&
+        request.resource.data.attemptCount >= 0;
+      allow read, delete: if activeUser() && myRole() == 'landlord' &&
+        resource.data.ownerId == request.auth.uid;
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.ownerId == request.auth.uid &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['title', 'message', 'frequency', 'nextRunAt', 'enabled', 'updatedAt']
+        ) &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 100 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() > 0 &&
+        request.resource.data.message.size() <= 500 &&
+        request.resource.data.frequency in ['once', 'daily', 'weekly', 'monthly'] &&
+        request.resource.data.nextRunAt is timestamp &&
+        request.resource.data.enabled is bool &&
+        request.resource.data.updatedAt is timestamp;
+
+      match /runs/{runId} {
+        allow read: if activeUser() && myRole() == 'landlord' &&
+          get(/databases/$(database)/documents/automations/$(automationId)).data.ownerId == request.auth.uid;
+        allow write: if false;
+      }
+    }
+
     match /activityLogs/{id} {
       allow read: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
-      allow create: if activeUser() && landlordFor(request.resource.data.landlordId) &&
-        request.resource.data.actorId == request.auth.uid;
-      allow update, delete: if false;
+      allow create: if activeUser() &&
+        request.resource.data.actorId == request.auth.uid &&
+        (
+          landlordFor(request.resource.data.landlordId) ||
+          (
+            myRole() == 'tenant' &&
+            profile(request.auth.uid).landlordId == request.resource.data.landlordId
+          )
+        );
+      allow update: if false;
+      // Only the landlord who owns the audit stream may remove an entry.
+      allow delete: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
+    }
+
+    // Landlord-owned soft-deleted business records. The original document is
+    // restored only by its owner; this bin is never visible to other accounts.
+    match /recycleBin/{itemId} {
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.keys().hasOnly([
+          'ownerId', 'originalCollection', 'originalId', 'recordType',
+          'title', 'originalData', 'deletedAt'
+        ]) &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.originalCollection in ['houses', 'tenants', 'calendarEvents', 'plans', 'pamphlets'] &&
+        request.resource.data.originalId is string &&
+        request.resource.data.recordType is string &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() <= 160 &&
+        request.resource.data.originalData is map &&
+        (
+          request.resource.data.originalData.createdBy == request.auth.uid ||
+          request.resource.data.originalData.landlordId == request.auth.uid
+        ) &&
+        request.resource.data.deletedAt is timestamp;
+      allow read, delete: if activeUser() && myRole() == 'landlord' &&
+        resource.data.ownerId == request.auth.uid;
+      allow update: if false;
     }
 
     match /plans/{recordId} {

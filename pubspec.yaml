@@ -25,6 +25,7 @@ dependencies:
   flutter_webrtc: ^1.6.3
   file_saver: ^0.7.0
   path_provider: ^2.1.6
+  photo_manager: ^3.6.4
   firebase_storage: ^12.3.7
   image_picker: ^1.1.2
   file_picker: ^8.1.7
@@ -32,6 +33,7 @@ dependencies:
   audioplayers: ^6.1.0
   flutter_sound: ^9.16.3
   permission_handler: ^11.3.1
+  video_player: ^2.9.2
   flutter_local_notifications: ^18.0.1
 
 dev_dependencies:

@@ -1,3 +1,4 @@
+import '../control_centre/notification_centre.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 /// Local foreground notifications. Background delivery remains owned by FCM.
@@ -22,8 +23,24 @@ class SkyNestNotificationService {
     _initialized = true;
   }
 
-  static Future<void> showMessage({required String title, required String body, String? payload}) async {
+  static Future<void> showMessage({
+    required String ownerId,
+    required String title,
+    required String body,
+    String? payload,
+  }) async {
     if (!_initialized) await initialize();
+    // Persist before displaying so the notification remains manageable in-app.
+    try {
+      await SkyNestNotificationStore.add(
+        ownerId: ownerId,
+        title: title,
+        body: body,
+        payload: payload,
+      );
+    } catch (_) {
+      // A local history write must never prevent delivery of the OS notification.
+    }
     await _plugin.show(
       DateTime.now().millisecondsSinceEpoch.remainder(2147483647), title, body,
       const NotificationDetails(android: AndroidNotificationDetails(
