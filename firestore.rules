@@ -525,8 +525,15 @@ service cloud.firestore {
 
     match /activityLogs/{id} {
       allow read: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
-      allow create: if activeUser() && landlordFor(request.resource.data.landlordId) &&
-        request.resource.data.actorId == request.auth.uid;
+      allow create: if activeUser() &&
+        request.resource.data.actorId == request.auth.uid &&
+        (
+          landlordFor(request.resource.data.landlordId) ||
+          (
+            myRole() == 'tenant' &&
+            profile(request.auth.uid).landlordId == request.resource.data.landlordId
+          )
+        );
       allow update, delete: if false;
     }
 
