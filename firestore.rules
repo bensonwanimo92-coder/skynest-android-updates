@@ -357,9 +357,13 @@ service cloud.firestore {
           ) &&
           !request.resource.data.keys().hasAny(['text']);
         allow update: if false;
-        allow delete: if activeUser() &&
-          request.auth.uid == resource.data.senderId &&
-          request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+        allow delete: if activeUser() && (
+          (
+            request.auth.uid == resource.data.senderId &&
+            request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds
+          ) ||
+          request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.createdBy
+        );
       }
     }
 
