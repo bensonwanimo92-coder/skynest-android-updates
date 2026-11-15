@@ -113,7 +113,7 @@ class _ControlCentreScreenState extends State<ControlCentreScreen> {
                 onTap: widget.onOpenNotifications,
               ),
               const Divider(height: 1, indent: 64),
-              ListTile(
+              if (widget.moduleTitles.contains('Automation centre')) ListTile(
                 leading: CircleAvatar(backgroundColor: colors.tertiaryContainer,
                   child: Icon(Icons.auto_awesome_rounded, color: colors.tertiary)),
                 title: const Text('Automation centre'),
