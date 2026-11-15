@@ -11,6 +11,7 @@ class ControlCentreScreen extends StatefulWidget {
     required this.onSave,
     required this.onOpenNotifications,
     required this.onOpenActivityLog,
+    required this.onOpenAutomations,
   });
 
   final List<String> moduleTitles;
@@ -19,6 +20,7 @@ class ControlCentreScreen extends StatefulWidget {
   final Future<void> Function(List<String> order, Set<String> hidden) onSave;
   final VoidCallback onOpenNotifications;
   final VoidCallback onOpenActivityLog;
+  final VoidCallback onOpenAutomations;
 
   @override
   State<ControlCentreScreen> createState() => _ControlCentreScreenState();
@@ -112,13 +114,24 @@ class _ControlCentreScreenState extends State<ControlCentreScreen> {
               ),
               const Divider(height: 1, indent: 64),
               ListTile(
-                leading: CircleAvatar(backgroundColor: colors.secondaryContainer,
-                  child: Icon(Icons.history_rounded, color: colors.secondary)),
-                title: const Text('Activity history'),
-                subtitle: const Text('Review account and property activity'),
+                leading: CircleAvatar(backgroundColor: colors.tertiaryContainer,
+                  child: Icon(Icons.auto_awesome_rounded, color: colors.tertiary)),
+                title: const Text('Automation centre'),
+                subtitle: const Text('Create and manage scheduled reminders'),
                 trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: widget.onOpenActivityLog,
+                onTap: widget.onOpenAutomations,
               ),
+              if (widget.moduleTitles.contains('Activity log')) ...[
+                const Divider(height: 1, indent: 64),
+                ListTile(
+                  leading: CircleAvatar(backgroundColor: colors.secondaryContainer,
+                    child: Icon(Icons.history_rounded, color: colors.secondary)),
+                  title: const Text('Activity history'),
+                  subtitle: const Text('Review account and property activity'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: widget.onOpenActivityLog,
+                ),
+              ],
             ]),
           ),
           const SizedBox(height: 20),
