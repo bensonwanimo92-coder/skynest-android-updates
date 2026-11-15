@@ -153,7 +153,7 @@ class InternetArchiveAudioService {
   }
 
   int _number(dynamic value) {
-    final match = RegExp(r'\\d+').firstMatch(value?.toString() ?? '');
+    final match = RegExp(r'\d+').firstMatch(value?.toString() ?? '');
     return int.tryParse(match?.group(0) ?? '') ?? 0;
   }
 
