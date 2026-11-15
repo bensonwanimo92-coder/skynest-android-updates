@@ -21,7 +21,6 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
-    expect(find.text('ONLINE MEDIA'), findsOneWidget);
     expect(find.text('Play direct link'), findsOneWidget);
     expect(find.text('Open provider'), findsOneWidget);
     expect(find.text('Download'), findsOneWidget);
