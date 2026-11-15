@@ -199,7 +199,9 @@ async function requestStkPush(request, env) {
   const profileResult = await firestore(env, "users/" + encodeURIComponent(uid));
   if (profileResult.status === 404) throw new HttpError("SkyNest tenant profile was not found.", 403);
   const profile = decodeFields(profileResult.data.fields);
-  if (profile.role !== "tenant" || profile.status !== "active" || !profile.landlordId) {
+  const role = String(profile.role || "").trim().toLowerCase();
+  const accountStatus = String(profile.status || "").trim().toLowerCase();
+  if (role !== "tenant" || accountStatus !== "active" || !profile.landlordId) {
     throw new HttpError("Only an active tenant linked to a landlord can pay rent.", 403);
   }
 
