@@ -11,6 +11,7 @@ import 'services/notification_service.dart';
 import 'control_centre/notification_centre.dart';
 import 'control_centre/control_centre_screen.dart';
 import 'control_centre/automation_centre.dart';
+import 'control_centre/backup_export_screen.dart';
 import 'control_centre/backup_export_centre.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -1151,6 +1152,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             context,
             MaterialPageRoute<void>(builder: (_) => const AutomationCentreScreen()),
           ),
+          onOpenBackup: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const BackupExportScreen()),
+          ),
         ),
       ),
     );
@@ -1282,6 +1287,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Electricity', Icons.electric_bolt, Colors.amber, const ElectricityScreen()),
         _MenuItem('Activity log', Icons.fact_check_outlined, Colors.blueGrey, const ActivityLogScreen()),
         _MenuItem('Automation centre', Icons.auto_awesome_rounded, Colors.cyan, const AutomationCentreScreen()),
+        _MenuItem('Backup & export', Icons.cloud_download_outlined, Colors.blueGrey, const BackupExportScreen()),
         _MenuItem('Reports', Icons.analytics_outlined, Colors.deepPurple, const ReportsScreen()),
         _MenuItem('Calculator', Icons.calculate_outlined, Colors.purple, const CalculatorScreen()),
         _MenuItem('Calendar', Icons.calendar_month, Colors.cyan, const CalendarScreen()),
