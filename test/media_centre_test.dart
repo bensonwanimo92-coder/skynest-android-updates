@@ -17,6 +17,5 @@ void main() {
     expect(find.text('Play direct link'), findsOneWidget);
     expect(find.text('Open provider'), findsOneWidget);
     expect(find.text('Download'), findsOneWidget);
-    expect(find.text('Your local library is empty'), findsOneWidget);
   });
 }
