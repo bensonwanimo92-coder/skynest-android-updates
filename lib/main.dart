@@ -1175,6 +1175,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Navigator.push(context, MaterialPageRoute<void>(builder: (_) => destination));
             })),
           ),
+          onOpenRecycleBin: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const RecycleBinScreen()),
+          ),
         ),
       ),
     );
