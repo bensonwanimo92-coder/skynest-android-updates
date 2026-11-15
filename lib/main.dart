@@ -9,6 +9,7 @@ import 'services/sound_service.dart';
 import 'services/voice_service.dart';
 import 'services/notification_service.dart';
 import 'control_centre/notification_centre.dart';
+import 'control_centre/control_centre_screen.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -1060,10 +1061,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool loaded = false;
   String userRole = 'landlord';
   String searchQuery = '';
+  List<String> _dashboardOrder = [];
+  Set<String> _hiddenDashboardTiles = {};
 
   @override
   void initState() {
     super.initState();
+    _loadDashboardPreferences();
     _loadUserRole();
     initializePushNotifications();
     // Ads are optional and must never block the dashboard.
@@ -1089,6 +1093,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
         },
       ),
     )..load();
+  }
+
+  String get _dashboardPreferenceKey {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    return 'skynest_dashboard_layout_v1_$uid';
+  }
+
+  Future<void> _loadDashboardPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final order = prefs.getStringList('${_dashboardPreferenceKey}_order') ?? [];
+      final hidden = prefs.getStringList('${_dashboardPreferenceKey}_hidden') ?? [];
+      if (!mounted) return;
+      setState(() {
+        _dashboardOrder = order;
+        _hiddenDashboardTiles = hidden.toSet();
+      });
+    } catch (error) {
+      debugPrint('Dashboard preferences could not be loaded: $error');
+    }
+  }
+
+  Future<void> _saveDashboardPreferences(List<String> order, Set<String> hidden) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('${_dashboardPreferenceKey}_order', order);
+    await prefs.setStringList('${_dashboardPreferenceKey}_hidden', hidden.toList());
+    if (!mounted) return;
+    setState(() {
+      _dashboardOrder = List<String>.from(order);
+      _hiddenDashboardTiles = Set<String>.from(hidden);
+    });
+  }
+
+  void _openControlCentre(BuildContext context, List<_MenuItem> items) {
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => ControlCentreScreen(
+          moduleTitles: items.map((item) => item.title).toList(),
+          initialOrder: _dashboardOrder,
+          initialHidden: _hiddenDashboardTiles,
+          onSave: _saveDashboardPreferences,
+          onOpenNotifications: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => NotificationCentreScreen(
+              ownerId: FirebaseAuth.instance.currentUser?.uid ?? 'guest',
+            )),
+          ),
+          onOpenActivityLog: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const ActivityLogScreen()),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _loadUserRole() async {
@@ -1258,7 +1317,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     items.add(_MenuItem('Notification centre', Icons.notifications_active_outlined, Colors.deepPurple, NotificationCentreScreen(ownerId: FirebaseAuth.instance.currentUser?.uid ?? 'guest')));
 
     final query = searchQuery.trim().toLowerCase();
-    final filteredItems = items.where((item) => item.title.toLowerCase().contains(query)).toList();
+    final orderedItems = List<_MenuItem>.from(items);
+    final orderIndex = <String, int>{for (var i = 0; i < _dashboardOrder.length; i++) _dashboardOrder[i]: i};
+    orderedItems.sort((a, b) => (orderIndex[a.title] ?? 9999).compareTo(orderIndex[b.title] ?? 9999));
+    final filteredItems = orderedItems.where((item) =>
+      !_hiddenDashboardTiles.contains(item.title) && item.title.toLowerCase().contains(query)).toList();
     final displayName = FirebaseAuth.instance.currentUser?.displayName?.trim();
     final initial = displayName != null && displayName.isNotEmpty
         ? displayName.characters.first.toUpperCase()
@@ -1302,6 +1365,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'SkyNest Control Centre',
+            icon: const Icon(Icons.tune_rounded),
+            onPressed: () => _openControlCentre(context, items),
+          ),
           IconButton(
             tooltip: 'Notification centre',
             icon: const Icon(Icons.notifications_none_rounded),
