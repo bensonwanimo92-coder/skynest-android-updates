@@ -12,6 +12,9 @@ class InternetArchiveAudioTrack {
     required this.licenseUrl,
     required this.fileName,
     required this.downloadUrl,
+    this.fileSizeBytes = 0,
+    this.bitrateKbps = 0,
+    this.format = '',
   });
 
   final String identifier;
@@ -20,6 +23,28 @@ class InternetArchiveAudioTrack {
   final String licenseUrl;
   final String fileName;
   final Uri downloadUrl;
+  final int fileSizeBytes;
+  final int bitrateKbps;
+  final String format;
+
+  String get qualityLabel {
+    if (bitrateKbps > 0) return '${bitrateKbps} kbps';
+    if (format.toLowerCase() == 'flac' || format.toLowerCase() == 'wav') {
+      return 'Lossless ${format.toUpperCase()}';
+    }
+    return format.isEmpty ? 'Original quality' : format.toUpperCase();
+  }
+
+  String get fileSizeLabel {
+    if (fileSizeBytes <= 0) return 'Size not supplied';
+    if (fileSizeBytes >= 1024 * 1024 * 1024) {
+      return '${(fileSizeBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    }
+    if (fileSizeBytes >= 1024 * 1024) {
+      return '${(fileSizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(fileSizeBytes / 1024).toStringAsFixed(0)} KB';
+  }
 
   String get detailsUrl => 'https://archive.org/details/$identifier';
 
@@ -93,15 +118,18 @@ class InternetArchiveAudioService {
       }).toList();
       if (candidates.isEmpty) return null;
       candidates.sort((a, b) {
-        int rank(Map<String, dynamic> file) {
+        final bitrateOrder = _number(b['bitrate']).compareTo(_number(a['bitrate']));
+        if (bitrateOrder != 0) return bitrateOrder;
+        int qualityRank(Map<String, dynamic> file) {
           final name = file['name']?.toString().toLowerCase() ?? '';
-          if (name.endsWith('.mp3')) return 0;
+          if (name.endsWith('.flac') || name.endsWith('.wav')) return 0;
           if (name.endsWith('.m4a')) return 1;
           if (name.endsWith('.ogg')) return 2;
-          if (name.endsWith('.flac')) return 3;
-          return 4;
+          return 3;
         }
-        return rank(a).compareTo(rank(b));
+        final formatOrder = qualityRank(a).compareTo(qualityRank(b));
+        if (formatOrder != 0) return formatOrder;
+        return _number(b['size']).compareTo(_number(a['size']));
       });
       final fileName = candidates.first['name']?.toString() ?? '';
       if (fileName.isEmpty) return null;
@@ -114,11 +142,19 @@ class InternetArchiveAudioService {
         downloadUrl: Uri.parse(
           'https://archive.org/download/$identifier/${Uri.encodeComponent(fileName)}',
         ),
+        fileSizeBytes: _number(candidates.first['size']),
+        bitrateKbps: _number(candidates.first['bitrate']),
+        format: fileName.contains('.') ? fileName.split('.').last.toUpperCase() : '',
       );
     } catch (_) {
       // A malformed, unavailable, or unlicensed item is skipped, not exposed.
       return null;
     }
+  }
+
+  int _number(dynamic value) {
+    final match = RegExp(r'\\d+').firstMatch(value?.toString() ?? '');
+    return int.tryParse(match?.group(0) ?? '') ?? 0;
   }
 
   bool _isReusableLicence(String value) {
