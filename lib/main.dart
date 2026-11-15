@@ -3,6 +3,7 @@ import 'calls/skynest_call_screen.dart';
 import 'security/message_encryption.dart';
 import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
+import 'media/media_centre_screen.dart';
 import 'media/skynest_media_centre.dart';
 import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
@@ -1363,6 +1364,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ]);
     }
 
+    items.add(_MenuItem('Media centre', Icons.library_music_rounded, const Color(0xFF06B6D4), const MediaCentreScreen()));
     items.add(_MenuItem('Discovery', Icons.explore_rounded, const Color(0xFF06B6D4), const MarketDiscoveryScreen()));
     items.add(_MenuItem('Media Centre', Icons.library_music_rounded, const Color(0xFF22D3EE), const SkyNestMediaCentreScreen()));
     items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
