@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -7,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Media library for local files and direct, user-supplied media URLs.
 /// Web pages are never misrepresented as playable media or download links.
@@ -21,6 +23,9 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
   final AudioPlayer _audio = AudioPlayer();
   final TextEditingController _url = TextEditingController();
   final List<PlatformFile> _localMedia = [];
+  final List<PlatformFile> _downloadedMedia = [];
+  final Set<String> _favourites = {};
+  List<String> _recentlyPlayed = [];
   StreamSubscription<void>? _completed;
   String? _playingName;
   String _filter = 'all';
@@ -32,6 +37,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSavedLibrary();
     _completed = _audio.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _playingName = null);
     });
@@ -43,6 +49,66 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
     _audio.dispose();
     _url.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSavedLibrary() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getStringList('skynest_media_downloads_v1') ?? [];
+      final files = <PlatformFile>[];
+      for (final entry in saved) {
+        try {
+          final data = jsonDecode(entry) as Map<String, dynamic>;
+          final path = data['path']?.toString();
+          final name = data['name']?.toString();
+          if (path != null && path.isNotEmpty && name != null && name.isNotEmpty) {
+            files.add(PlatformFile(name: name, size: (data['size'] as num?)?.toInt() ?? 0, path: path));
+          }
+        } catch (_) {}
+      }
+      if (!mounted) return;
+      setState(() {
+        _downloadedMedia
+          ..clear()
+          ..addAll(files);
+        _favourites
+          ..clear()
+          ..addAll(prefs.getStringList('skynest_media_favourites_v1') ?? []);
+        _recentlyPlayed = prefs.getStringList('skynest_media_recent_v1') ?? [];
+      });
+    } catch (error) {
+      debugPrint('Saved media library could not be loaded: $error');
+    }
+  }
+
+  Future<void> _saveLibraryPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('skynest_media_downloads_v1', _downloadedMedia
+      .where((file) => file.path != null)
+      .map((file) => jsonEncode({'name': file.name, 'path': file.path, 'size': file.size}))
+      .toList());
+    await prefs.setStringList('skynest_media_favourites_v1', _favourites.toList());
+    await prefs.setStringList('skynest_media_recent_v1', _recentlyPlayed);
+  }
+
+  Future<void> _recordPlayed(PlatformFile file) async {
+    final path = file.path;
+    if (path == null) return;
+    setState(() {
+      _recentlyPlayed.remove(path);
+      _recentlyPlayed.insert(0, path);
+      if (_recentlyPlayed.length > 30) _recentlyPlayed.removeLast();
+    });
+    await _saveLibraryPreferences();
+  }
+
+  Future<void> _toggleFavourite(PlatformFile file) async {
+    final path = file.path;
+    if (path == null) return;
+    setState(() {
+      if (!_favourites.add(path)) _favourites.remove(path);
+    });
+    await _saveLibraryPreferences();
   }
 
   String _extension(String name) {
@@ -86,6 +152,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
         await _audio.stop();
         await _audio.play(DeviceFileSource(path));
         if (mounted) setState(() => _playingName = file.name);
+        await _recordPlayed(file);
       } catch (error) {
         _message('Could not play this audio file: $error');
       }
@@ -185,6 +252,12 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
       if (savedPath == null) {
         _message('Download cancelled. No file was saved.');
       } else {
+        final saved = PlatformFile(name: name, size: data.length, path: savedPath);
+        if (mounted) setState(() {
+          _downloadedMedia.removeWhere((item) => item.path == savedPath);
+          _downloadedMedia.insert(0, saved);
+        });
+        await _saveLibraryPreferences();
         _message('Saved to phone storage: $savedPath');
       }
     } catch (error) {
@@ -200,7 +273,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
   }
 
-  List<PlatformFile> get _visibleMedia => _localMedia.where((file) {
+  List<PlatformFile> get _visibleMedia => [..._localMedia, ..._downloadedMedia].where((file) {
     if (_filter == 'audio') return _isAudio(file.name);
     if (_filter == 'video') return _isVideo(file.name);
     return true;
@@ -312,7 +385,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
             children: [
               Expanded(child: Text('ON THIS DEVICE', style: Theme.of(context).textTheme.labelLarge?.copyWith(
                 letterSpacing: 1.1, fontWeight: FontWeight.w800, color: colors.onSurfaceVariant))),
-              Text('${_visibleMedia.length} files', style: Theme.of(context).textTheme.labelMedium),
+              Text('${_visibleMedia.length} files · ${_downloadedMedia.length} downloaded', style: Theme.of(context).textTheme.labelMedium),
             ],
           ),
           const SizedBox(height: 8),
@@ -336,11 +409,19 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
                 leading: CircleAvatar(child: Icon(_isAudio(file.name) ? Icons.music_note : Icons.movie_outlined)),
                 title: Text(file.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text(_isAudio(file.name) ? 'Audio file · offline' : 'Video file · offline'),
-                trailing: IconButton(
-                  tooltip: _playingName == file.name ? 'Playing' : 'Play',
-                  icon: Icon(_playingName == file.name ? Icons.graphic_eq_rounded : Icons.play_circle_fill_rounded),
-                  onPressed: () => _playLocal(file),
-                ),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  IconButton(
+                    tooltip: _favourites.contains(file.path) ? 'Remove favourite' : 'Add favourite',
+                    icon: Icon(_favourites.contains(file.path) ? Icons.favorite : Icons.favorite_border,
+                      color: _favourites.contains(file.path) ? Colors.pinkAccent : null),
+                    onPressed: () => _toggleFavourite(file),
+                  ),
+                  IconButton(
+                    tooltip: _playingName == file.name ? 'Playing' : 'Play',
+                    icon: Icon(_playingName == file.name ? Icons.graphic_eq_rounded : Icons.play_circle_fill_rounded),
+                    onPressed: () => _playLocal(file),
+                  ),
+                ]),
                 onTap: () => _playLocal(file),
               ),
             )),
