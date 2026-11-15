@@ -6,6 +6,7 @@ on:
       - main
       - integration/roles-on-current-main
       - feature/skynest-control-centre
+      - feature/skynest-build-3409
     tags:
       - 'v*'
   workflow_dispatch:
