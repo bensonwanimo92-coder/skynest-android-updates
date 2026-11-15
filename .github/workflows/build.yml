@@ -803,6 +803,7 @@ jobs:
           SKYNEST_TURN_URL: ${{ secrets.SKYNEST_TURN_URL }}
           SKYNEST_TURN_USERNAME: ${{ secrets.SKYNEST_TURN_USERNAME }}
           SKYNEST_TURN_CREDENTIAL: ${{ secrets.SKYNEST_TURN_CREDENTIAL }}
+          SKYNEST_API_BASE_URL: ${{ vars.SKYNEST_API_BASE_URL }}
         run: |
           # Set the Android ABI once at the Shorebird release layer.
           # Forwarding the same --target-platform flag to Flutter duplicates
@@ -811,7 +812,8 @@ jobs:
             --build-name=1.1.3 --build-number="$BUILD_NUMBER" \
             --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" \
             --dart-define=SKYNEST_TURN_USERNAME="$SKYNEST_TURN_USERNAME" \
-            --dart-define=SKYNEST_TURN_CREDENTIAL="$SKYNEST_TURN_CREDENTIAL"
+            --dart-define=SKYNEST_TURN_CREDENTIAL="$SKYNEST_TURN_CREDENTIAL" \\
+            --dart-define=SKYNEST_API_BASE_URL="$SKYNEST_API_BASE_URL"
 
       - name: Build integration APK without publishing a Shorebird release
         if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') && (github.ref == 'refs/heads/integration/roles-on-current-main' || github.ref == 'refs/heads/feature/skynest-control-centre') }}
