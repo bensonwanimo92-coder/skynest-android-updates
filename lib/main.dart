@@ -12,6 +12,7 @@ import 'control_centre/notification_centre.dart';
 import 'control_centre/control_centre_screen.dart';
 import 'control_centre/automation_centre.dart';
 import 'control_centre/backup_export_screen.dart';
+import 'control_centre/global_search_screen.dart';
 import 'control_centre/recycle_bin_screen.dart';
 import 'services/recycle_bin_service.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -1157,6 +1158,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
             context,
             MaterialPageRoute<void>(builder: (_) => const BackupExportScreen()),
           ),
+          onOpenGlobalSearch: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => GlobalSearchScreen(onOpenCollection: (collection) {
+              final Widget destination;
+              switch (collection) {
+                case 'houses': destination = const HousesScreen(); break;
+                case 'tenants': destination = const TenantsScreen(); break;
+                case 'payments': destination = const PaymentsScreen(); break;
+                case 'plans': destination = const PlansScreen(); break;
+                case 'calendarEvents': destination = const CalendarScreen(); break;
+                case 'activityLogs': destination = const ActivityLogScreen(); break;
+                case 'complaints': destination = const ComplaintsScreen(); break;
+                default: destination = const ReportsScreen();
+              }
+              Navigator.push(context, MaterialPageRoute<void>(builder: (_) => destination));
+            })),
+          ),
         ),
       ),
     );
@@ -1290,6 +1308,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Automation centre', Icons.auto_awesome_rounded, Colors.cyan, const AutomationCentreScreen()),
         _MenuItem('Backup & export', Icons.cloud_download_outlined, Colors.blueGrey, const BackupExportScreen()),
         _MenuItem('Recycle Bin', Icons.delete_sweep_outlined, Colors.redAccent, const RecycleBinScreen()),
+        _MenuItem('Global search', Icons.search_rounded, Colors.teal, GlobalSearchScreen(onOpenCollection: (collection) {
+          final Widget destination;
+          switch (collection) {
+            case 'houses': destination = const HousesScreen(); break;
+            case 'tenants': destination = const TenantsScreen(); break;
+            case 'payments': destination = const PaymentsScreen(); break;
+            case 'plans': destination = const PlansScreen(); break;
+            case 'calendarEvents': destination = const CalendarScreen(); break;
+            case 'activityLogs': destination = const ActivityLogScreen(); break;
+            case 'complaints': destination = const ComplaintsScreen(); break;
+            default: destination = const ReportsScreen();
+          }
+          Navigator.push(context, MaterialPageRoute<void>(builder: (_) => destination));
+        })),
         _MenuItem('Reports', Icons.analytics_outlined, Colors.deepPurple, const ReportsScreen()),
         _MenuItem('Calculator', Icons.calculate_outlined, Colors.purple, const CalculatorScreen()),
         _MenuItem('Calendar', Icons.calendar_month, Colors.cyan, const CalendarScreen()),
