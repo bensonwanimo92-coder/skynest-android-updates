@@ -314,7 +314,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
           try {
             final file = await asset.file;
             if (file == null || !await file.exists()) continue;
-            final title = asset.title.trim();
+            final title = (asset.title ?? '').trim();
             final name = title.isNotEmpty && _extension(title).isNotEmpty
                 ? title
                 : file.uri.pathSegments.isNotEmpty
