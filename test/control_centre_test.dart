@@ -61,6 +61,8 @@ void main() {
         onOpenActivityLog: () {},
         onOpenAutomations: () {},
         onOpenBackup: () {},
+        onOpenGlobalSearch: () {},
+        onOpenRecycleBin: () {},
       ),
     ));
 
