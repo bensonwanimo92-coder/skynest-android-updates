@@ -1,0 +1,12 @@
+{
+  "name": "skynest-mpesa-cloud-run",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node --check src/index.js && node --check server.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
