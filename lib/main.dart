@@ -1383,8 +1383,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final orderedItems = List<_MenuItem>.from(items);
     final orderIndex = <String, int>{for (var i = 0; i < _dashboardOrder.length; i++) _dashboardOrder[i]: i};
     orderedItems.sort((a, b) => (orderIndex[a.title] ?? 9999).compareTo(orderIndex[b.title] ?? 9999));
+    // Utility destinations stay in the app bar/control centre, not in the rotating card deck.
     final filteredItems = orderedItems.where((item) =>
-      !_hiddenDashboardTiles.contains(item.title) && item.title.toLowerCase().contains(query)).toList();
+      item.title != 'Recycle Bin' &&
+      !_hiddenDashboardTiles.contains(item.title) &&
+      item.title.toLowerCase().contains(query)).toList();
     final displayName = FirebaseAuth.instance.currentUser?.displayName?.trim();
     final initial = displayName != null && displayName.isNotEmpty
         ? displayName.characters.first.toUpperCase()
