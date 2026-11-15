@@ -141,6 +141,53 @@ class _AutomationCentreScreenState extends State<AutomationCentreScreen> {
     });
   }
 
+  Future<void> _showHistory(DocumentSnapshot<Map<String, dynamic>> doc) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * .65,
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
+            child: Text('${doc.data()?['title'] ?? 'Reminder'} · execution history',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: doc.reference.collection('runs').orderBy('createdAt', descending: true).limit(30).snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) return const Center(child: Text('Execution history could not load.'));
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                if (snapshot.data!.docs.isEmpty) return const Center(child: Text('This reminder has not run yet.'));
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: snapshot.data!.docs.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final run = snapshot.data!.docs[index].data();
+                    final ok = run['status'] == 'sent';
+                    final time = (run['completedAt'] as Timestamp?)?.toDate();
+                    return ListTile(
+                      leading: Icon(ok ? Icons.check_circle_outline : Icons.error_outline,
+                        color: ok ? Colors.green : Theme.of(context).colorScheme.error),
+                      title: Text(ok ? 'Sent successfully' : 'Delivery failed'),
+                      subtitle: Text([
+                        if (time != null) MaterialLocalizations.of(context).formatFullDate(time) + ' · ' + TimeOfDay.fromDateTime(time).format(context),
+                        if (run['error'] != null) run['error'].toString(),
+                      ].join('\n')),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _delete(DocumentSnapshot<Map<String, dynamic>> doc) async {
     final yes = await showDialog<bool>(
       context: context,
@@ -238,17 +285,24 @@ class _AutomationCentreScreenState extends State<AutomationCentreScreen> {
                         ]),
                       ),
                       isThreeLine: true,
-                      trailing: PopupMenuButton<String>(
-                        onSelected: (value) async {
-                          if (value == 'edit') await _editAutomation(existing: doc);
-                          if (value == 'delete') await _delete(doc);
-                        },
-                        itemBuilder: (_) => const [
-                          PopupMenuItem(value: 'edit', child: Text('Edit')),
-                          PopupMenuItem(value: 'delete', child: Text('Delete')),
-                        ],
-                      ),
-                      onTap: () => _toggle(doc, !enabled),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Switch(
+                          value: enabled,
+                          onChanged: (value) => _toggle(doc, value),
+                        ),
+                        PopupMenuButton<String>(
+                          onSelected: (value) async {
+                            if (value == 'history') await _showHistory(doc);
+                            if (value == 'edit') await _editAutomation(existing: doc);
+                            if (value == 'delete') await _delete(doc);
+                          },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(value: 'history', child: Text('Execution history')),
+                            PopupMenuItem(value: 'edit', child: Text('Edit')),
+                            PopupMenuItem(value: 'delete', child: Text('Delete')),
+                          ],
+                        ),
+                      ]),
                     ),
                   );
                 },
