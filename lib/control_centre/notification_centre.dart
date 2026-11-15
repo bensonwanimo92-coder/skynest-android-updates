@@ -119,6 +119,18 @@ class SkyNestNotificationStore {
     final records = await load(ownerId);
     await _write(ownerId, records.where((item) => !ids.contains(item.id)).toList());
   }
+
+  static Future<void> moveFolderToTrash(String ownerId, String folder) async {
+    final records = await load(ownerId);
+    final ids = records.where((item) => item.status == folder).map((item) => item.id).toSet();
+    if (ids.isNotEmpty) await updateStatus(ownerId, ids, 'trash');
+  }
+
+  static Future<void> emptyTrash(String ownerId) async {
+    final records = await load(ownerId);
+    final ids = records.where((item) => item.status == 'trash').map((item) => item.id).toSet();
+    if (ids.isNotEmpty) await permanentlyDelete(ownerId, ids);
+  }
 }
 
 class NotificationCentreScreen extends StatefulWidget {
@@ -198,6 +210,37 @@ class _NotificationCentreScreenState extends State<NotificationCentreScreen> wit
     await _load();
   }
 
+  Future<void> _clearFolder() async {
+    final count = _count(_folder);
+    if (count == 0) return;
+    final isTrash = _folder == 'trash';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(isTrash ? 'Empty Trash permanently?' : 'Clear inbox?'),
+        content: Text(isTrash
+          ? 'Permanently delete all $count notifications in Trash? This cannot be undone.'
+          : 'Move all $count inbox notifications to Trash? You can restore them later.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(isTrash ? 'Delete permanently' : 'Move to Trash'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (isTrash) {
+      await SkyNestNotificationStore.emptyTrash(widget.ownerId);
+    } else {
+      await SkyNestNotificationStore.moveFolderToTrash(widget.ownerId, _folder);
+    }
+    if (!mounted) return;
+    setState(() { _selected.clear(); _selectionMode = false; });
+    await _load();
+  }
+
   Future<void> _actOnOne(SkyNestNotificationRecord item, String action) async {
     switch (action) {
       case 'save':
@@ -253,7 +296,13 @@ class _NotificationCentreScreenState extends State<NotificationCentreScreen> wit
           ] else
             IconButton(tooltip: 'Select notifications', onPressed: () => setState(() => _selectionMode = true),
               icon: const Icon(Icons.checklist_rounded)),
-            IconButton(tooltip: 'Refresh', onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
+          if (!_selectionMode && _count(_folder) > 0 && (_folder == 'inbox' || _folder == 'trash'))
+            IconButton(
+              tooltip: _folder == 'trash' ? 'Empty Trash permanently' : 'Clear inbox',
+              onPressed: _clearFolder,
+              icon: Icon(_folder == 'trash' ? Icons.delete_forever_outlined : Icons.clear_all_rounded),
+            ),
+          IconButton(tooltip: 'Refresh', onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
         ],
         bottom: TabBar(
           controller: _tabs,

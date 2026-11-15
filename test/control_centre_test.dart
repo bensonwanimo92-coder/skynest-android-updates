@@ -27,6 +27,11 @@ void main() {
     expect(find.text('Reports'), findsOneWidget);
 
     await tester.ensureVisible(find.text('Save dashboard layout'));
+    await tester.scrollUntilVisible(
+      find.text('Save dashboard layout'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.text('Save dashboard layout'));
     await tester.pumpAndSettle();
 
@@ -51,5 +56,30 @@ void main() {
 
     await tester.tap(find.text('Notification centre'));
     expect(opened, isTrue);
+  }); 
+  test('clearing the inbox moves only inbox items to Trash', () async {
+    await SkyNestNotificationStore.add(ownerId: 'account-a', title: 'Inbox item', body: 'Move me');
+    await SkyNestNotificationStore.add(ownerId: 'account-a', title: 'Saved item', body: 'Keep me');
+    final records = await SkyNestNotificationStore.load('account-a');
+    final savedId = records.firstWhere((item) => item.title == 'Saved item').id;
+    await SkyNestNotificationStore.updateStatus('account-a', {savedId}, 'saved');
+
+    await SkyNestNotificationStore.moveFolderToTrash('account-a', 'inbox');
+    final updated = await SkyNestNotificationStore.load('account-a');
+    expect(updated.firstWhere((item) => item.title == 'Inbox item').status, 'trash');
+    expect(updated.firstWhere((item) => item.title == 'Saved item').status, 'saved');
   });
+
+  test('emptying Trash permanently removes only trashed notifications', () async {
+    await SkyNestNotificationStore.add(ownerId: 'account-a', title: 'Trash item', body: 'Delete me');
+    await SkyNestNotificationStore.add(ownerId: 'account-a', title: 'Inbox item', body: 'Keep me');
+    final records = await SkyNestNotificationStore.load('account-a');
+    final trashId = records.firstWhere((item) => item.title == 'Trash item').id;
+    await SkyNestNotificationStore.updateStatus('account-a', {trashId}, 'trash');
+
+    await SkyNestNotificationStore.emptyTrash('account-a');
+    final remaining = await SkyNestNotificationStore.load('account-a');
+    expect(remaining.map((item) => item.title), ['Inbox item']);
+  });
+
 }
