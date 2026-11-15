@@ -14,7 +14,7 @@ void main() {
     expect(find.text('SkyNest Media Centre'), findsOneWidget);
     expect(find.text('Phone storage'), findsOneWidget);
     expect(find.text('BROWSE ONLINE MUSIC'), findsOneWidget);
-    expect(find.text('Search online catalogue'), findsOneWidget);
+    expect(find.text('Browse popular tracks'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Play direct link'),
       350,
