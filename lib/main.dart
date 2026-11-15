@@ -1070,6 +1070,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String searchQuery = '';
   List<String> _dashboardOrder = [];
   Set<String> _hiddenDashboardTiles = {};
+  final PageController _dashboardPageController = PageController(viewportFraction: 0.78);
+  int _activeDashboardIndex = 0;
 
   @override
   void initState() {
@@ -1200,8 +1202,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     banner?.dispose();
+    _dashboardPageController.dispose();
     super.dispose();
-  }
 
   void _open(BuildContext context, _MenuItem item) {
     Navigator.push(
@@ -1625,15 +1627,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                       )
-                    : GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(14, 6, 14, 20),
+                    : PageView.builder(
+                        controller: _dashboardPageController,
+                        padEnds: true,
+                        onPageChanged: (index) => setState(() => _activeDashboardIndex = index),
                         itemCount: filteredItems.length,
-                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 250,
-                          childAspectRatio: 0.88,
-                          crossAxisSpacing: 14,
-                          mainAxisSpacing: 14,
-                        ),
                         itemBuilder: (context, index) {
                           final item = filteredItems[index];
                           final scheme = Theme.of(context).colorScheme;
@@ -1643,7 +1641,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               onEnter: (_) => setTileState(() => hovered = true),
                               onExit: (_) => setTileState(() => hovered = false),
                               child: AnimatedScale(
-                                scale: hovered ? 1.025 : 1,
+                                scale: hovered ? 1.035 : (index == _activeDashboardIndex ? 1.0 : 0.86),
                                 duration: const Duration(milliseconds: 190),
                                 curve: Curves.easeOutCubic,
                                 child: AnimatedContainer(
