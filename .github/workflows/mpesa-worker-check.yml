@@ -1,24 +1,24 @@
-name: SkyNest M-Pesa Worker Checks
+name: SkyNest M-Pesa Cloud Run Checks
 on:
   push:
     branches:
       - feature/skynest-mpesa-cloudflare
     paths:
-      - 'cloudflare-worker/**'
+      - 'cloud-run/**'
       - '.github/workflows/mpesa-worker-check.yml'
   pull_request:
     branches:
       - feature/skynest-build-3409
       - feature/skynest-mpesa-cloudflare
     paths:
-      - 'cloudflare-worker/**'
+      - 'cloud-run/**'
       - '.github/workflows/mpesa-worker-check.yml'
 jobs:
   syntax:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: cloudflare-worker
+        working-directory: cloud-run
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
