@@ -8,10 +8,18 @@ const server = http.createServer(async (incoming, outgoing) => {
     const chunks = [];
     for await (const chunk of incoming) chunks.push(chunk);
     const body = chunks.length ? Buffer.concat(chunks) : undefined;
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(incoming.headers)) {
+      if (Array.isArray(value)) {
+        for (const item of value) headers.append(name, item);
+      } else if (typeof value === "string") {
+        headers.set(name, value);
+      }
+    }
     const host = incoming.headers.host || "localhost";
     const request = new Request(`http://${host}${incoming.url || "/"}`, {
       method: incoming.method || "GET",
-      headers: incoming.headers,
+      headers,
       ...(body ? { body } : {}),
     });
     const response = await worker.fetch(request, process.env);
