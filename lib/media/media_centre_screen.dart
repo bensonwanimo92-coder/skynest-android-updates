@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:photo_manager/photo_manager.dart';
 import 'internet_archive_audio_service.dart';
 
 final AudioPlayer skyNestMediaPlayer = AudioPlayer();
@@ -281,42 +282,79 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
   }
 
   Future<void> _pickLocal() async {
+    // Read the Android MediaStore library directly. Files stay in their
+    // original phone locations; SkyNest does not copy them into app storage.
+    if (_busy) return;
+    setState(() => _busy = true);
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.media,
-        allowMultiple: true,
-        withData: false,
-      );
-      if (result == null) return;
-      setState(() => _busy = true);
-      final directory = await _mediaDirectory('Library');
-      final imported = <PlatformFile>[];
-      for (final picked in result.files) {
-        if (picked.path == null || (!_isAudio(picked.name) && !_isVideo(picked.name))) continue;
-        final source = File(picked.path!);
-        if (!await source.exists()) continue;
-        final baseName = _safeFileName(picked.name);
-        var destination = File('${directory.path}/$baseName');
-        if (await destination.exists()) {
-          final dot = baseName.lastIndexOf('.');
-          final stem = dot > 0 ? baseName.substring(0, dot) : baseName;
-          final ext = dot > 0 ? baseName.substring(dot) : '';
-          destination = File('${directory.path}/${stem}_${DateTime.now().microsecondsSinceEpoch}$ext');
+      final permission = await PhotoManager.requestPermissionExtend();
+      if (!permission.isAuth) {
+        if (mounted) {
+          _message('Allow audio and video access in Android settings so SkyNest can show your phone library.');
+          await PhotoManager.openSetting();
         }
-        final saved = await source.copy(destination.path);
-        imported.add(PlatformFile(name: picked.name, size: await saved.length(), path: saved.path));
+        return;
       }
+
+      final discovered = <PlatformFile>[];
+      Future<void> collect(RequestType type) async {
+        final albums = await PhotoManager.getAssetPathList(
+          type: type,
+          onlyAll: true,
+        );
+        if (albums.isEmpty) return;
+        final album = albums.first;
+        final count = await album.assetCountAsync;
+        // Avoid an unbounded scan on devices with very large media libraries.
+        final assets = await album.getAssetListRange(
+          start: 0,
+          end: count > 5000 ? 5000 : count,
+        );
+        for (final asset in assets) {
+          try {
+            final file = await asset.file;
+            if (file == null || !await file.exists()) continue;
+            final title = asset.title.trim();
+            final name = title.isNotEmpty && _extension(title).isNotEmpty
+                ? title
+                : file.uri.pathSegments.isNotEmpty
+                    ? Uri.decodeComponent(file.uri.pathSegments.last)
+                    : title;
+            if (name.isEmpty || (!_isAudio(name) && !_isVideo(name))) continue;
+            discovered.add(PlatformFile(
+              name: name,
+              size: await file.length(),
+              path: file.path,
+            ));
+          } catch (error) {
+            debugPrint('Skipping inaccessible phone media item: $error');
+          }
+        }
+      }
+
+      await collect(RequestType.audio);
+      await collect(RequestType.video);
+      discovered.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       if (!mounted) return;
       setState(() {
-        for (final file in imported) {
-          if (!_localMedia.any((item) => item.path == file.path)) _localMedia.add(file);
-        }
+        // Retain previously imported items that are not part of the MediaStore
+        // result, then append the live phone-library entries without duplicates.
+        final livePaths = discovered.map((item) => item.path).whereType<String>().toSet();
+        final imported = _localMedia.where((item) =>
+          item.path != null && !livePaths.contains(item.path)).toList();
+        _localMedia
+          ..clear()
+          ..addAll(discovered)
+          ..addAll(imported);
       });
-      await _saveLibraryPreferences();
-      if (imported.isEmpty) _message('No supported, accessible audio or video files were imported.');
-      else _message('Added ${imported.length} item(s) to your offline SkyNest library.');
+      if (discovered.isEmpty) {
+        _message('No accessible audio or video files were found on this phone.');
+      } else {
+        _message('Found ${discovered.length} audio/video file(s) directly on your phone.');
+      }
     } catch (error) {
-      _message('Could not import phone media: $error');
+      _message('Could not scan phone media: $error');
+      debugPrint('SkyNest MediaStore scan failed: $error');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -591,7 +629,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
                 ListTile(
                   leading: const CircleAvatar(child: Icon(Icons.folder_open_rounded)),
                   title: const Text('Phone storage'),
-                  subtitle: const Text('Select audio and video files stored on this device'),
+                  subtitle: const Text('Scan and play audio and video directly from this device'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: _pickLocal,
                 ),
