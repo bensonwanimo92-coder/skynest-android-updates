@@ -2660,6 +2660,8 @@ class PaymentsScreen extends StatelessWidget {
     if (confirmed != true) return false;
     try {
       await doc.reference.update({'status': 'Paid', 'confirmedAt': FieldValue.serverTimestamp(), 'confirmedBy': FirebaseAuth.instance.currentUser?.uid});
+      final ownerId = doc.data()['landlordId']?.toString() ?? FirebaseAuth.instance.currentUser?.uid;
+      if (ownerId != null) await recordActivity(ownerId, 'Confirmed rent payment for house ' + (doc.data()['houseNo'] ?? '').toString());
       HapticFeedback.mediumImpact();
       if (context.mounted) snack(context, 'Payment marked as received.');
     } catch (e) {
@@ -2805,6 +2807,7 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
           });
         }
         await batch.commit();
+        await recordActivity(landlordId, 'Tenant submitted rent payment for house ' + house.text.trim());
         if (mounted) { amount.clear(); snack(context, 'Payment details sent to your landlord for verification. No automatic M-Pesa payment was made.'); }
       } else {
         final paymentRef = await FirebaseFirestore.instance.collection('payments').add({
@@ -2824,6 +2827,7 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
             });
           }
         }
+        await recordActivity(uid, 'Created pending rent payment record for house ' + house.text.trim());
         if (mounted) { amount.clear(); snack(context, 'Payment record saved. Confirm actual receipt before marking it received.'); }
       }
     } catch (e) { if (mounted) snack(context, 'Could not submit payment: ' + e.toString()); }
@@ -2916,6 +2920,8 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
         await FirebaseFirestore.instance.collection('paymentSubmissions').doc(id).update({
           'status': 'rejected', 'reviewedAt': FieldValue.serverTimestamp(),
         });
+        final ownerId = data['landlordId']?.toString() ?? FirebaseAuth.instance.currentUser?.uid;
+        if (ownerId != null) await recordActivity(ownerId, 'Rejected tenant payment submission for house ' + (data['houseNo'] ?? '').toString());
         if (context.mounted) snack(context, 'Payment submission rejected.');
       } catch (e) {
         if (context.mounted) snack(context, 'Could not reject submission: ' + e.toString());
@@ -2937,6 +2943,7 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
       await FirebaseFirestore.instance.collection('paymentSubmissions').doc(id).update({
         'status': 'received', 'ledgerPaymentId': payment.id, 'reviewedAt': FieldValue.serverTimestamp(),
       });
+      await recordActivity(uid, 'Verified tenant rent payment for house ' + (data['houseNo'] ?? '').toString());
       if (context.mounted) snack(context, 'Payment added to the landlord ledger.');
     } catch (e) { if (context.mounted) snack(context, 'Could not verify payment: ' + e.toString()); }
   }
@@ -2984,6 +2991,8 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
       }
       if (count == 0) throw StateError('No selected submissions are still pending.');
       await batch.commit();
+      final ownerId = FirebaseAuth.instance.currentUser?.uid;
+      if (ownerId != null) await recordActivity(ownerId, 'Bulk verified $count tenant rent payment submission(s)');
       if (mounted) {
         setState(() => selectedSubmissionIds.clear());
         snack(context, '$count payment submission(s) verified and added to the ledger.');
