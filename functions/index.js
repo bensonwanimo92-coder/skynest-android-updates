@@ -1,3 +1,4 @@
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
@@ -325,4 +326,122 @@ exports.changeAccountRole = onCall(async (request) => {
     throw new HttpsError("failed-precondition",
       "This account type cannot be changed through self-service. Contact your property administrator.");
   });
+});
+
+
+// User-managed reminders. The scheduled worker runs in Nairobi time and sends
+// reminders to the owning Landlord's registered devices only.
+exports.runScheduledAutomations = onSchedule({
+  schedule: "every 5 minutes",
+  timeZone: "Africa/Nairobi",
+  region: "africa-south1",
+  maxInstances: 1,
+}, async () => {
+  const db = getFirestore();
+  const now = new Date();
+  const due = await db.collection("automations")
+    .where("enabled", "==", true)
+    .where("nextRunAt", "<=", now)
+    .limit(100)
+    .get();
+
+  const nextOccurrence = (date, frequency) => {
+    const next = new Date(date.getTime());
+    if (frequency === "daily") next.setUTCDate(next.getUTCDate() + 1);
+    else if (frequency === "weekly") next.setUTCDate(next.getUTCDate() + 7);
+    else if (frequency === "monthly") {
+      const day = next.getUTCDate();
+      next.setUTCDate(1);
+      next.setUTCMonth(next.getUTCMonth() + 1);
+      const lastDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+      next.setUTCDate(Math.min(day, lastDay));
+    }
+    return next;
+  };
+
+  for (const snapshot of due.docs) {
+    const ref = snapshot.ref;
+    const claimed = await db.runTransaction(async (transaction) => {
+      const fresh = await transaction.get(ref);
+      if (!fresh.exists) return null;
+      const data = fresh.data();
+      const dueAt = data.nextRunAt && data.nextRunAt.toDate();
+      if (data.enabled !== true || !dueAt || dueAt.getTime() > Date.now()) return null;
+      const frequency = ["once", "daily", "weekly", "monthly"].includes(data.frequency)
+        ? data.frequency : "once";
+      const nextRunAt = frequency === "once"
+        ? null : nextOccurrence(dueAt, frequency);
+      transaction.update(ref, {
+        enabled: frequency === "once" ? false : true,
+        nextRunAt: nextRunAt,
+        lastStatus: "sending",
+        lastAttemptAt: FieldValue.serverTimestamp(),
+        attemptCount: FieldValue.increment(1),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return {
+        ownerId: data.ownerId,
+        title: String(data.title || "SkyNest reminder").slice(0, 100),
+        message: String(data.message || "").slice(0, 500),
+        dueAt,
+        frequency,
+      };
+    });
+    if (!claimed || !claimed.ownerId) continue;
+
+    let status = "sent";
+    let errorMessage = null;
+    try {
+      const devices = await db.collection("users").doc(claimed.ownerId)
+        .collection("devices").get();
+      const tokens = devices.docs.map((device) => ({
+        token: device.get("token"), ref: device.ref,
+      })).filter((device) => typeof device.token === "string" && device.token.length > 0);
+      if (!tokens.length) throw new Error("No registered devices are available for this account.");
+      for (let offset = 0; offset < tokens.length; offset += 500) {
+        const batch = tokens.slice(offset, offset + 500);
+        const result = await getMessaging().sendEachForMulticast({
+          tokens: batch.map((item) => item.token),
+          notification: { title: claimed.title, body: claimed.message },
+          data: { type: "automation_reminder", automationId: ref.id },
+          android: { priority: "high", notification: { channelId: "skynest_messages_v2", sound: "pop" } },
+        });
+        const stale = [];
+        result.responses.forEach((response, index) => {
+          if (!response.success && response.error &&
+              ["messaging/registration-token-not-registered", "messaging/invalid-registration-token"].includes(response.error.code)) {
+            stale.push(batch[index].ref.delete());
+          }
+        });
+        if (stale.length) await Promise.all(stale);
+        if (result.failureCount === batch.length) {
+          throw new Error("Push delivery failed for every registered device in this batch.");
+        }
+      }
+    } catch (error) {
+      status = "failed";
+      errorMessage = String(error && error.message ? error.message : error).slice(0, 500);
+      // Re-enable the reminder at its original due time so the next scheduler
+      // pass retries it. The transaction claim prevents concurrent duplicates.
+      await ref.set({
+        enabled: true,
+        nextRunAt: claimed.dueAt,
+      }, { merge: true });
+    }
+
+    const completedAt = FieldValue.serverTimestamp();
+    await ref.set({
+      lastStatus: status,
+      lastRunAt: completedAt,
+      lastError: errorMessage,
+      updatedAt: completedAt,
+    }, { merge: true });
+    await ref.collection("runs").add({
+      status,
+      error: errorMessage,
+      scheduledFor: claimed.dueAt,
+      completedAt,
+      createdAt: completedAt,
+    });
+  }
 });
