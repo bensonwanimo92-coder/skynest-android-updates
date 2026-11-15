@@ -5411,6 +5411,52 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
     } catch (e) { if (mounted) snack(context, 'Could not create group: ' + e.toString()); }
     finally { if (mounted) setState(() => saving = false); }
   }
+  Future<void> _deleteOwnedGroup(String groupId, Map<String, dynamic> groupData) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || groupData['createdBy'] != uid) {
+      snack(context, 'Only the group creator can delete this group.');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this group?'),
+        content: const Text('The group, its messages and membership records will be deleted. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete group')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final db = FirebaseFirestore.instance;
+      final groupRef = db.collection('groups').doc(groupId);
+      final messages = await groupRef.collection('messages').get();
+      final members = await groupRef.collection('members').get();
+      for (final message in messages.docs) {
+        final attachment = message.data()['attachment'];
+        final path = attachment is Map ? attachment['storagePath']?.toString() : null;
+        if (path != null && path.isNotEmpty) {
+          try { await FirebaseStorage.instance.ref(path).delete(); } catch (_) {}
+        }
+      }
+      final allRefs = <DocumentReference<Map<String, dynamic>>>[
+        ...messages.docs.map((doc) => doc.reference),
+        ...members.docs.map((doc) => doc.reference),
+      ];
+      for (var start = 0; start < allRefs.length; start += 400) {
+        final batch = db.batch();
+        for (final ref in allRefs.skip(start).take(400)) { batch.delete(ref); }
+        await batch.commit();
+      }
+      await groupRef.delete();
+      if (mounted) snack(context, 'Group and its messages deleted.');
+    } catch (error) {
+      if (mounted) snack(context, 'Could not delete group: $error');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -5518,6 +5564,22 @@ class _TenantGroupsScreenState extends State<TenantGroupsScreen> {
                           else
                             Text(seenBy > 0 ? 'Seen ' + seenBy.toString() + '/' + members.length.toString() : members.length.toString() + ' members',
                               style: const TextStyle(fontSize: 9, color: Color(0xFF6B7280))),
+                          if (data['createdBy'] == uid)
+                            PopupMenuButton<String>(
+                              tooltip: 'Group options',
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(Icons.more_horiz, color: Colors.white70, size: 20),
+                              onSelected: (value) {
+                                if (value == 'delete') _deleteOwnedGroup(doc.id, data);
+                              },
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(value: 'delete', child: Row(children: [
+                                  Icon(Icons.delete_outline, color: Colors.red),
+                                  SizedBox(width: 8),
+                                  Text('Delete group'),
+                                ])),
+                              ],
+                            ),
                         ]),
                       ]))),
                     ]))),
