@@ -1315,7 +1315,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Activity log', Icons.fact_check_outlined, Colors.blueGrey, const ActivityLogScreen()),
         _MenuItem('Automation centre', Icons.auto_awesome_rounded, Colors.cyan, const AutomationCentreScreen()),
         _MenuItem('Backup & export', Icons.cloud_download_outlined, Colors.blueGrey, const BackupExportScreen()),
-        _MenuItem('Recycle Bin', Icons.delete_sweep_outlined, Colors.redAccent, const RecycleBinScreen()),
         _MenuItem('Global search', Icons.search_rounded, Colors.teal, GlobalSearchScreen(onOpenCollection: (collection) {
           final Widget destination;
           switch (collection) {
@@ -1426,6 +1425,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             tooltip: 'SkyNest Control Centre',
             icon: const Icon(Icons.tune_rounded),
             onPressed: () => _openControlCentre(context, items),
+          ),
+          IconButton(
+            tooltip: 'Recycle Bin',
+            icon: const Icon(Icons.delete_sweep_outlined),
+            onPressed: () => Navigator.push<void>(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const RecycleBinScreen()),
+            ),
           ),
           IconButton(
             tooltip: 'Notification centre',
@@ -1671,6 +1678,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     child: Material(
                                       color: const Color(0xFF09172B),
                                       child: InkWell(
+                                        onLongPress: () => _openControlCentre(context, items),
                                         onTap: () async {
                                           await SkyNestFeedback.playTap();
                                           if (!context.mounted) return;
