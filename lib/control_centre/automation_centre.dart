@@ -167,12 +167,21 @@ class _AutomationCentreScreenState extends State<AutomationCentreScreen> {
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final run = snapshot.data!.docs[index].data();
-                    final ok = run['status'] == 'sent';
+                    final runStatus = run['status']?.toString() ?? 'failed';
+                    final ok = runStatus == 'sent';
+                    final partial = runStatus == 'partial';
                     final time = (run['completedAt'] as Timestamp?)?.toDate();
                     return ListTile(
-                      leading: Icon(ok ? Icons.check_circle_outline : Icons.error_outline,
-                        color: ok ? Colors.green : Theme.of(context).colorScheme.error),
-                      title: Text(ok ? 'Sent successfully' : 'Delivery failed'),
+                      leading: Icon(
+                        ok ? Icons.check_circle_outline
+                          : partial ? Icons.warning_amber_rounded : Icons.error_outline,
+                        color: ok ? Colors.green
+                          : partial ? Colors.orange : Theme.of(context).colorScheme.error,
+                      ),
+                      title: Text(
+                        ok ? 'Sent successfully'
+                          : partial ? 'Partially delivered' : 'Delivery failed',
+                      ),
                       subtitle: Text([
                         if (time != null) MaterialLocalizations.of(context).formatFullDate(time) + ' · ' + TimeOfDay.fromDateTime(time).format(context),
                         if (run['error'] != null) run['error'].toString(),
