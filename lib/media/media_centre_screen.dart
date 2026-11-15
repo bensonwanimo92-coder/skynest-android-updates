@@ -26,6 +26,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
   final List<PlatformFile> _localMedia = [];
   final List<PlatformFile> _downloadedMedia = [];
   final Set<String> _favourites = {};
+  final Map<String, List<String>> _playlists = {};
   List<String> _recentlyPlayed = [];
   String? _playingName;
   String _filter = 'all';
@@ -70,6 +71,19 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
           ..clear()
           ..addAll(prefs.getStringList('skynest_media_favourites_v1') ?? []);
         _recentlyPlayed = prefs.getStringList('skynest_media_recent_v1') ?? [];
+        _playlists
+          ..clear()
+          ..addAll(() {
+            final raw = prefs.getString('skynest_media_playlists_v1');
+            if (raw == null) return <String, List<String>>{};
+            try {
+              final decoded = jsonDecode(raw) as Map<String, dynamic>;
+              return decoded.map((key, value) => MapEntry(
+                key, (value as List).map((item) => item.toString()).toList()));
+            } catch (_) {
+              return <String, List<String>>{};
+            }
+          }());
       });
     } catch (error) {
       debugPrint('Saved media library could not be loaded: $error');
@@ -84,6 +98,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
       .toList());
     await prefs.setStringList('skynest_media_favourites_v1', _favourites.toList());
     await prefs.setStringList('skynest_media_recent_v1', _recentlyPlayed);
+    await prefs.setString('skynest_media_playlists_v1', jsonEncode(_playlists));
   }
 
   Future<void> _recordPlayed(PlatformFile file) async {
@@ -95,6 +110,119 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
       if (_recentlyPlayed.length > 30) _recentlyPlayed.removeLast();
     });
     await _saveLibraryPreferences();
+  }
+
+  Future<void> _createPlaylist() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Create playlist'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'Playlist name', hintText: 'e.g. Evening favourites'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Create')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.trim().isEmpty) return;
+    if (_playlists.keys.any((item) => item.toLowerCase() == name.toLowerCase())) {
+      _message('A playlist with that name already exists.');
+      return;
+    }
+    setState(() => _playlists[name] = []);
+    await _saveLibraryPreferences();
+  }
+
+  Future<void> _addToPlaylist(PlatformFile file) async {
+    if (_playlists.isEmpty) {
+      await _createPlaylist();
+      if (_playlists.isEmpty) return;
+    }
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(title: Text('Add to playlist')),
+            ..._playlists.keys.map((name) => ListTile(
+              leading: const Icon(Icons.queue_music_rounded),
+              title: Text(name),
+              subtitle: Text('${_playlists[name]!.length} items'),
+              onTap: () => Navigator.pop(sheetContext, name),
+            )),
+            ListTile(
+              leading: const Icon(Icons.add_rounded),
+              title: const Text('Create a new playlist'),
+              onTap: () => Navigator.pop(sheetContext, '__create__'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected == '__create__') {
+      await _createPlaylist();
+      if (_playlists.isEmpty) return;
+      await _addToPlaylist(file);
+      return;
+    }
+    if (selected == null || file.path == null) return;
+    setState(() {
+      final items = _playlists[selected]!;
+      if (!items.contains(file.path)) items.add(file.path!);
+    });
+    await _saveLibraryPreferences();
+    _message('Added to $selected.');
+  }
+
+  Future<void> _showPlaylist(String name) async {
+    final paths = _playlists[name] ?? [];
+    final files = [..._localMedia, ..._downloadedMedia]
+      .where((file) => file.path != null && paths.contains(file.path)).toList();
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              title: Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text('${paths.length} saved items'),
+              trailing: IconButton(
+                tooltip: 'Delete playlist',
+                icon: const Icon(Icons.delete_outline_rounded),
+                onPressed: () async {
+                  Navigator.pop(sheetContext);
+                  setState(() => _playlists.remove(name));
+                  await _saveLibraryPreferences();
+                },
+              ),
+            ),
+            if (files.isEmpty) const ListTile(title: Text('Select the original files again to play this playlist.')),
+            ...files.map((file) => ListTile(
+              leading: Icon(_isAudio(file.name) ? Icons.music_note : Icons.movie_outlined),
+              title: Text(file.name),
+              trailing: IconButton(
+                icon: const Icon(Icons.play_arrow_rounded),
+                onPressed: () {
+                  Navigator.pop(sheetContext);
+                  _playLocal(file);
+                },
+              ),
+            )),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _toggleFavourite(PlatformFile file) async {
@@ -380,6 +508,28 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
           const SizedBox(height: 18),
           Row(
             children: [
+              Expanded(child: Text('PLAYLISTS', style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                letterSpacing: 1.1, fontWeight: FontWeight.w800, color: colors.onSurfaceVariant))),
+              TextButton.icon(onPressed: _createPlaylist,
+                icon: const Icon(Icons.add_rounded, size: 18), label: const Text('New playlist')),
+            ],
+          ),
+          if (_playlists.isEmpty)
+            Text('Create playlists to organise your offline and local music.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant))
+          else
+            ..._playlists.entries.map((entry) => Card(
+              child: ListTile(
+                leading: const CircleAvatar(child: Icon(Icons.queue_music_rounded)),
+                title: Text(entry.key),
+                subtitle: Text('${entry.value.length} saved items'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => _showPlaylist(entry.key),
+              ),
+            )),
+          const SizedBox(height: 18),
+          Row(
+            children: [
               Expanded(child: Text('ON THIS DEVICE', style: Theme.of(context).textTheme.labelLarge?.copyWith(
                 letterSpacing: 1.1, fontWeight: FontWeight.w800, color: colors.onSurfaceVariant))),
               Text('${_visibleMedia.length} files · ${_downloadedMedia.length} downloaded', style: Theme.of(context).textTheme.labelMedium),
@@ -412,6 +562,11 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
                     icon: Icon(_favourites.contains(file.path) ? Icons.favorite : Icons.favorite_border,
                       color: _favourites.contains(file.path) ? Colors.pinkAccent : null),
                     onPressed: () => _toggleFavourite(file),
+                  ),
+                  IconButton(
+                    tooltip: 'Add to playlist',
+                    icon: const Icon(Icons.playlist_add_rounded),
+                    onPressed: () => _addToPlaylist(file),
                   ),
                   IconButton(
                     tooltip: _playingName == file.name ? 'Playing' : 'Play',
