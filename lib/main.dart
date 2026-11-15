@@ -1643,6 +1643,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         itemBuilder: (context, index) {
                           final item = filteredItems[index];
                           final scheme = Theme.of(context).colorScheme;
+                          final cardOffset = (index - _activeDashboardIndex).toDouble();
+                          final cardDepth = cardOffset.abs().clamp(0.0, 1.0);
                           var hovered = false;
                           return StatefulBuilder(
                             builder: (context, setTileState) => MouseRegion(
@@ -1652,7 +1654,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 scale: hovered ? 1.035 : (index == _activeDashboardIndex ? 1.0 : 0.86),
                                 duration: const Duration(milliseconds: 190),
                                 curve: Curves.easeOutCubic,
-                                child: AnimatedContainer(
+                                child: Transform(
+                                  alignment: Alignment.center,
+                                  transform: Matrix4.identity()
+                                    ..setEntry(3, 2, 0.0012)
+                                    ..translate(math.sin(cardOffset * 0.85) * 42.0, cardDepth * 12.0)
+                                    ..rotateY(-cardOffset * 0.28),
+                                  child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 190),
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(25),
@@ -1842,12 +1850,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       ),
                                     ),
                                   ),
+                                  ),
                                 ),
                               ),
                             ),
                           );
                         },
                       ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8, top: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.swipe_rounded, size: 15, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 7),
+                    Text('Swipe to spin · Hold a card to arrange',
+                      style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  ],
+                ),
               ),
             ],
           ),
