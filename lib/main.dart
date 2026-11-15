@@ -1372,7 +1372,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ]);
     }
 
-    items.add(_MenuItem('Media centre', Icons.library_music_rounded, const Color(0xFF06B6D4), const MediaCentreScreen()));
     items.add(_MenuItem('Discovery', Icons.explore_rounded, const Color(0xFF06B6D4), const MarketDiscoveryScreen()));
     items.add(_MenuItem('Media Centre', Icons.library_music_rounded, const Color(0xFF22D3EE), const MediaCentreScreen()));
     items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
