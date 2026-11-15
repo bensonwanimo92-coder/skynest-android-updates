@@ -8,6 +8,7 @@ on:
       - '.github/workflows/mpesa-worker-check.yml'
   pull_request:
     branches:
+      - feature/skynest-build-3409
       - feature/skynest-mpesa-cloudflare
     paths:
       - 'cloudflare-worker/**'
