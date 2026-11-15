@@ -124,7 +124,7 @@ void main() {
       'records': [{'id': 'house-1', 'data': {'houseNo': 'A1', 'rent': 8500}}],
     });
 
-    expect(encoded, contains('\\n'));
+    expect(encoded, contains('\n'));
     expect(encoded, contains('"schemaVersion": 1'));
   });
 
