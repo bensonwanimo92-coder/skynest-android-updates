@@ -429,6 +429,14 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final allMedia = [..._localMedia, ..._downloadedMedia];
+    final recentMedia = <PlatformFile>[];
+    for (final path in _recentlyPlayed) {
+      for (final file in allMedia) {
+        if (file.path == path) { recentMedia.add(file); break; }
+      }
+      if (recentMedia.length >= 5) break;
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('SkyNest Media Centre'),
@@ -551,6 +559,21 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
                 onTap: () => _showPlaylist(entry.key),
               ),
             )),
+          if (recentMedia.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Text('RECENTLY PLAYED', style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              letterSpacing: 1.1, fontWeight: FontWeight.w800, color: colors.onSurfaceVariant)),
+            const SizedBox(height: 7),
+            ...recentMedia.map((file) => Card(
+              child: ListTile(
+                leading: const Icon(Icons.history_rounded),
+                title: Text(file.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: const Text('Recently played'),
+                trailing: IconButton(icon: const Icon(Icons.play_arrow_rounded),
+                  onPressed: () => _playLocal(file)),
+              ),
+            )),
+          ],
           const SizedBox(height: 18),
           Row(
             children: [
