@@ -494,7 +494,9 @@ service cloud.firestore {
         request.resource.data.nextRunAt is timestamp &&
         request.resource.data.enabled is bool &&
         request.resource.data.createdAt is timestamp &&
-        request.resource.data.updatedAt is timestamp;
+        request.resource.data.updatedAt is timestamp &&
+        request.resource.data.attemptCount is int &&
+        request.resource.data.attemptCount >= 0;
       allow read, delete: if activeUser() && myRole() == 'landlord' &&
         resource.data.ownerId == request.auth.uid;
       allow update: if activeUser() && myRole() == 'landlord' &&
