@@ -173,6 +173,9 @@ class _SkyNestMediaCentreScreenState extends State<SkyNestMediaCentreScreen> {
         throw HttpException('The source returned HTTP ${response.statusCode}.');
       }
       final contentType = response.headers.contentType?.mimeType ?? '';
+      if (contentType.isNotEmpty && !contentType.startsWith('audio/') && !contentType.startsWith('video/') && contentType != 'application/octet-stream') {
+        throw FormatException('The link returned $contentType, not a direct audio or video file.');
+      }
       final nameFromHeader = response.headers.value(HttpHeaders.contentDispositionHeader);
       var name = uri.pathSegments.isEmpty ? '' : uri.pathSegments.last;
       final match = nameFromHeader == null ? null : RegExp(r'filename="?([^";]+)').firstMatch(nameFromHeader);
@@ -188,10 +191,7 @@ class _SkyNestMediaCentreScreenState extends State<SkyNestMediaCentreScreen> {
         throw const FormatException('Only supported audio and video file types can be downloaded.');
       }
       final destination = File('${directory.path}/$name');
-      final sink = destination.openWrite();
-      await response.pipe(sink);
-      await sink.flush();
-      await sink.close();
+      await response.pipe(destination.openWrite());
       if (!mounted) return;
       setState(() {
         _storagePath = directory.path;
