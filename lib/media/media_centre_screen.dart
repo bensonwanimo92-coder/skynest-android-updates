@@ -661,7 +661,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  Text('Search Internet Archive audio with declared CC BY, CC BY-SA or public-domain licences. Stream tracks or save them for offline listening.',
+                  Text('Browse popular tracks or search Internet Archive audio with declared CC BY, CC BY-SA or public-domain licences. Quality and file size are shown when the source supplies them.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
                   const SizedBox(height: 10),
                   TextField(
@@ -682,7 +682,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
                       icon: _archiveBusy
                         ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.search_rounded),
-                      label: Text(_archiveBusy ? 'Searching catalogue…' : 'Search online catalogue'),
+                      label: Text(_archiveBusy ? 'Loading catalogue…' : (_archiveQuery.text.trim().isEmpty ? 'Browse popular tracks' : 'Search online catalogue')),
                     ),
                   ),
                   if (_archiveError != null) ...[
@@ -699,7 +699,7 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         leading: const CircleAvatar(child: Icon(Icons.music_note_rounded)),
                         title: Text(track.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-                        subtitle: Text('${track.creator} · ${track.licenseLabel}',
+                        subtitle: Text('${track.creator} · ${track.licenseLabel} · ${track.qualityLabel} · ${track.fileSizeLabel}',
                           maxLines: 2, overflow: TextOverflow.ellipsis),
                         trailing: Wrap(
                           spacing: 0,
