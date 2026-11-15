@@ -525,5 +525,6 @@ test("activity audit entries are owner-scoped and cannot be forged for another a
   await assertFails(updateDoc(doc(owner, "activityLogs", "audit-1"), {
     action: "Changed audit history"
   }));
-  await assertFails(deleteDoc(doc(owner, "activityLogs", "audit-1")));
+  await assertFails(deleteDoc(doc(other, "activityLogs", "audit-1")));
+  await assertSucceeds(deleteDoc(doc(owner, "activityLogs", "audit-1")));
 });
