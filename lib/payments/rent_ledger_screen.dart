@@ -112,12 +112,7 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
         period: period,
         dueKes: dueKes,
       );
-      final status = (data['status']?.toString() ?? 'pending').toLowerCase();
-      final state = status.contains('revers')
-          ? RentTransactionState.reversed
-          : (status.contains('paid') || status.contains('received'))
-              ? RentTransactionState.confirmed
-              : RentTransactionState.pending;
+      final state = rentTransactionStateFromStatus(data['status']);
       final amount = (data['amount'] as num?)?.round() ?? 0;
       if (amount <= 0) continue;
       grouped['$tenantId|$houseId|$period']!['payments'].add(RentPaymentRecord(
