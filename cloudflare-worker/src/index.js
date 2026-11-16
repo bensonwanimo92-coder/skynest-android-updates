@@ -1,4 +1,4 @@
-import { validateSuccessfulCallback } from "./payment_validation.js";
+import { validateSuccessfulCallback, validateTenantHouseLink } from "./payment_validation.js";
 
 // SkyNest M-Pesa Cloudflare Worker.
 // Sandbox-first per-landlord Daraja STK Push. Do not enable production until Safaricom onboarding and end-to-end tests pass.
@@ -381,6 +381,18 @@ async function requestStkPush(request, env) {
     throw new HttpError("Only an active tenant linked to a landlord can pay rent.", 403);
   }
 
+  const houseId = String(profile.houseId || "");
+  if (!houseId) throw new HttpError("Your tenant account is not assigned to a house yet. Contact the landlord.", 409);
+  const houseResult = await firestore(env, "houses/" + encodeURIComponent(houseId));
+  if (houseResult.status === 404) throw new HttpError("Your assigned house record was not found. Contact the landlord.", 409);
+  const house = decodeFields(houseResult.data.fields);
+  let houseLink;
+  try {
+    houseLink = validateTenantHouseLink(profile, house, uid);
+  } catch (error) {
+    throw new HttpError(error.message || "Your tenant house assignment could not be verified.", 403);
+  }
+
   const landlordResult = await firestore(env, "users/" + encodeURIComponent(String(profile.landlordId)));
   if (landlordResult.status === 404) throw new HttpError("The linked landlord account was not found.", 403);
   const landlordProfile = decodeFields(landlordResult.data.fields);
@@ -436,8 +448,8 @@ async function requestStkPush(request, env) {
     tenantName: String(profile.displayName || ""),
     landlordId: String(profile.landlordId),
     createdBy: String(profile.landlordId),
-    houseId: String(profile.houseId || ""),
-    houseNo: String(profile.houseNo || ""),
+    houseId: houseLink.houseId,
+    houseNo: houseLink.houseNo,
     amountKes: amount,
     phone,
     accountReference,
