@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { before, after, test } from "node:test";
+import { before, beforeEach, after, test } from "node:test";
 import assert from "node:assert/strict";
 import { initializeTestEnvironment, assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
 import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
@@ -10,6 +10,11 @@ const rules = fs.readFileSync(new URL("../firestore.rules", import.meta.url), "u
 
 before(async () => {
   env = await initializeTestEnvironment({ projectId, firestore: { rules } });
+});
+beforeEach(async () => {
+  // Each test seeds its own fixtures; clear prior documents so count assertions
+  // cannot be affected by data written by earlier tests.
+  await env.clearFirestore();
 });
 after(async () => env.cleanup());
 
