@@ -215,6 +215,7 @@ async function saveLandlordPaymentAccount(request, env) {
     accountType: recipient.accountType,
     registeredBusinessName: recipient.businessName,
     accountNumber: recipient.accountNumber,
+    encryptedConfig: null,
     maskedAccount: recipient.accountNumber.length <= 4
       ? recipient.accountNumber
       : "••••" + recipient.accountNumber.slice(-4),
