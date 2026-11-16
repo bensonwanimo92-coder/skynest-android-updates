@@ -1212,7 +1212,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     banner?.dispose();
-    _dashboardPageController.dispose();
     super.dispose();
   }
 
