@@ -229,7 +229,7 @@ async function saveLandlordPaymentAccount(request, env) {
     tillNumber: type === "till" ? tillNumber : "",
     consumerKey, consumerSecret, passkey,
   });
-  await patchDocument(env, "landlordPaymentAccounts/" + encodeURIComponent(uid), {
+  const accountFields = {
     landlordId: uid,
     accountType: type,
     registeredBusinessName: businessName,
@@ -238,7 +238,9 @@ async function saveLandlordPaymentAccount(request, env) {
     status: "pending_verification",
     environment: String(env.DARAJA_ENV || "sandbox"),
     updatedAt: { __firestoreTimestamp: new Date() },
-  });
+  };
+  const saved = await createDocument(env, "landlordPaymentAccounts", uid, accountFields);
+  if (saved.status === 409) await patchDocument(env, "landlordPaymentAccounts/" + encodeURIComponent(uid), accountFields);
   return json({ ok: true, status: "pending_verification", message: "Receiving account saved securely. Verification is still required before tenants can pay." });
 }
 async function getLandlordPaymentAccount(request, env) {
@@ -349,6 +351,14 @@ async function verifyLandlordPaymentAccount(request, env) {
   };
   const created = await createDocument(env, "mpesaPaymentRequests", checkoutId, pending);
   if (created.status === 409) throw new HttpError("Verification checkout already exists. Please retry.", 409);
+  const early = await firestore(env, "mpesaCallbackInbox/" + encodeURIComponent(checkoutId));
+  if (early.status !== 404) {
+    const callbackJson = decodeFields(early.data.fields).payloadJson;
+    if (callbackJson) {
+      await settleCallback(env, JSON.parse(callbackJson), pending);
+      await firestore(env, "mpesaCallbackInbox/" + encodeURIComponent(checkoutId), { method: "DELETE" });
+    }
+  }
   return json({ accepted: true, purpose: "account_verification", checkoutRequestId: checkoutId,
     message: data.CustomerMessage || "Approve the KES 1 verification payment on your phone. It will not be recorded as rent." });
 }
