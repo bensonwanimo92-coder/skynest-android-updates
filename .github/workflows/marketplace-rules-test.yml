@@ -12,6 +12,7 @@ on:
   push:
     branches:
       - integration/roles-on-current-main
+      - integration/skynest-next-complete
     paths:
       - 'firestore.rules'
       - 'firestore.indexes.json'
