@@ -83,6 +83,11 @@ test("landlord retains access to own tenant records", async () => {
 test("caretaker confirmation query and update remain restricted to assigned houses and can_collect", async () => {
   await seed();
   const db = env.authenticatedContext("caretaker-1").firestore();
+  const broadQuery = query(
+    collection(db, "paymentConfirmations"),
+    where("caretakerId", "==", "caretaker-1")
+  );
+  await assertFails(getDocs(broadQuery));
   const assignedQuery = query(
     collection(db, "paymentConfirmations"),
     where("caretakerId", "==", "caretaker-1"),
