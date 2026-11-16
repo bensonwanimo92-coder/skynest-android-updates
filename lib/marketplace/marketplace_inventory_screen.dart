@@ -29,13 +29,6 @@ class _MarketplaceInventoryScreenState extends State<MarketplaceInventoryScreen>
   @override
   void dispose() { _search.dispose(); super.dispose(); }
 
-  String _price(dynamic value) {
-    final n = value is num ? value : num.tryParse(value?.toString() ?? '');
-    return n == null || n <= 0 ? 'Contact for price' :
-      NumberFormat.currency(locale: 'en_KE', symbol: 'KSh ', decimalDigits: 0).format(n);
-  }
-  List<String> _strings(dynamic value) => value is Iterable
-    ? value.whereType<String>().where((s) => s.trim().isNotEmpty).toList() : <String>[];
   bool _matches(Map<String,dynamic> data) {
     if (_category != 'All categories' && data['category'] != _category) return false;
     final term = _search.text.trim().toLowerCase();
