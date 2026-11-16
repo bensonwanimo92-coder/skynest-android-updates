@@ -1,13 +1,13 @@
 # SkyNest Individual Landlord M-Pesa Receiving Accounts
 
-Status: design approved by product owner; implementation pending.
+Status: initial per-landlord PayBill/Till setup and routing implemented on the integration candidate; sandbox deployment and end-to-end acceptance still pending.
 Target branch: integration/skynest-complete-release-candidate
 
 ## Product decision
 
 SkyNest uses the individual-landlord receiving model. Each landlord collects rent into their own Safaricom-registered business PayBill or Buy Goods Till. SkyNest is not the merchant of record, does not pool rent, and does not promise to settle funds from a central account.
 
-The first supported setup is a landlord-owned PayBill or Buy Goods Till with a live Daraja application and the merchant credentials required for STK Push. Ordinary personal M-Pesa numbers are not a supported receiving destination in this design.
+The automated STK setup supports a landlord-owned PayBill or Buy Goods Till with Daraja credentials. A personal M-Pesa phone number can be used for manual Send Money, with the tenant submitting the receipt for landlord review; it is not a Daraja STK merchant destination. B2C phone payouts are a separate business disbursement product and are not rent collection.
 
 ## Landlord experience
 
@@ -100,6 +100,26 @@ After verification, show a compact account card:
 7. Test success, cancellation, timeout, duplicate callback, callback-before-pending-write, reused receipt, wrong amount, wrong payer, disabled account, changed credentials and cross-landlord isolation.
 8. Deploy Worker and Firestore rules separately from the APK. Keep production disabled until Safaricom merchant approval and live controlled tests pass.
 
-## Current implementation gap
+## Current implementation status and remaining acceptance gates
 
-The existing `cloudflare-worker/src/index.js` is explicitly single-merchant: it reads one global `DARAJA_CONSUMER_KEY`, `DARAJA_CONSUMER_SECRET`, `DARAJA_SHORTCODE` and `DARAJA_PASSKEY` from Worker environment variables. Its README also says multi-landlord PayBill/Till routing is not implemented. The current Android service only submits amount and phone to `/api/mpesa/stkpush`; it has no landlord receiving-account setup UI. Do not describe individual landlord receiving accounts as live until the backend, rules, UI and two-landlord isolation tests are complete.
+Implemented on `integration/skynest-complete-release-candidate`:
+
+- Landlord-only `GET/POST /api/mpesa/account` endpoints and Android receiving-account screen.
+- AES-GCM encryption of Daraja merchant credentials using the Cloudflare-only `MPESA_ENCRYPTION_KEY`; secrets are not returned to the app.
+- PayBill and Buy Goods Till configuration fields.
+- Landlord-only KES 1 STK merchant-connection test. A successful callback activates the exact saved account configuration and is not recorded as rent.
+- Tenant STK routing resolves the landlord from the authenticated tenant profile, requires the linked landlord to be active, and uses only that landlord's verified merchant configuration.
+- Verification and rent callbacks validate checkout ID, merchant request ID, exact amount, payer phone, receipt uniqueness and pending state.
+- Worker syntax checks and six callback-validation unit tests pass in GitHub Actions.
+
+Not yet complete or independently verified:
+
+- Cloudflare Worker has not been deployed with the new code and the required `MPESA_ENCRYPTION_KEY` secret.
+- Sandbox end-to-end tests, including two-landlord isolation, have not yet been run against Safaricom and Firebase.
+- Live PayBill/Till payloads and merchant onboarding must be confirmed with Safaricom before production use.
+- No in-app manual personal-phone receiving-instructions form has been added yet. The existing tenant payment-submission flow can be used for manual receipt review if the landlord shares their Send Money number separately.
+- Rate limiting, strict CORS origin allowlists, audit events for account changes, disable-account workflow, credential key rotation, transaction-status reconciliation and full timeout/reversal handling remain to be implemented.
+- Firestore account/callback collections rely on the default-deny client rules and trusted Worker service credentials; add explicit emulator tests to prove client denial.
+- The Android release build for the latest commit is still queued behind an earlier Shorebird setup job.
+
+Do not describe the integration as production-ready or issue a final APK until the Worker is deployed, secrets are configured, sandbox tests pass, two-landlord isolation is proven, and the signed Android build completes.
