@@ -418,6 +418,16 @@ test("cash handover must match the caretaker's recorded collection and landlord 
   }));
   const landlord = env.authenticatedContext("landlord-1").firestore();
   await assertSucceeds(getDoc(doc(landlord, "cashHandovers", "cash-handover-1")));
+  const landlordCollections = query(
+    collection(landlord, "cashCollections"),
+    where("landlordId", "==", "landlord-1")
+  );
+  const landlordHandovers = query(
+    collection(landlord, "cashHandovers"),
+    where("landlordId", "==", "landlord-1")
+  );
+  assert.equal((await assertSucceeds(getDocs(landlordCollections))).size, 1);
+  assert.equal((await assertSucceeds(getDocs(landlordHandovers))).size, 1);
   await assertSucceeds(updateDoc(doc(landlord, "cashHandovers", "cash-handover-1"), {
     status: "acknowledged", acknowledgedBy: "landlord-1",
     acknowledgedAt: serverTimestamp()
