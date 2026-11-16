@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateSuccessfulCallback } from "../src/payment_validation.js";
+import { validateSuccessfulCallback, validateTenantHouseLink } from "../src/payment_validation.js";
 
 const pending = { amountKes: 25000, phone: "254712345678" };
 const metadata = { MpesaReceiptNumber: "QWE1234567", Amount: 25000, PhoneNumber: 254712345678 };
@@ -26,4 +26,36 @@ test("rejects invalid or missing receipt", () => {
 });
 test("normalizes a Kenyan 07 phone in callback metadata", () => {
   assert.equal(validateSuccessfulCallback(pending, { ...metadata, PhoneNumber: "0712345678" }).paidPhone, "254712345678");
+});
+
+
+const tenantProfile = {
+  role: "tenant", status: "active", landlordId: "landlord-1",
+  houseId: "house-1", houseNo: "A1"
+};
+const assignedHouse = {
+  createdBy: "landlord-1", landlordId: "landlord-1",
+  assignedTenantId: "tenant-1", houseNo: "A1"
+};
+
+test("accepts an active tenant's exact landlord-assigned house", () => {
+  assert.deepEqual(validateTenantHouseLink(tenantProfile, assignedHouse, "tenant-1"), {
+    landlordId: "landlord-1", houseId: "house-1", houseNo: "A1"
+  });
+});
+test("rejects an unassigned tenant house", () => {
+  assert.throws(() => validateTenantHouseLink(tenantProfile,
+    { ...assignedHouse, assignedTenantId: "another-tenant" }, "tenant-1"), /could not be verified/);
+});
+test("rejects a house belonging to another landlord", () => {
+  assert.throws(() => validateTenantHouseLink(tenantProfile,
+    { ...assignedHouse, landlordId: "another-landlord" }, "tenant-1"), /could not be verified/);
+});
+test("rejects a mismatched unit number", () => {
+  assert.throws(() => validateTenantHouseLink(tenantProfile,
+    { ...assignedHouse, houseNo: "B9" }, "tenant-1"), /could not be verified/);
+});
+test("rejects tenants without an active house assignment", () => {
+  assert.throws(() => validateTenantHouseLink({ ...tenantProfile, houseId: "" },
+    assignedHouse, "tenant-1"), /complete active house assignment/);
 });
