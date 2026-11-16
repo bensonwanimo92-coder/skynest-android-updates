@@ -39,6 +39,14 @@ async function seed() {
       name: "Private tenant", createdBy: "landlord-1",
       landlordId: "landlord-1", houseId: "house-other"
     });
+    await setDoc(doc(db, "payments", "tenant-own-payment"), {
+      createdBy: "landlord-1", landlordId: "landlord-1", tenantId: "tenant-1",
+      houseId: "house-assigned", houseNo: "A1", amount: 5000, status: "Paid"
+    });
+    await setDoc(doc(db, "payments", "another-tenant-payment"), {
+      createdBy: "landlord-1", landlordId: "landlord-1", tenantId: "another-tenant",
+      houseId: "house-other", houseNo: "B1", amount: 7000, status: "Paid"
+    });
     await setDoc(doc(db, "paymentConfirmations", "confirmation-assigned"), {
       landlordId: "landlord-1", caretakerId: "caretaker-1",
       houseId: "house-assigned", paymentId: "payment-1",
@@ -173,6 +181,14 @@ test("landlord payment records must point to a house owned by that landlord", as
   await assertFails(setDoc(doc(caretaker, "payments", "caretaker-payment"), valid));
 });
 
+
+test("tenant can read only payment records linked to their own UID", async () => {
+  await seed();
+  const tenant = env.authenticatedContext("tenant-1").firestore();
+  await assertSucceeds(getDoc(doc(tenant, "payments", "tenant-own-payment")));
+  await assertFails(getDoc(doc(tenant, "payments", "another-tenant-payment")));
+  await assertFails(getDoc(doc(tenant, "payments", "payment-without-tenant-link")));
+});
 
 test("tenant payment submissions must match the tenant's assigned house and landlord", async () => {
   await seed();
