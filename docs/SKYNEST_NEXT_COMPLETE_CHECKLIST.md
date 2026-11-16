@@ -6,6 +6,7 @@
 
 - [x] Caretaker/non-landlord tenant approval path blocked in the app UI; approval writes now require the active linked landlord in Firestore rules. Source commits: `74d88846049bdbe66c4f9745ff09b9356a24e66a` (app) and `530318c0ea4fd4ec041c47797a51efcee004cf3e` (rules). Not yet emulator-tested or end-to-end verified.
 
+- [x] Tenant house visibility now allows an active tenant to read the exact occupied house assigned to their UID, while denying access to another tenant's occupied house. Firestore rules commit `77ab8b1684a20946ca8b3e114eaa8611195fe9c0`; emulator test added in `ca8b6e3fb059b664bf70af6cbfc353ca4beaa9ef`. Latest emulator workflow is queued/running; do not mark tested until it passes.
 - [x] Dedicated integration branch established: `integration/skynest-next-complete`.
 - [x] Master checklist committed to this branch.
 - [x] Dashboard horizontal PageView/3D carousel replaced in the working branch with a vertically stacked ListView of photo-background tiles, grey-toned dark overlay, restrained borders and the existing preview interaction.
