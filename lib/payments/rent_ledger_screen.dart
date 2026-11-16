@@ -53,24 +53,6 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
 
     final now = DateTime.now();
     final currentPeriod = DateFormat('yyyy-MM').format(now);
-    final persistedInvoices = <String, Map<String, dynamic>>{};
-    for (final doc in results[4].docs) {
-      final data = doc.data();
-      persistedInvoices[doc.id] = <String, dynamic>{...data, '_id': doc.id};
-      final tenantId = data['tenantId']?.toString() ?? '';
-      final houseId = data['houseId']?.toString() ?? '';
-      final period = data['period']?.toString() ?? '';
-      if (tenantId.isEmpty || houseId.isEmpty || period.isEmpty) continue;
-      ensureInvoice(
-        tenantId: tenantId,
-        tenantName: data['tenantName']?.toString() ?? 'Tenant',
-        houseId: houseId,
-        houseNo: data['houseNo']?.toString() ?? '',
-        period: period,
-        dueKes: (data['amountDueKes'] as num?)?.round() ?? 0,
-      );
-    }
-
     final grouped = <String, Map<String, dynamic>>{};
 
     void ensureInvoice({
@@ -92,6 +74,25 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
         'payments': <RentPaymentRecord>[],
       });
     }
+
+    final persistedInvoices = <String, Map<String, dynamic>>{};
+    for (final doc in results[4].docs) {
+      final data = doc.data();
+      persistedInvoices[doc.id] = <String, dynamic>{...data, '_id': doc.id};
+      final tenantId = data['tenantId']?.toString() ?? '';
+      final houseId = data['houseId']?.toString() ?? '';
+      final period = data['period']?.toString() ?? '';
+      if (tenantId.isEmpty || houseId.isEmpty || period.isEmpty) continue;
+      ensureInvoice(
+        tenantId: tenantId,
+        tenantName: data['tenantName']?.toString() ?? 'Tenant',
+        houseId: houseId,
+        houseNo: data['houseNo']?.toString() ?? '',
+        period: period,
+        dueKes: (data['amountDueKes'] as num?)?.round() ?? 0,
+      );
+    }
+
 
     for (final tenantDoc in results[3].docs) {
       final tenant = tenantDoc.data();
@@ -150,7 +151,6 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
           : 'Undated';
       final houseNo = data['houseNo']?.toString() ?? '';
       final houseId = data['houseId']?.toString() ?? houseByNumber[houseNo]?['_id']?.toString() ?? '';
-      final house = houses[houseId] ?? houseByNumber[houseNo];
       final tenantId = data['tenantId']?.toString() ?? data['tenantName']?.toString() ?? 'unknown';
       final invoiceId = '${tenantId}_${houseId}_${period}';
       final persisted = persistedInvoices[invoiceId];
