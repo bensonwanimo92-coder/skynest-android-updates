@@ -268,9 +268,6 @@ async function getPaymentRecipient(request, env) {
   if (role === "tenant" && houseId !== String(profile.houseId || "")) {
     throw new HttpError("You can only view payment details for your assigned house.", 403);
   }
-  if (role === "caretaker" && houseId !== String(profile.rentHouseId || profile.houseId || "")) {
-    throw new HttpError("You can only view payment details for the house your landlord has recorded as your rented home.", 403);
-  }
   const houseResult = await firestore(env, "houses/" + encodeURIComponent(houseId));
   if (houseResult.status === 404) throw new HttpError("The selected house could not be found.", 409);
   const house = decodeFields(houseResult.data.fields);
