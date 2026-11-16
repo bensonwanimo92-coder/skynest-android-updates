@@ -821,7 +821,7 @@ service cloud.firestore {
         (
           (myRole() == 'tenant' &&
             get(housePath).data.assignedTenantId == request.auth.uid &&
-            houseId == payer.houseId) ||
+            (houseId == payer.houseId || houseId == payer.rentHouseId)) ||
           (myRole() == 'caretaker' &&
             get(housePath).data.assignedTenantId == request.auth.uid)
         );
