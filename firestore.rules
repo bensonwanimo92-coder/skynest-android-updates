@@ -823,12 +823,7 @@ service cloud.firestore {
             get(housePath).data.assignedTenantId == request.auth.uid &&
             houseId == payer.houseId) ||
           (myRole() == 'caretaker' &&
-            get(housePath).data.assignedTenantId == request.auth.uid &&
-            (
-              (payer.keys().hasAny(['rentHouseId']) && payer.rentHouseId == houseId) ||
-              (payer.keys().hasAny(['houseId']) && payer.houseId == houseId)
-            )
-          )
+            get(housePath).data.assignedTenantId == request.auth.uid)
         );
     }
 
