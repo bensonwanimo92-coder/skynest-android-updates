@@ -176,7 +176,7 @@ service cloud.firestore {
       allow update: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
         (myRole() == 'caretaker' && request.auth.uid in resource.data.caretakerIds &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isOccupied', 'status', 'assignedTenantId']))
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isOccupied', 'status']))
       );
       allow delete: if activeUser() && resource.data.createdBy == request.auth.uid;
     }
