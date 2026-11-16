@@ -631,7 +631,7 @@ class _LoginScreenState extends State<LoginScreen> {
           final token = await newUser!.getIdToken();
           final request = await client.postUrl(Uri.parse(
             'https://us-central1-hello-chuka.cloudfunctions.net/requestTenantAccess'));
-          request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + token!);
+          request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + token);
           request.headers.contentType = ContentType.json;
           request.write(jsonEncode({'data': {'landlordEmail': landlordEmail.text.trim().toLowerCase()}}));
           final response = await request.close().timeout(const Duration(seconds: 35));
