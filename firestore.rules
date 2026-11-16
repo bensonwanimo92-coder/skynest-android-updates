@@ -836,7 +836,15 @@ service cloud.firestore {
         request.resource.data.houseNo == get(/databases/$(database)/documents/houses/$(request.resource.data.houseId)).data.houseNo &&
         payerOwnsAssignedHouse(request.resource.data.houseId, profile(request.auth.uid).landlordId) &&
         request.resource.data.amount is number && request.resource.data.amount > 0 &&
-        (request.resource.data.method != 'MPESA' || (request.resource.data.payerPhone is string && request.resource.data.payerPhone.size() >= 10 && request.resource.data.payerPhone.size() <= 16 && request.resource.data.transactionCode is string && request.resource.data.transactionCode.matches('^[A-Z0-9]{8,16}
+        request.resource.data.method in ['MPESA', 'CASH', 'BANK', 'OTHER'] &&
+        (request.resource.data.method != 'MPESA' ||
+          (
+            request.resource.data.payerPhone is string &&
+            request.resource.data.payerPhone.size() >= 10 &&
+            request.resource.data.payerPhone.size() <= 16 &&
+            request.resource.data.transactionCode is string &&
+            request.resource.data.transactionCode.matches('^[A-Z0-9]{8,16}$')
+          )) &&
         request.resource.data.status == 'pending';
       allow read: if activeUser() && (
         resource.data.tenantId == request.auth.uid ||
@@ -851,7 +859,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // M-Pesa transaction-code reservation must be atomically paired with its submission.
     match /mpesaTransactionCodes/{code} {
       allow create: if activeUser() && myRole() in ['tenant', 'caretaker'] &&
         code.matches('^[A-Z0-9]{8,16}$') &&
