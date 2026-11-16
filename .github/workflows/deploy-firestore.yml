@@ -24,6 +24,20 @@ jobs:
         with:
           ref: integration/roles-on-current-main
 
+      - name: Set up Node for Firestore rules tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Firestore rules test dependencies
+        run: npm install
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Run Firestore and Storage emulator security tests before deployment
+        run: firebase emulators:exec --only firestore,storage --project demo-skynest-marketplace "npm run test:marketplace-rules && npm run test:storage-rules"
+
       - name: Validate deployment configuration
         env:
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
@@ -53,9 +67,6 @@ jobs:
 
       - name: Set up Google Cloud CLI
         uses: google-github-actions/setup-gcloud@v2
-
-      - name: Install Firebase CLI
-        run: npm install --global firebase-tools
 
       - name: Deploy Firestore and Storage rules
         env:

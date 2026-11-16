@@ -364,3 +364,57 @@ test("landlords can edit pamphlet content without changing ownership", async () 
     title: "Attempted takeover"
   }));
 });
+
+
+test("group members can self-join but cannot add arbitrary users", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users", "landlord-1"), {
+      role: "landlord",
+      status: "active"
+    });
+    await setDoc(doc(db, "users", "tenant-1"), {
+      role: "tenant",
+      status: "active",
+      landlordId: "landlord-1"
+    });
+    await setDoc(doc(db, "users", "other-landlord"), {
+      role: "landlord",
+      status: "active"
+    });
+    await setDoc(doc(db, "users", "outsider"), {
+      role: "tenant",
+      status: "active",
+      landlordId: "other-landlord"
+    });
+    await setDoc(doc(db, "groups", "group-1"), {
+      createdBy: "landlord-1",
+      landlordId: "landlord-1",
+      memberIds: ["landlord-1"]
+    });
+    await setDoc(doc(db, "groups", "group-1", "messages", "message-1"), {
+      senderId: "landlord-1",
+      encryptionVersion: 1,
+      ciphertext: "encrypted-content"
+    });
+  });
+
+  const tenant = env.authenticatedContext("tenant-1").firestore();
+  const group = doc(tenant, "groups", "group-1");
+
+  // A linked tenant can still join their landlord's group.
+  await assertSucceeds(updateDoc(group, {
+    memberIds: ["landlord-1", "tenant-1"]
+  }));
+
+  // Once in the group, that tenant cannot append an unrelated UID.
+  await assertFails(updateDoc(group, {
+    memberIds: ["landlord-1", "tenant-1", "outsider"]
+  }));
+
+  const outsider = env.authenticatedContext("outsider").firestore();
+  await assertFails(getDoc(doc(outsider, "groups", "group-1")));
+  await assertFails(getDoc(doc(
+    outsider, "groups", "group-1", "messages", "message-1"
+  )));
+});
