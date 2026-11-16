@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'rent_ledger.dart';
+import 'mpesa_service.dart';
 
 class TenantRentOverviewScreen extends StatelessWidget {
   const TenantRentOverviewScreen({super.key});
@@ -116,6 +117,19 @@ class TenantRentOverviewScreen extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (balance > 0) ...[
+                      const SizedBox(height: 14),
+                      FilledButton.icon(
+                        onPressed: () => _startMpesaPayment(context, balance),
+                        icon: const Icon(Icons.phone_android_rounded),
+                        label: const Text('Pay rent with M-Pesa'),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'You can pay all or part of your outstanding balance. The payment is sent to your linked landlord’s verified PayBill or Till.',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     const Text('RENT STATEMENTS',
                       style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .8)),
@@ -184,6 +198,118 @@ class TenantRentOverviewScreen extends StatelessWidget {
         },
       ),
     );
+  }
+
+  Future<void> _startMpesaPayment(BuildContext context, int outstandingBalance) async {
+    final amountController = TextEditingController(
+      text: outstandingBalance > 150000 ? '150000' : outstandingBalance.toString(),
+    );
+    final phoneController = TextEditingController();
+    try {
+      final details = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Pay rent with M-Pesa'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Outstanding balance: KSh ' + outstandingBalance.toString()),
+              const SizedBox(height: 12),
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Amount (KES)',
+                  helperText: 'Full or partial payment',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'M-Pesa phone number',
+                  hintText: '07XXXXXXXX or 2547XXXXXXXX',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Your linked landlord is selected securely by SkyNest. You cannot change the receiving account.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('CANCEL'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, {
+                'amount': amountController.text.trim(),
+                'phone': phoneController.text.trim(),
+              }),
+              child: const Text('CONTINUE'),
+            ),
+          ],
+        ),
+      );
+      if (details == null || !context.mounted) return;
+      final amount = int.tryParse(details['amount'] ?? '');
+      final phone = details['phone'] ?? '';
+      if (amount == null || amount < 1 || amount > outstandingBalance || amount > 150000) {
+        final maximum = outstandingBalance > 150000 ? 150000 : outstandingBalance;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Enter an amount between KSh 1 and KSh ' + maximum.toString() + '.')),
+        );
+        return;
+      }
+      if (!RegExp(r'^(?:07|01)\d{8}$|^254[17]\d{8}
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(children: [
+      Expanded(child: Text(label)),
+      Text(_kes.format(amount), style: TextStyle(color: color, fontWeight: FontWeight.w800)),
+    ]),
+  );
+}
+).hasMatch(phone)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter a valid Kenyan M-Pesa phone number.')),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Requesting a secure M-Pesa prompt…')),
+      );
+      final message = await SkyNestMpesaService.requestStkPush(
+        amountKes: amount,
+        phone: phone,
+      );
+      if (!context.mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('M-Pesa prompt requested'),
+          content: Text(message + '\n\nYour balance will update after Safaricom confirms the payment.'),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString().replaceFirst('Bad state: ', ''))),
+      );
+    } finally {
+      amountController.dispose();
+      phoneController.dispose();
+    }
   }
 
   Widget _summary(String label, int amount, Color color) => Padding(
