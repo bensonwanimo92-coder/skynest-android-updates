@@ -6507,7 +6507,7 @@ class HouseRequestsScreen extends StatelessWidget {
         }
         await FirebaseFirestore.instance.collection('tenants').add({
           'name': data['tenantName'] ?? 'Tenant', 'houseNo': data['houseNo'] ?? '',
-          'tenantId': tenantId, 'landlordId': data['landlordId'],
+          'houseId': data['houseId'], 'tenantId': tenantId, 'landlordId': data['landlordId'],
           'createdBy': data['landlordId'], 'createdAt': FieldValue.serverTimestamp(),
         });
       }
