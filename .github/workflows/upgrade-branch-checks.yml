@@ -38,5 +38,7 @@ jobs:
 
       - name: Run Flutter tests
         run: flutter test --no-pub
+      - name: Run rent invoice scheduler unit tests
+        run: node --test functions/rent_invoice_scheduler.test.js
       - name: Validate Firebase Cloud Functions syntax
         run: node --check functions/index.js
