@@ -87,7 +87,7 @@ service cloud.firestore {
           request.resource.data.status in ['active', 'rejected'] &&
           request.resource.data.role == resource.data.role &&
           request.resource.data.landlordId == resource.data.landlordId &&
-          landlordFor(resource.data.landlordId)
+          myRole() == 'landlord' && request.auth.uid == resource.data.landlordId
         ) ||
         (
           resource.data.role == 'caretaker' &&
