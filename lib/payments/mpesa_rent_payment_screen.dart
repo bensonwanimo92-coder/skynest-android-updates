@@ -61,7 +61,7 @@ class _MpesaRentPaymentScreenState extends State<MpesaRentPaymentScreen> {
         final propertyIds = (profile['propertyIds'] as List?)?.whereType<String>().contains(houseId) ?? false;
         if (!assigned && !propertyIds) throw StateError('This house is not assigned to your caretaker account.');
       }
-      final recipient = await SkyNestMpesaService.getPaymentRecipient();
+      final recipient = await SkyNestMpesaService.getPaymentRecipient(houseId: houseId);
       if (!mounted) return;
       setState(() {
         _profile = profile;
