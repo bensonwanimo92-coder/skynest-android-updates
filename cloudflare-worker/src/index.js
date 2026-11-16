@@ -168,6 +168,101 @@ function normalizePhone(value) {
   if (!/^254[17]\d{8}$/.test(phone)) throw new HttpError("Enter a valid Kenyan M-Pesa number, e.g. 07XXXXXXXX or 2547XXXXXXXX.");
   return phone;
 }
+async function mpesaEncryptionKey(env) {
+  const encoded = String(env.MPESA_ENCRYPTION_KEY || "");
+  if (!encoded) throw new HttpError("MPESA_ENCRYPTION_KEY is not configured in Cloudflare.", 500);
+  let raw;
+  try { raw = Uint8Array.from(atob(encoded), c => c.charCodeAt(0)); }
+  catch { throw new HttpError("MPESA_ENCRYPTION_KEY must be base64-encoded.", 500); }
+  if (raw.length !== 32) throw new HttpError("MPESA_ENCRYPTION_KEY must decode to exactly 32 bytes.", 500);
+  return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+async function encryptLandlordConfig(env, config) {
+  const key = await mpesaEncryptionKey(env);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plain = new TextEncoder().encode(JSON.stringify(config));
+  const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain);
+  return JSON.stringify({ v: 1, iv: b64url(iv), data: b64url(new Uint8Array(cipher)) });
+}
+async function decryptLandlordConfig(env, envelope) {
+  try {
+    const item = JSON.parse(String(envelope || ""));
+    if (item.v !== 1 || !item.iv || !item.data) throw new Error("Invalid envelope");
+    const key = await mpesaEncryptionKey(env);
+    const fromUrl = value => Uint8Array.from(atob(value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4)), c => c.charCodeAt(0));
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromUrl(item.iv) }, key, fromUrl(item.data));
+    return JSON.parse(new TextDecoder().decode(plain));
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError("Could not decrypt this landlord's M-Pesa configuration. Ask the landlord to save it again.", 500);
+  }
+}
+async function saveLandlordPaymentAccount(request, env) {
+  const uid = await verifyFirebaseUser(request, env);
+  const profileResult = await firestore(env, "users/" + encodeURIComponent(uid));
+  if (profileResult.status === 404) throw new HttpError("Landlord profile not found.", 403);
+  const profile = decodeFields(profileResult.data.fields);
+  if (String(profile.role || "").toLowerCase() !== "landlord" ||
+      String(profile.status || "").toLowerCase() !== "active") {
+    throw new HttpError("Only an active landlord can configure a receiving account.", 403);
+  }
+  let input;
+  try { input = await request.json(); } catch { throw new HttpError("Request body must be valid JSON."); }
+  const type = String(input.accountType || "").toLowerCase();
+  const businessName = String(input.registeredBusinessName || "").trim();
+  const shortcode = String(input.businessShortCode || "").trim();
+  const tillNumber = String(input.tillNumber || "").trim();
+  const consumerKey = String(input.consumerKey || "").trim();
+  const consumerSecret = String(input.consumerSecret || "").trim();
+  const passkey = String(input.passkey || "").trim();
+  if (!["paybill", "till"].includes(type)) throw new HttpError("Choose PayBill or Buy Goods Till.");
+  if (!businessName || businessName.length > 120) throw new HttpError("Enter the registered business name.");
+  if (!/^\\d{5,7}$/.test(shortcode)) throw new HttpError("Enter a valid 5–7 digit Daraja business shortcode.");
+  if (type === "till" && !/^\\d{5,20}$/.test(tillNumber)) throw new HttpError("Enter a valid Buy Goods Till number.");
+  if (type === "paybill" && tillNumber) throw new HttpError("A Till number is not used for PayBill.");
+  if (consumerKey.length < 8 || consumerSecret.length < 8 || passkey.length < 8) {
+    throw new HttpError("Enter the Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Passkey.");
+  }
+  const envelope = await encryptLandlordConfig(env, {
+    accountType: type, businessName, businessShortCode: shortcode,
+    tillNumber: type === "till" ? tillNumber : "",
+    consumerKey, consumerSecret, passkey,
+  });
+  await patchDocument(env, "landlordPaymentAccounts/" + encodeURIComponent(uid), {
+    landlordId: uid,
+    accountType: type,
+    registeredBusinessName: businessName,
+    maskedAccount: (type === "till" ? tillNumber : shortcode).slice(-4).padStart(8, "•"),
+    encryptedConfig: envelope,
+    status: "pending_verification",
+    environment: String(env.DARAJA_ENV || "sandbox"),
+    updatedAt: { __firestoreTimestamp: new Date() },
+  });
+  return json({ ok: true, status: "pending_verification", message: "Receiving account saved securely. Verification is still required before tenants can pay." });
+}
+async function getLandlordPaymentAccount(request, env) {
+  const uid = await verifyFirebaseUser(request, env);
+  const profileResult = await firestore(env, "users/" + encodeURIComponent(uid));
+  if (profileResult.status === 404) throw new HttpError("Profile not found.", 403);
+  const profile = decodeFields(profileResult.data.fields);
+  if (String(profile.role || "").toLowerCase() !== "landlord" ||
+      String(profile.status || "").toLowerCase() !== "active") {
+    throw new HttpError("Only an active landlord can view receiving-account settings.", 403);
+  }
+  const result = await firestore(env, "landlordPaymentAccounts/" + encodeURIComponent(uid));
+  if (result.status === 404) return json({ configured: false, status: "not_configured" });
+  const data = decodeFields(result.data.fields);
+  return json({
+    configured: true,
+    accountType: data.accountType || "",
+    registeredBusinessName: data.registeredBusinessName || "",
+    maskedAccount: data.maskedAccount || "",
+    status: data.status || "pending_verification",
+    environment: data.environment || "sandbox",
+    credentialsStored: Boolean(data.encryptedConfig),
+  });
+}
+
 function darajaTimestamp() {
   const date = new Date(Date.now() + 3 * 60 * 60 * 1000);
   return date.getUTCFullYear() +
@@ -358,6 +453,12 @@ export default {
     try {
       if (request.method === "GET" && url.pathname === "/health") {
         return json({ ok: true, service: "skynest-mpesa", environment: env.DARAJA_ENV || "sandbox" });
+      }
+      if (request.method === "GET" && url.pathname === "/api/mpesa/account") {
+        return await getLandlordPaymentAccount(request, env);
+      }
+      if (request.method === "POST" && url.pathname === "/api/mpesa/account") {
+        return await saveLandlordPaymentAccount(request, env);
       }
       if (request.method === "POST" && url.pathname === "/api/mpesa/stkpush") {
         return await requestStkPush(request, env);
