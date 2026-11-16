@@ -2,14 +2,14 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    // Spark-compatible bootstrap for the one initial marketplace administrator.
-    // The UID is immutable; the verified email is an additional identity check.
-    // Custom-claim administrators remain supported for future trusted provisioning.
+    // Initial marketplace owner bootstrap: only the verified owner mailbox is
+    // granted admin access on the Spark plan. No public self-assigned role or
+    // client-writable custom claim is accepted. Future admins require trusted
+    // server-side custom-claim provisioning.
     function marketplaceAdmin() {
       return signedIn() && (
         request.auth.token.marketplaceAdmin == true ||
         (
-          request.auth.uid == 'PN9bC3ZzgSaOK1JjG4TcjCU9Grx1' &&
           request.auth.token.email == 'bensonwanimo92@gmail.com' &&
           request.auth.token.email_verified == true
         )
