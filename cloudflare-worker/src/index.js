@@ -3,8 +3,7 @@ import { validateSuccessfulCallback } from "./payment_validation.js";
 // SkyNest M-Pesa Cloudflare Worker.
 // Sandbox-first single-merchant Daraja STK Push. Do not enable production until Safaricom onboarding and end-to-end tests pass.
 
-let darajaToken = null;
-let darajaTokenExpiry = 0;
+const darajaTokens = new Map();
 let googleToken = null;
 let googleTokenExpiry = 0;
 
@@ -145,21 +144,23 @@ async function verifyFirebaseUser(request, env) {
   if (!response.ok || !user || user.disabled) throw new HttpError("Your SkyNest session is invalid. Sign in again.", 401);
   return user.localId;
 }
-async function darajaAccessToken(env) {
-  if (darajaToken && Date.now() < darajaTokenExpiry) return darajaToken;
-  if (!env.DARAJA_CONSUMER_KEY || !env.DARAJA_CONSUMER_SECRET) {
-    throw new HttpError("Daraja API credentials are not configured.", 500);
-  }
+async function darajaAccessToken(env, credentials = {}) {
+  const consumerKey = credentials.consumerKey || env.DARAJA_CONSUMER_KEY;
+  const consumerSecret = credentials.consumerSecret || env.DARAJA_CONSUMER_SECRET;
+  if (!consumerKey || !consumerSecret) throw new HttpError("This landlord's Daraja API credentials are not configured.", 500);
+  const cacheKey = consumerKey;
+  const cached = darajaTokens.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) return cached.token;
   const host = env.DARAJA_ENV === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
-  const basic = btoa(env.DARAJA_CONSUMER_KEY + ":" + env.DARAJA_CONSUMER_SECRET);
+  const basic = btoa(consumerKey + ":" + consumerSecret);
   const response = await fetch(host + "/oauth/v1/generate?grant_type=client_credentials", {
     headers: { authorization: "Basic " + basic },
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.access_token) throw new HttpError("Daraja authentication failed. Check the Worker secrets and environment.", 502);
-  darajaToken = data.access_token;
-  darajaTokenExpiry = Date.now() + Math.max(60, Number(data.expires_in || 3600) - 120) * 1000;
-  return darajaToken;
+  if (!response.ok || !data.access_token) throw new HttpError("Daraja authentication failed. Check this landlord's credentials and environment.", 502);
+  const token = data.access_token;
+  darajaTokens.set(cacheKey, { token, expiresAt: Date.now() + Math.max(60, Number(data.expires_in || 3600) - 120) * 1000 });
+  return token;
 }
 function normalizePhone(value) {
   let phone = String(value || "").replace(/[\s+()\-]/g, "");
@@ -275,8 +276,7 @@ function darajaTimestamp() {
 function assertConfiguration(env) {
   const required = [
     "FIREBASE_PROJECT_ID", "FIREBASE_WEB_API_KEY", "FIREBASE_SERVICE_ACCOUNT_JSON",
-    "DARAJA_CONSUMER_KEY", "DARAJA_CONSUMER_SECRET", "DARAJA_SHORTCODE",
-    "DARAJA_PASSKEY", "STK_CALLBACK_URL", "STK_CALLBACK_TOKEN",
+    "MPESA_ENCRYPTION_KEY", "STK_CALLBACK_URL", "STK_CALLBACK_TOKEN",
   ];
   const missing = required.filter(key => !env[key]);
   if (missing.length) throw new HttpError("Worker configuration is incomplete: " + missing.join(", "), 500);
@@ -302,6 +302,11 @@ async function requestStkPush(request, env) {
     throw new HttpError("Only an active tenant linked to a landlord can pay rent.", 403);
   }
 
+  const accountResult = await firestore(env, "landlordPaymentAccounts/" + encodeURIComponent(String(profile.landlordId)));
+  if (accountResult.status === 404) throw new HttpError("Your landlord has not configured an M-Pesa receiving account yet.", 409);
+  const accountMeta = decodeFields(accountResult.data.fields);
+  if (accountMeta.status !== "verified") throw new HttpError("Your landlord's M-Pesa receiving account is awaiting verification. Please use the other payment instructions for now.", 409);
+  const merchant = await decryptLandlordConfig(env, accountMeta.encryptedConfig);
   const host = env.DARAJA_ENV === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
   const timestamp = darajaTimestamp();
   const callbackUrl = String(env.STK_CALLBACK_URL);
@@ -309,16 +314,16 @@ async function requestStkPush(request, env) {
   if (!expectedCallback.pathname.endsWith("/hooks/stk/result/" + env.STK_CALLBACK_TOKEN)) {
     throw new HttpError("STK_CALLBACK_URL path must end with /hooks/stk/result/<STK_CALLBACK_TOKEN>.", 500);
   }
-  const accessToken = await darajaAccessToken(env);
+  const accessToken = await darajaAccessToken(env, merchant);
   const accountReference = "SN" + crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
   const payload = {
-    BusinessShortCode: env.DARAJA_SHORTCODE,
-    Password: btoa(env.DARAJA_SHORTCODE + env.DARAJA_PASSKEY + timestamp),
+    BusinessShortCode: merchant.businessShortCode,
+    Password: btoa(merchant.businessShortCode + merchant.passkey + timestamp),
     Timestamp: timestamp,
-    TransactionType: "CustomerPayBillOnline",
+    TransactionType: merchant.accountType === "till" ? "CustomerBuyGoodsOnline" : "CustomerPayBillOnline",
     Amount: amount,
     PartyA: phone,
-    PartyB: env.DARAJA_SHORTCODE,
+    PartyB: merchant.accountType === "till" ? merchant.tillNumber : merchant.businessShortCode,
     PhoneNumber: phone,
     CallBackURL: callbackUrl,
     AccountReference: accountReference,
