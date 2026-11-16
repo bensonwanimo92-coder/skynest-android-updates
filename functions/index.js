@@ -203,6 +203,11 @@ exports.requestTenantAccess = onCall(async (request) => {
   await db.runTransaction(async (transaction) => {
     const existing = await transaction.get(userRef);
     if (existing.exists) {
+      const profile = existing.data();
+      if (profile.role === "tenant" && profile.status === "pending" &&
+          profile.landlordId === landlord.id && profile.registrationMethod === "landlord_email") {
+        return; // Idempotent retry when the client did not receive the first response.
+      }
       throw new HttpsError("already-exists", "A SkyNest profile already exists for this account. Sign in instead of registering again.");
     }
     transaction.create(userRef, {
