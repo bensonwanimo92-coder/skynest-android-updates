@@ -2962,9 +2962,20 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     try {
+      var houseId = data['houseId']?.toString();
+      if (houseId == null || houseId.isEmpty) {
+        final matches = await FirebaseFirestore.instance.collection('houses')
+            .where('createdBy', isEqualTo: uid)
+            .where('houseNo', isEqualTo: (data['houseNo'] ?? '').toString())
+            .limit(2).get();
+        if (matches.docs.length != 1) {
+          throw StateError('The payment must be linked to one exact house before it can enter the ledger.');
+        }
+        houseId = matches.docs.single.id;
+      }
       final payment = await FirebaseFirestore.instance.collection('payments').add({
         'tenantName': data['tenantName'] ?? 'Tenant', 'houseNo': data['houseNo'] ?? '',
-        'amount': data['amount'], 'method': data['method'] ?? 'Manual',
+        'houseId': houseId, 'amount': data['amount'], 'method': data['method'] ?? 'Manual',
         'status': 'Received (landlord verified)', 'createdAt': FieldValue.serverTimestamp(),
         'createdBy': uid, 'landlordId': uid, 'tenantId': data['tenantId'],
       });
