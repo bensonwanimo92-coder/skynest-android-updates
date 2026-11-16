@@ -44,3 +44,34 @@ export function validateTenantHouseLink(profile, house, uid) {
   }
   return { landlordId, houseId, houseNo };
 }
+
+
+// Validate the landlord's merchant details before encrypting or saving them.
+// Keep this pure so both PayBill and Till formats have direct regression coverage.
+export function validateMerchantAccountInput(input) {
+  const type = String(input?.accountType || "").toLowerCase();
+  const businessName = String(input?.registeredBusinessName || "").trim();
+  const shortcode = String(input?.businessShortCode || "").trim();
+  const tillNumber = String(input?.tillNumber || "").trim();
+  const consumerKey = String(input?.consumerKey || "").trim();
+  const consumerSecret = String(input?.consumerSecret || "").trim();
+  const passkey = String(input?.passkey || "").trim();
+
+  if (!["paybill", "till"].includes(type)) throw new Error("Choose PayBill or Buy Goods Till.");
+  if (!businessName || businessName.length > 120) throw new Error("Enter the registered business name.");
+  if (!/^\\d{5,7}$/.test(shortcode)) throw new Error("Enter a valid 5–7 digit Daraja business shortcode.");
+  if (type === "till" && !/^\\d{5,20}$/.test(tillNumber)) throw new Error("Enter a valid Buy Goods Till number.");
+  if (type === "paybill" && tillNumber) throw new Error("A Till number is not used for PayBill.");
+  if (consumerKey.length < 8 || consumerSecret.length < 8 || passkey.length < 8) {
+    throw new Error("Enter the Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Passkey.");
+  }
+  return {
+    accountType: type,
+    businessName,
+    businessShortCode: shortcode,
+    tillNumber: type === "till" ? tillNumber : "",
+    consumerKey,
+    consumerSecret,
+    passkey,
+  };
+}
