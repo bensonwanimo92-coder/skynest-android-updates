@@ -2141,7 +2141,7 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + token);
       request.headers.contentType = ContentType.json;
       final data = <String, dynamic>{'targetRole': targetRole};
-      if (targetRole == 'tenant') data['landlordEmail'] = landlordEmail.text.trim().toUpperCase();
+      if (targetRole == 'tenant') data['landlordEmail'] = landlordEmail.text.trim().toLowerCase();
       request.write(jsonEncode({'data': data}));
       final response = await request.close().timeout(const Duration(seconds: 35));
       final responseText = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 20));
@@ -2168,7 +2168,13 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
 
   Future<void> _changeRole(String targetRole) async {
     if (saving) return;
-    if (targetRole == 'tenant' && !RegExp(r'^[^\\s@]+@[^\\s@]+\\.[^\\s@]+    final targetName = targetRole == 'tenant' ? 'Tenant' : 'Landlord';
+    final requestedLandlordEmail = landlordEmail.text.trim();
+    if (targetRole == 'tenant' &&
+        (!requestedLandlordEmail.contains('@') || !requestedLandlordEmail.contains('.'))) {
+      snack(context, 'Enter your new landlord’s registered email address.');
+      return;
+    }
+    final targetName = targetRole == 'tenant' ? 'Tenant' : 'Landlord';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -2276,7 +2282,8 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
                   const SizedBox(height: 14),
                   TextField(
                     controller: landlordEmail,
-                    textCapitalization: TextCapitalization.characters,
+                    textCapitalization: TextCapitalization.none,
+                    keyboardType: TextInputType.emailAddress,
                     decoration: const InputDecoration(
                       labelText: 'New landlord email address',
                       prefixIcon: Icon(Icons.alternate_email),
