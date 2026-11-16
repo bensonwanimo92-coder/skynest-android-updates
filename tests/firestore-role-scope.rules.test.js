@@ -305,3 +305,96 @@ test("only landlord can change a tenant's house assignment", async () => {
     assignedTenantId: "another-tenant"
   }));
 });
+
+
+test("caretaker cash collection is restricted to assigned active tenants and can_collect permission", async () => {
+  await seed();
+  const caretaker = env.authenticatedContext("caretaker-1").firestore();
+  const valid = {
+    landlordId: "landlord-1", caretakerId: "caretaker-1",
+    tenantId: "tenant-1", tenantName: "Tenant One",
+    houseId: "house-assigned", houseNo: "A1", amountKes: 5000,
+    method: "CASH", status: "collected_pending_handover",
+    collectedAt: serverTimestamp(), createdAt: serverTimestamp()
+  };
+  await assertSucceeds(setDoc(doc(caretaker, "cashCollections", "cash-valid"), valid));
+  await assertFails(setDoc(doc(caretaker, "cashCollections", "cash-wrong-house"), {
+    ...valid, houseId: "house-other", houseNo: "B1"
+  }));
+  await assertFails(setDoc(doc(caretaker, "cashCollections", "cash-wrong-tenant"), {
+    ...valid, tenantId: "another-tenant"
+  }));
+  await assertFails(setDoc(doc(caretaker, "cashCollections", "cash-spoof-landlord"), {
+    ...valid, landlordId: "another-landlord"
+  }));
+  await assertFails(updateDoc(doc(caretaker, "cashCollections", "cash-valid"), {
+    amountKes: 1
+  }));
+  const ownQuery = query(
+    collection(caretaker, "cashCollections"),
+    where("caretakerId", "==", "caretaker-1"),
+    where("landlordId", "==", "landlord-1")
+  );
+  const own = await assertSucceeds(getDocs(ownQuery));
+  assert.equal(own.size, 1);
+  const landlord = env.authenticatedContext("landlord-1").firestore();
+  await assertSucceeds(getDoc(doc(landlord, "cashCollections", "cash-valid")));
+});
+
+test("view-only caretaker cannot record cash collections", async () => {
+  await seed();
+  await env.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), "users", "caretaker-1"), {
+      caretakerPermission: "view_only"
+    });
+  });
+  const caretaker = env.authenticatedContext("caretaker-1").firestore();
+  await assertFails(setDoc(doc(caretaker, "cashCollections", "cash-view-only"), {
+    landlordId: "landlord-1", caretakerId: "caretaker-1",
+    tenantId: "tenant-1", tenantName: "Tenant One",
+    houseId: "house-assigned", houseNo: "A1", amountKes: 5000,
+    method: "CASH", status: "collected_pending_handover",
+    collectedAt: serverTimestamp(), createdAt: serverTimestamp()
+  }));
+});
+
+test("cash handover must match the caretaker's recorded collection and landlord alone acknowledges it", async () => {
+  await seed();
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "cashCollections", "cash-handover-1"), {
+      landlordId: "landlord-1", caretakerId: "caretaker-1",
+      tenantId: "tenant-1", tenantName: "Tenant One",
+      houseId: "house-assigned", houseNo: "A1", amountKes: 5000,
+      method: "CASH", status: "collected_pending_handover",
+      collectedAt: new Date(), createdAt: new Date()
+    });
+  });
+  const caretaker = env.authenticatedContext("caretaker-1").firestore();
+  const handover = {
+    collectionId: "cash-handover-1", landlordId: "landlord-1",
+    caretakerId: "caretaker-1", tenantId: "tenant-1",
+    tenantName: "Tenant One", houseId: "house-assigned",
+    houseNo: "A1", amountKes: 5000,
+    status: "submitted", submittedAt: serverTimestamp()
+  };
+  await assertSucceeds(setDoc(doc(caretaker, "cashHandovers", "cash-handover-1"), handover));
+  await assertFails(setDoc(doc(caretaker, "cashHandovers", "cash-handover-forged"), {
+    ...handover, collectionId: "cash-handover-1", amountKes: 9000
+  }));
+  const landlord = env.authenticatedContext("landlord-1").firestore();
+  await assertSucceeds(getDoc(doc(landlord, "cashHandovers", "cash-handover-1")));
+  await assertSucceeds(updateDoc(doc(landlord, "cashHandovers", "cash-handover-1"), {
+    status: "acknowledged", acknowledgedBy: "landlord-1",
+    acknowledgedAt: serverTimestamp()
+  }));
+  await assertFails(updateDoc(doc(landlord, "cashHandovers", "cash-handover-1"), {
+    amountKes: 1
+  }));
+  await assertFails(updateDoc(doc(caretaker, "cashHandovers", "cash-handover-1"), {
+    status: "acknowledged", acknowledgedBy: "caretaker-1",
+    acknowledgedAt: serverTimestamp()
+  }));
+  const tenant = env.authenticatedContext("tenant-1").firestore();
+  await assertFails(getDoc(doc(tenant, "cashHandovers", "cash-handover-1")));
+});
