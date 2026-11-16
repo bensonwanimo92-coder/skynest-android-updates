@@ -31,6 +31,7 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
       db.collection('payments').where('landlordId', isEqualTo: uid).get(),
       db.collection('houses').where('createdBy', isEqualTo: uid).get(),
       db.collection('users').where('landlordId', isEqualTo: uid).get(),
+      db.collection('rentInvoices').where('landlordId', isEqualTo: uid).get(),
     ]);
 
     final paymentDocs = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
@@ -52,6 +53,24 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
 
     final now = DateTime.now();
     final currentPeriod = DateFormat('yyyy-MM').format(now);
+    final persistedInvoices = <String, Map<String, dynamic>>{};
+    for (final doc in results[4].docs) {
+      final data = doc.data();
+      persistedInvoices[doc.id] = <String, dynamic>{...data, '_id': doc.id};
+      final tenantId = data['tenantId']?.toString() ?? '';
+      final houseId = data['houseId']?.toString() ?? '';
+      final period = data['period']?.toString() ?? '';
+      if (tenantId.isEmpty || houseId.isEmpty || period.isEmpty) continue;
+      ensureInvoice(
+        tenantId: tenantId,
+        tenantName: data['tenantName']?.toString() ?? 'Tenant',
+        houseId: houseId,
+        houseNo: data['houseNo']?.toString() ?? '',
+        period: period,
+        dueKes: (data['amountDueKes'] as num?)?.round() ?? 0,
+      );
+    }
+
     final grouped = <String, Map<String, dynamic>>{};
 
     void ensureInvoice({
@@ -82,13 +101,44 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
       if (house == null) continue;
       final rent = (house['rent'] as num?)?.round() ?? 0;
       if (rent <= 0) continue;
+      final tenantName = tenant['displayName']?.toString() ?? 'Tenant';
+      final houseNo = tenant['houseNo']?.toString() ?? house['houseNo']?.toString() ?? '';
+      final invoiceId = '${tenantDoc.id}_${houseId}_${currentPeriod}';
+      var savedInvoice = persistedInvoices[invoiceId];
+      if (savedInvoice == null) {
+        final invoiceRef = db.collection('rentInvoices').doc(invoiceId);
+        await db.runTransaction((transaction) async {
+          final existing = await transaction.get(invoiceRef);
+          if (existing.exists) {
+            savedInvoice = <String, dynamic>{...existing.data()!, '_id': invoiceId};
+          } else {
+            final newInvoice = <String, dynamic>{
+              'landlordId': uid,
+              'createdBy': uid,
+              'tenantId': tenantDoc.id,
+              'tenantName': tenantName,
+              'houseId': houseId,
+              'houseNo': houseNo,
+              'period': currentPeriod,
+              'amountDueKes': rent,
+              'rentAtIssue': rent,
+              'status': 'issued',
+              'createdAt': FieldValue.serverTimestamp(),
+            };
+            transaction.set(invoiceRef, newInvoice);
+            savedInvoice = <String, dynamic>{...newInvoice, '_id': invoiceId};
+          }
+        });
+        if (savedInvoice != null) persistedInvoices[invoiceId] = savedInvoice!;
+      }
+      final issuedRent = (savedInvoice?['amountDueKes'] as num?)?.round() ?? rent;
       ensureInvoice(
         tenantId: tenantDoc.id,
-        tenantName: tenant['displayName']?.toString() ?? 'Tenant',
+        tenantName: savedInvoice?['tenantName']?.toString() ?? tenantName,
         houseId: houseId,
-        houseNo: tenant['houseNo']?.toString() ?? house['houseNo']?.toString() ?? '',
+        houseNo: savedInvoice?['houseNo']?.toString() ?? houseNo,
         period: currentPeriod,
-        dueKes: rent,
+        dueKes: issuedRent,
       );
     }
 
@@ -101,9 +151,12 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
       final houseNo = data['houseNo']?.toString() ?? '';
       final houseId = data['houseId']?.toString() ?? houseByNumber[houseNo]?['_id']?.toString() ?? '';
       final house = houses[houseId] ?? houseByNumber[houseNo];
-      final dueKes = (house?['rent'] as num?)?.round() ?? 0;
       final tenantId = data['tenantId']?.toString() ?? data['tenantName']?.toString() ?? 'unknown';
-      final tenantName = data['tenantName']?.toString() ?? 'Tenant';
+      final invoiceId = '${tenantId}_${houseId}_${period}';
+      final persisted = persistedInvoices[invoiceId];
+      final dueKes = (persisted?['amountDueKes'] as num?)?.round()
+          ?? (data['rentAtIssue'] as num?)?.round() ?? 0;
+      final tenantName = persisted?['tenantName']?.toString() ?? data['tenantName']?.toString() ?? 'Tenant';
       ensureInvoice(
         tenantId: tenantId,
         tenantName: tenantName,
