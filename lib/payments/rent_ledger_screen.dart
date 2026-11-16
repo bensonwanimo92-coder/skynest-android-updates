@@ -99,7 +99,8 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
       if (tenant['role'] != 'tenant' || tenant['status'] != 'active') continue;
       final houseId = tenant['houseId']?.toString() ?? '';
       final house = houses[houseId];
-      if (house == null) continue;
+      if (house == null || house['landlordId'] != uid || house['assignedTenantId'] != tenantDoc.id ||
+          tenant['houseNo']?.toString() != house['houseNo']?.toString()) continue;
       final rent = (house['rent'] as num?)?.round() ?? 0;
       if (rent <= 0) continue;
       final tenantName = tenant['displayName']?.toString() ?? 'Tenant';
