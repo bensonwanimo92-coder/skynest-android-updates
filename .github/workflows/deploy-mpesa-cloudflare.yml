@@ -20,7 +20,7 @@ jobs:
       - name: Check out selected release branch
         uses: actions/checkout@v4
         with:
-          ref: integration/skynest-next-complete
+          ref: ${{ github.ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -43,7 +43,7 @@ jobs:
       - name: Check out validated release branch
         uses: actions/checkout@v4
         with:
-          ref: integration/skynest-next-complete
+          ref: ${{ github.ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
