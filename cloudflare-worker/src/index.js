@@ -290,9 +290,11 @@ async function settleCallback(env, body, knownPending = null) {
   }
   const pending = knownPending || decodeFields(pendingResult.data.fields);
   if (pending.checkoutRequestId !== checkoutId) return;
-  if (pending.merchantRequestId && callback.MerchantRequestID &&
+  if (!pending.merchantRequestId ||
+      !callback.MerchantRequestID ||
       String(callback.MerchantRequestID) !== String(pending.merchantRequestId)) return;
   if (["confirmed", "failed"].includes(pending.status)) return;
+  if (pending.status !== "pending") return;
 
   const successful = Number(callback.ResultCode) === 0;
   const metadata = {};
@@ -300,6 +302,14 @@ async function settleCallback(env, body, knownPending = null) {
   if (successful) {
     const receipt = String(metadata.MpesaReceiptNumber || "").trim().toUpperCase();
     if (!/^[A-Z0-9]{8,16}$/.test(receipt)) throw new HttpError("Successful callback did not contain a valid M-Pesa receipt.", 502);
+    const paidAmount = Number(metadata.Amount);
+    if (!Number.isSafeInteger(paidAmount) || paidAmount !== Number(pending.amountKes)) {
+      throw new HttpError("M-Pesa callback amount does not match the pending rent request. Manual review required.", 409);
+    }
+    const paidPhone = normalizePhone(metadata.PhoneNumber);
+    if (paidPhone !== normalizePhone(pending.phone)) {
+      throw new HttpError("M-Pesa callback payer does not match the pending rent request. Manual review required.", 409);
+    }
     const payment = {
       tenantId: pending.tenantId,
       tenantName: pending.tenantName || "Tenant",
@@ -307,14 +317,14 @@ async function settleCallback(env, body, knownPending = null) {
       createdBy: pending.landlordId,
       houseId: pending.houseId || "",
       houseNo: pending.houseNo || "",
-      amount: Number(metadata.Amount || pending.amountKes),
+      amount: paidAmount,
       method: "MPESA",
       transactionCode: receipt,
       mpesaReceipt: receipt,
       status: "Paid",
       confirmedBy: "safaricom_callback",
       checkoutRequestId: checkoutId,
-      phone: String(metadata.PhoneNumber || pending.phone || ""),
+      phone: paidPhone,
       createdAt: { __firestoreTimestamp: new Date() },
       confirmedAt: { __firestoreTimestamp: new Date() },
     };
