@@ -638,10 +638,22 @@ service cloud.firestore {
         request.resource.data.createdBy == request.auth.uid;
     }
     // Tenant-submitted payments: tenant owns creation; linked landlord reviews.
+    function tenantOwnsAssignedHouse(houseId, landlordId) {
+      let housePath = /databases/$(database)/documents/houses/$(houseId);
+      return exists(housePath) &&
+        get(housePath).data.createdBy == landlordId &&
+        get(housePath).data.landlordId == landlordId &&
+        get(housePath).data.assignedTenantId == request.auth.uid;
+    }
+
     match /paymentSubmissions/{id} {
       allow create: if activeUser() && myRole() == 'tenant' &&
         request.resource.data.tenantId == request.auth.uid &&
         request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
+        request.resource.data.houseId is string &&
+        request.resource.data.houseId == profile(request.auth.uid).houseId &&
+        request.resource.data.houseNo == profile(request.auth.uid).houseNo &&
+        tenantOwnsAssignedHouse(request.resource.data.houseId, profile(request.auth.uid).landlordId) &&
         request.resource.data.amount is number && request.resource.data.amount > 0 &&
         request.resource.data.method in ['MPESA', 'CASH', 'BANK', 'OTHER'] &&
         request.resource.data.status == 'pending';
