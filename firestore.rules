@@ -232,7 +232,7 @@ service cloud.firestore {
         get(housePath).data.houseNo == houseNo;
     }
 
-    function landlordInvoiceMatchesTenant(tenantId, landlordId, houseId, houseNo) {
+    function landlordInvoiceMatchesTenant(tenantId, landlordId, houseId, houseNo, amountDueKes) {
       let tenantPath = /databases/$(database)/documents/users/$(tenantId);
       let housePath = /databases/$(database)/documents/houses/$(houseId);
       return exists(tenantPath) && exists(housePath) &&
@@ -244,6 +244,7 @@ service cloud.firestore {
         get(housePath).data.createdBy == landlordId &&
         get(housePath).data.landlordId == landlordId &&
         get(housePath).data.houseNo == houseNo &&
+        get(housePath).data.rent == amountDueKes &&
         get(housePath).data.assignedTenantId == tenantId;
     }
 
@@ -253,6 +254,7 @@ service cloud.firestore {
         request.resource.data.createdBy == request.auth.uid &&
         request.resource.data.tenantId is string &&
         request.resource.data.houseId is string &&
+        invoiceId == request.resource.data.tenantId + '_' + request.resource.data.houseId + '_' + request.resource.data.period &&
         request.resource.data.houseNo is string &&
         request.resource.data.period.matches('^[0-9]{4}-(0[1-9]|1[0-2])$') &&
         request.resource.data.amountDueKes is number && request.resource.data.amountDueKes > 0 &&
@@ -260,7 +262,8 @@ service cloud.firestore {
         request.resource.data.status == 'issued' &&
         request.resource.data.createdAt == request.time &&
         landlordInvoiceMatchesTenant(request.resource.data.tenantId, request.auth.uid,
-          request.resource.data.houseId, request.resource.data.houseNo);
+          request.resource.data.houseId, request.resource.data.houseNo,
+          request.resource.data.amountDueKes);
       allow read: if activeUser() && (
         (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
         (myRole() == 'tenant' && resource.data.tenantId == request.auth.uid)
