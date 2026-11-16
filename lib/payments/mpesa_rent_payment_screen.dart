@@ -88,6 +88,11 @@ class _MpesaRentPaymentScreenState extends State<MpesaRentPaymentScreen> {
       _message('Enter the M-Pesa receipt code from your confirmation message.');
       return;
     }
+    final payerPhone = _phone.text.trim();
+    if (payerPhone.replaceAll(RegExp(r'[^0-9]'), '').length < 10) {
+      _message('Enter the phone number used to make this M-Pesa payment.');
+      return;
+    }
     final uid = FirebaseAuth.instance.currentUser?.uid;
     final profile = _profile;
     if (uid == null || profile == null || _houseId == null) return;
@@ -106,6 +111,7 @@ class _MpesaRentPaymentScreenState extends State<MpesaRentPaymentScreen> {
         'amount': amount,
         'method': 'MPESA',
         'transactionCode': code,
+        'payerPhone': payerPhone,
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
       });
