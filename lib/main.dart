@@ -1809,7 +1809,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     Icon(Icons.swipe_rounded, size: 15, color: Theme.of(context).colorScheme.onSurfaceVariant),
                     const SizedBox(width: 7),
-                    Text('Swipe to spin · Hold a card to arrange',
+                    Text('Tap a section to preview · Hold for dashboard controls',
                       style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   ],
                 ),
