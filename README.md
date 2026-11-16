@@ -22,7 +22,7 @@ The repository intentionally does not contain a Firebase project configuration. 
 Without that secret, the build can be checked, but the app will display a Firebase setup warning and the workflow will not publish a release APK.
 
 ## Important payment and subscription limitations
-- The payment screen records a payment as **Pending verification**. It does not call Safaricom Daraja or send an STK Push.
+- The tenant **My rent & balance** screen can initiate an authenticated M-Pesa STK Push through the Cloudflare Worker. The Worker resolves the tenant's linked landlord and requires that landlord's merchant account to be verified for the active environment. A request is not a confirmed payment: only a validated Safaricom callback creates the receipt-backed payment record. Sandbox/live deployment and end-to-end callback verification are still required.
 - Premium status is read from `subscriptions/{uid}.isPremium`; the app does not let a client grant itself Premium. A trusted admin/server must update this field after payment verification.
 - Live M-Pesa and subscription payments need a secure backend; Daraja secrets must never be embedded in the Flutter app.
 
