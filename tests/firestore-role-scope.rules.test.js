@@ -194,6 +194,14 @@ test("tenant can read only payment records linked to their own UID", async () =>
   await assertFails(getDoc(doc(tenant, "payments", "payment-without-tenant-link")));
 });
 
+test("landlord payment queries remain scoped to their own landlord ID", async () => {
+  await seed();
+  const landlord = env.authenticatedContext("landlord-1").firestore();
+  const ownPayments = query(collection(landlord, "payments"), where("landlordId", "==", "landlord-1"));
+  const results = await assertSucceeds(getDocs(ownPayments));
+  assert.equal(results.size, 3);
+});
+
 test("tenant payment submissions must match the tenant's assigned house and landlord", async () => {
   await seed();
   const tenant = env.authenticatedContext("tenant-1").firestore();
