@@ -1688,7 +1688,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
                 )),
                 const SizedBox(height: 10),
-                _DashboardRecentActivity(),
+                DashboardRecentActivity(userRole: userRole),
                 const SizedBox(height: 22),
               ],
               const Text('Modules', style: TextStyle(
