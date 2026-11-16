@@ -1671,7 +1671,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
                 )),
                 const SizedBox(height: 8),
-                DashboardRecentActivity(),
+                DashboardRecentActivity(userRole: userRole),
                 const SizedBox(height: 22),
                 const Text('Quick actions', style: TextStyle(
                   color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
