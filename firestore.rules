@@ -272,12 +272,32 @@ service cloud.firestore {
     }
 
     match /payments/{recordId} {
+      function cashHandoverMatchesPayment() {
+        let handoverId = request.resource.data.cashHandoverId;
+        let handoverPath = /databases/$(database)/documents/cashHandovers/$(handoverId);
+        return handoverId is string &&
+          recordId == 'cash_' + handoverId &&
+          existsAfter(handoverPath) &&
+          getAfter(handoverPath).data.status == 'acknowledged' &&
+          getAfter(handoverPath).data.landlordId == request.auth.uid &&
+          getAfter(handoverPath).data.acknowledgedBy == request.auth.uid &&
+          getAfter(handoverPath).data.tenantId == request.resource.data.tenantId &&
+          getAfter(handoverPath).data.tenantName == request.resource.data.tenantName &&
+          getAfter(handoverPath).data.houseId == request.resource.data.houseId &&
+          getAfter(handoverPath).data.houseNo == request.resource.data.houseNo &&
+          getAfter(handoverPath).data.amountKes == request.resource.data.amount &&
+          request.resource.data.method == 'CASH' &&
+          request.resource.data.status == 'Paid' &&
+          request.resource.data.transactionCode == 'CASH-' + handoverId &&
+          request.resource.data.createdAt == request.time;
+      }
       allow create: if activeUser() && myRole() == 'landlord' &&
         request.resource.data.createdBy == request.auth.uid &&
         request.resource.data.landlordId == request.auth.uid &&
         request.resource.data.houseId is string &&
         request.resource.data.houseNo is string &&
-        landlordOwnsPaymentHouse(request.resource.data.houseId, request.auth.uid, request.resource.data.houseNo);
+        landlordOwnsPaymentHouse(request.resource.data.houseId, request.auth.uid, request.resource.data.houseNo) &&
+        (!request.resource.data.keys().hasAny(['cashHandoverId']) || cashHandoverMatchesPayment());
       allow read: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
         (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
