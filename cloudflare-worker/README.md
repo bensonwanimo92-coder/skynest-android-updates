@@ -1,6 +1,6 @@
 # SkyNest M-Pesa Cloudflare Worker
 
-Sandbox-first Daraja STK Push gateway for SkyNest. The Worker keeps Daraja and Firebase service credentials server-side and uses Firebase Auth to identify the signed-in tenant. It does not require Firebase Cloud Functions.
+Sandbox-first Daraja STK Push gateway for SkyNest. The Worker keeps Daraja and Firebase service credentials server-side and uses Firebase Auth to identify the signed-in user. Each landlord can configure a separate PayBill or Buy Goods merchant account; credentials are encrypted with AES-GCM before storage.
 
 ## Scope and merchant limitation
 
@@ -25,7 +25,7 @@ Set these under Cloudflare > Workers & Pages > skynestmpesaapi > Settings > Vari
 - `STK_CALLBACK_TOKEN` (secret, random value of at least 32 characters)
 - `STK_CALLBACK_URL` (plain text HTTPS URL)
 
-The callback URL must be:
+The Worker now requires `MPESA_ENCRYPTION_KEY` in addition to the Firebase and callback settings. Landlord merchant credentials are entered in SkyNest > M-Pesa receiving account and encrypted before being saved. The `DARAJA_ENV` Worker setting selects sandbox or production for all configured landlords; use sandbox during development.\n\nThe callback URL must be:
 `https://YOUR-WORKER.workers.dev/hooks/stk/result/YOUR_RANDOM_TOKEN`
 
 The token in the URL must exactly match `STK_CALLBACK_TOKEN`. Do not paste any secret into chat, GitHub source files, or the Android app.
@@ -48,7 +48,7 @@ Or connect the GitHub repository in Cloudflare Workers Builds and set the projec
 - `POST /api/mpesa/stkpush` — requires `Authorization: Bearer <Firebase ID token>` and JSON body `{"amountKes":100,"phone":"2547XXXXXXXX"}`
 - `POST /hooks/stk/result/<token>` — Safaricom STK callback
 
-An active user document in `users/{uid}` with `role=tenant`, `status=active`, and `landlordId` is required. A successful callback creates `payments/{M-Pesa receipt}` using the fields consumed by the existing SkyNest landlord Payments screen, including `tenantName`, `createdBy`, `houseNo`, `amount`, `method`, `transactionCode`, `status`, and Firestore timestamps.
+An active user document in `users/{uid}` with `role=tenant`, `status=active`, and `landlordId` is required. The Worker resolves `landlordPaymentAccounts/{landlordId}` and decrypts only that landlord's credentials; the tenant cannot select a different landlord, shortcode or merchant. A successful rent callback creates `payments/{M-Pesa receipt}` using the fields consumed by the existing SkyNest landlord Payments screen, including `tenantName`, `createdBy`, `houseNo`, `amount`, `method`, `transactionCode`, `status`, and Firestore timestamps.
 
 The callback handler parks very early callbacks in `mpesaCallbackInbox` and replays them after the pending checkout is saved. Duplicate callbacks are made idempotent by the checkout status and receipt document ID. The callback URL token is a bearer secret; keep it private and rotate it if exposed.
 
