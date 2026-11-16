@@ -15,6 +15,7 @@ import 'payments/rent_ledger_screen.dart';
 import 'payments/tenant_rent_overview_screen.dart';
 import 'payments/cash_handover_screens.dart';
 import 'payments/mpesa_account_screen.dart';
+import 'payments/mpesa_rent_payment_screen.dart';
 import 'services/notification_service.dart';
 import 'control_centre/notification_centre.dart';
 import 'control_centre/control_centre_screen.dart';
@@ -1459,6 +1460,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       items.addAll([
         _MenuItem('Assigned houses', Icons.home_work_outlined, Colors.orange, const CaretakerHousesScreen()),
         _MenuItem('Rent confirmations', Icons.fact_check_outlined, Colors.blue, const CaretakerPaymentsScreen()),
+        _MenuItem('Pay rent with M-Pesa', Icons.phone_android, Colors.green, const MpesaRentPaymentScreen()),
         _MenuItem('Cash collections & handovers', Icons.payments_outlined, Colors.green, const CaretakerCashCollectionScreen()),
         _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
@@ -1476,7 +1478,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('House change requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
         _MenuItem('My rent & balance', Icons.account_balance_wallet_outlined, Colors.teal, const TenantRentOverviewScreen()),
-        _MenuItem('Pay rent', Icons.phone_android, Colors.green, const TenantPayScreen()),
+        _MenuItem('Pay rent with M-Pesa', Icons.phone_android, Colors.green, const MpesaRentPaymentScreen()),
         _MenuItem('Reading & media hub', Icons.auto_stories_rounded, Colors.teal, const ReadingHubScreen()),
         _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
       ]);
