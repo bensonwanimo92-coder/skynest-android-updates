@@ -12,6 +12,7 @@ import 'services/sound_service.dart';
 import 'services/voice_service.dart';
 import 'payments/mpesa_service.dart';
 import 'payments/rent_ledger_screen.dart';
+import 'payments/tenant_rent_overview_screen.dart';
 import 'payments/cash_handover_screens.dart';
 import 'payments/mpesa_account_screen.dart';
 import 'services/notification_service.dart';
@@ -1423,6 +1424,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('House change requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
+        _MenuItem('My rent & balance', Icons.account_balance_wallet_outlined, Colors.teal, const TenantRentOverviewScreen()),
         _MenuItem('Pay rent', Icons.phone_android, Colors.green, const TenantPayScreen()),
         _MenuItem('Reading & media hub', Icons.auto_stories_rounded, Colors.teal, const ReadingHubScreen()),
         _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
