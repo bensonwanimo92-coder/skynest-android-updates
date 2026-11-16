@@ -56,7 +56,7 @@ Last pre-integration APK candidate: version 1.1.3+5447, run 43862420394, artifac
 - [ ] Group related functions logically and combine related tiles where appropriate.
 - [ ] Clear typography, restrained depth, borders, shadows and readable contrast.
 - [ ] Responsive layouts and accessibility checks.
-- [ ] Premium login redesign, preserving sign-in, registration, password reset and biometric flows.
+- [x] Premium login redesign implemented in `lib/main.dart` on commit `d15170d280dd3fe91dcc2cae083d42136e92d3d4`: dark secure-access layout, styled email/password fields, sign-in/create-account actions and password reset retained; the app-level biometric lock gate remains in place. Release-candidate Flutter analysis/tests passed on run `43905775884`. Physical-device visual review and real sign-in/registration/reset/biometric flow verification remain pending.
 - [ ] Tile preview/Continue interaction only where it remains part of the latest approved scope; verify against current source before implementing.
 
 ## 2. Landlord account
