@@ -112,7 +112,8 @@ Last pre-integration APK candidate: version 1.1.3+5447, run 43862420394, artifac
 - [ ] Every financial adjustment has an auditable actor, timestamp and reason.
 
 ## 6. Complete rent ledger
-- [x] Automatic monthly invoice generation implemented in Firebase Functions (`generateMonthlyRentInvoices`), with Nairobi timezone, daily catch-up, assigned-tenant/house/landlord consistency checks, immutable rent-at-issue snapshots and idempotent create-only writes. Unit tests are included in CI; Firebase deployment and live execution remain pending.
+- [x] Automatic monthly invoice generation implemented in Firebase Functions (`generateMonthlyRentInvoices`), with Nairobi timezone, daily catch-up, assigned-tenant/house/landlord consistency checks, immutable rent-at-issue snapshots and idempotent create-only writes. Unit tests are included in CI and passed on commit `ef223208e4f1157951823655d3801735d9e9d11e` (release-candidate run `43897865090`). Firebase deployment and live execution remain pending.
+- [x] Firestore invoice-creation integrity tightened: landlord-created invoices must use the deterministic tenant/house/month document ID and exactly match the house's current rent at issue time. Regression tests reject forged amounts and duplicate-period IDs; role-scope Firestore emulator suite passed on run `43897865093`.
 - [ ] Controlled historical invoice backfill for legacy periods.
 - [ ] Persisted rent invoices/period records.
 - [ ] Historical rent rate preserved per period; do not reconstruct old invoices from today's rent.
