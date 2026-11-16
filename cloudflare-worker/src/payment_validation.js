@@ -58,7 +58,7 @@ export function validateMerchantAccountInput(input) {
   if (!businessName || businessName.length > 120) {
     throw new Error("Enter the registered business name.");
   }
-  if (!/^\\d{5,20}$/.test(accountNumber)) {
+  if (!/^\d{5,20}$/.test(accountNumber)) {
     throw new Error("Enter a valid 5–20 digit PayBill or Till number.");
   }
   return { accountType, businessName, accountNumber };
