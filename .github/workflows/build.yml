@@ -776,7 +776,13 @@ jobs:
             echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          build_number=$((2000 + run_number))
+          # Keep M-Pesa integration builds above the established 3409 build line
+          # so Android installs them as upgrades rather than rejecting a downgrade.
+          if [ "${GITHUB_REF:-}" = "refs/heads/feature/skynest-mpesa-cloudflare" ]; then
+            build_number=$((4000 + run_number))
+          else
+            build_number=$((2000 + run_number))
+          fi
           if [ "$build_number" -lt 2044 ]; then build_number=2044; fi
           while RELEASE_LIST="$release_list" CANDIDATE="$build_number" python3 - <<'PY'
           import os
