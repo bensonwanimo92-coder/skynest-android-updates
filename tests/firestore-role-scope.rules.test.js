@@ -47,6 +47,10 @@ async function seed() {
       createdBy: "landlord-1", landlordId: "landlord-1", tenantId: "another-tenant",
       houseId: "house-other", houseNo: "B1", amount: 7000, status: "Paid"
     });
+    await setDoc(doc(db, "payments", "payment-without-tenant-link"), {
+      createdBy: "landlord-1", landlordId: "landlord-1",
+      houseId: "house-assigned", houseNo: "A1", amount: 3000, status: "Paid"
+    });
     await setDoc(doc(db, "paymentConfirmations", "confirmation-assigned"), {
       landlordId: "landlord-1", caretakerId: "caretaker-1",
       houseId: "house-assigned", paymentId: "payment-1",
