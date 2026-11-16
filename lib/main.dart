@@ -1422,7 +1422,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Tenants', Icons.people_alt_outlined, Colors.green, const TenantsScreen()),
         _MenuItem('Payments', Icons.payments_outlined, Colors.blue, const PaymentsScreen()),
         _MenuItem('M-Pesa receiving account', Icons.account_balance_wallet_outlined, Colors.green, const MpesaAccountScreen()),
-        _MenuItem('Tenant payment submissions', Icons.fact_check_outlined, Colors.teal, const PaymentSubmissionsScreen()),
+        _MenuItem('Rent payment submissions', Icons.fact_check_outlined, Colors.teal, const PaymentSubmissionsScreen()),
         _MenuItem('Caretaker cash handovers', Icons.account_balance_wallet_outlined, Colors.green, const LandlordCashHandoverScreen()),
         _MenuItem('Caretakers & invitations', Icons.badge_outlined, Colors.teal, const InvitationsScreen()),
         _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
@@ -3175,7 +3175,7 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     return Scaffold(appBar: AppBar(
-      title: const Text('Tenant payment submissions'),
+      title: const Text('Rent payment submissions'),
       actions: selectedSubmissionIds.isEmpty ? [] : [
         TextButton.icon(
           onPressed: _bulkVerifySelected,
@@ -3189,7 +3189,7 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
         builder: (context, snap) {
           if (snap.hasError) return errorView('Payment submissions could not load.');
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          if (snap.data!.docs.isEmpty) return const EmptyView('No tenant payment submissions.');
+          if (snap.data!.docs.isEmpty) return const EmptyView('No rent payment submissions.');
           return ListView(children: snap.data!.docs.asMap().entries.map((entry) {
             final queueIndex = entry.key + 1;
             final doc = entry.value;
@@ -3256,7 +3256,11 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
                   ),
                   title: Text(d['tenantName']?.toString() ?? 'Tenant'),
                   subtitle: Text('Queue #$queueIndex • House ' + (d['houseNo'] ?? '').toString() + ' • ' +
-                    currency.format((d['amount'] as num?)?.toDouble() ?? 0) + ' • ' + status + '\n' + ageLabel),
+                    currency.format((d['amount'] as num?)?.toDouble() ?? 0) + ' • ' + status +
+                    (d['method'] == 'MPESA'
+                      ? '\\nM-Pesa receipt: ' + (d['transactionCode'] ?? 'Not supplied').toString() +
+                        ' • Phone: ' + (d['payerPhone'] ?? 'Not supplied').toString()
+                      : '') + '\\n' + ageLabel),
                   isThreeLine: true,
                   trailing: PopupMenuButton<String>(
                     onSelected: (value) async {
