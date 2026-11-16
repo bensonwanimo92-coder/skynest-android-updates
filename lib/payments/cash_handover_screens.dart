@@ -72,7 +72,8 @@ class _CaretakerCashCollectionScreenState extends State<CaretakerCashCollectionS
   Future<void> _recordCollection() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     final owner = landlordId;
-    final house = houses.where((item) => item.id == selectedHouseId).firstOrNull;
+    final selectedHouses = houses.where((item) => item.id == selectedHouseId).toList();
+    final house = selectedHouses.isEmpty ? null : selectedHouses.first;
     final value = double.tryParse(amount.text.trim());
     if (uid == null || owner == null || house == null || value == null || value <= 0) {
       _message('Select an assigned house and enter a valid amount greater than zero.');
