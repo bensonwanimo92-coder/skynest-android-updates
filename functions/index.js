@@ -232,8 +232,8 @@ exports.changeAccountRole = onCall(async (request) => {
 
   const uid = request.auth.uid;
   const targetRole = request.data && request.data.targetRole;
-  const invitationCode = String((request.data && request.data.invitationCode) || "")
-    .trim().toUpperCase();
+  const landlordEmail = String((request.data && request.data.landlordEmail) || "")
+    .trim().toLowerCase();
 
   if (!["landlord", "tenant"].includes(targetRole)) {
     throw new HttpsError("invalid-argument", "Choose either Landlord or Tenant.");
@@ -262,8 +262,8 @@ exports.changeAccountRole = onCall(async (request) => {
       if (user.status !== "active") {
         throw new HttpsError("failed-precondition", "Only an active Landlord account can switch to Tenant.");
       }
-      if (invitationCode.length < 6) {
-        throw new HttpsError("invalid-argument", "Enter the Tenant invitation code supplied by your new landlord.");
+      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(landlordEmail)) {
+        throw new HttpsError("invalid-argument", "Enter your new landlord’s registered email address.");
       }
 
       const ownedByCreator = await transaction.get(
@@ -294,45 +294,31 @@ exports.changeAccountRole = onCall(async (request) => {
           "Your account still has active or pending tenants/caretakers linked to it. Resolve those relationships before switching.");
       }
 
-      const invitationRef = db.collection("invitations").doc(invitationCode);
-      const invitationSnapshot = await transaction.get(invitationRef);
-      if (!invitationSnapshot.exists) {
-        throw new HttpsError("not-found", "That Tenant invitation code was not found.");
+      const landlordCandidates = await transaction.get(
+        db.collection("users").where("role", "==", "landlord").where("status", "==", "active")
+      );
+      const matchingLandlords = landlordCandidates.docs.filter((doc) =>
+        String(doc.get("email") || "").trim().toLowerCase() === landlordEmail);
+      if (!matchingLandlords.length) {
+        throw new HttpsError("not-found", "No active SkyNest landlord account uses that email. Check the address with your landlord.");
       }
-      const invitation = invitationSnapshot.data();
-      const expiry = invitation.expiresAt;
-      if (invitation.role !== "tenant" || invitation.status !== "open" ||
-          !invitation.landlordId || invitation.landlordId === uid ||
-          !expiry || typeof expiry.toDate !== "function" || !expiry.toDate().getTime() ||
-          expiry.toDate().getTime() <= Date.now()) {
-        throw new HttpsError("failed-precondition",
-          "That invitation is expired, already used, or is not a valid Tenant invitation.");
+      if (matchingLandlords.length !== 1 || matchingLandlords[0].id === uid) {
+        throw new HttpsError("failed-precondition", "That email does not identify one other active landlord account.");
       }
-
-      const newLandlordRef = db.collection("users").doc(invitation.landlordId);
-      const newLandlordSnapshot = await transaction.get(newLandlordRef);
-      const newLandlord = newLandlordSnapshot.data();
-      if (!newLandlordSnapshot.exists || !newLandlord ||
-          newLandlord.role !== "landlord" || newLandlord.status !== "active") {
-        throw new HttpsError("failed-precondition", "The account that issued this invitation is not an active Landlord.");
-      }
+      const newLandlordId = matchingLandlords[0].id;
 
       transaction.update(userRef, {
         role: "tenant",
         status: "pending",
-        landlordId: invitation.landlordId,
-        propertyIds: Array.isArray(invitation.propertyIds) ? invitation.propertyIds : [],
-        invitationCode,
+        landlordId: newLandlordId,
+        propertyIds: [],
+        registrationMethod: "landlord_email",
         previousRole: "landlord",
         roleChangedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
+        invitationCode: FieldValue.delete(),
         houseId: FieldValue.delete(),
         houseNo: FieldValue.delete(),
-      });
-      transaction.update(invitationRef, {
-        status: "used",
-        usedBy: uid,
-        usedAt: FieldValue.serverTimestamp(),
       });
       for (const openInvite of openInvitations.docs) {
         transaction.update(openInvite.ref, {
