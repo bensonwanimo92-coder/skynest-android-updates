@@ -25,11 +25,11 @@ async function seed() {
     });
     await setDoc(doc(db, "houses", "house-assigned"), {
       createdBy: "landlord-1", landlordId: "landlord-1",
-      caretakerIds: ["caretaker-1"]
+      caretakerIds: ["caretaker-1"], houseNo: "A1", rent: 15000
     });
     await setDoc(doc(db, "houses", "house-other"), {
       createdBy: "landlord-1", landlordId: "landlord-1",
-      caretakerIds: ["another-caretaker"]
+      caretakerIds: ["another-caretaker"], houseNo: "B1", rent: 20000
     });
     await setDoc(doc(db, "tenants", "tenant-other-house"), {
       name: "Private tenant", createdBy: "landlord-1",
@@ -55,15 +55,18 @@ test("caretaker can create tenant record only for a house assigned by the linked
   const db = env.authenticatedContext("caretaker-1").firestore();
   await assertSucceeds(setDoc(doc(db, "tenants", "new-assigned"), {
     name: "Assigned tenant", createdBy: "caretaker-1",
-    landlordId: "landlord-1", houseId: "house-assigned"
+    landlordId: "landlord-1", houseId: "house-assigned",
+    houseNo: "A1", rentAmount: 15000
   }));
   await assertFails(setDoc(doc(db, "tenants", "new-unassigned"), {
     name: "Unassigned tenant", createdBy: "caretaker-1",
-    landlordId: "landlord-1", houseId: "house-other"
+    landlordId: "landlord-1", houseId: "house-other",
+    houseNo: "B1", rentAmount: 20000
   }));
   await assertFails(setDoc(doc(db, "tenants", "spoof-landlord"), {
     name: "Spoofed landlord", createdBy: "caretaker-1",
-    landlordId: "another-landlord", houseId: "house-assigned"
+    landlordId: "another-landlord", houseId: "house-assigned",
+    houseNo: "A1", rentAmount: 15000
   }));
 });
 
@@ -116,5 +119,20 @@ test("landlord can create caretaker confirmation only for that caretaker's assig
   await assertSucceeds(setDoc(doc(db, "paymentConfirmations", "new-valid"), valid));
   await assertFails(setDoc(doc(db, "paymentConfirmations", "new-invalid"), {
     ...valid, houseId: "house-other"
+  }));
+});
+
+test("caretaker cannot forge the assigned house number or monthly rent", async () => {
+  await seed();
+  const db = env.authenticatedContext("caretaker-1").firestore();
+  await assertFails(setDoc(doc(db, "tenants", "forged-rent"), {
+    name: "Forged rent", createdBy: "caretaker-1",
+    landlordId: "landlord-1", houseId: "house-assigned",
+    houseNo: "A1", rentAmount: 1
+  }));
+  await assertFails(setDoc(doc(db, "tenants", "forged-house"), {
+    name: "Forged house", createdBy: "caretaker-1",
+    landlordId: "landlord-1", houseId: "house-assigned",
+    houseNo: "B1", rentAmount: 15000
   }));
 });
