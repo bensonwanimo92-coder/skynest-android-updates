@@ -72,7 +72,7 @@ Current candidate reference: build 447 (CI passed; physical installation not con
 - [ ] Caretaker remains linked to the correct landlord.
 - [ ] Landlord assigns specific houses.
 - [ ] Permission levels: Can Collect and View Only.
-- [ ] Caretaker sees only assigned properties and relevant tenants.
+- [x] Caretaker house-request reads are restricted to their assigned house IDs; only landlords can approve/decline requests or change a tenant's house assignment. The caretaker screen now shows assigned-house requests without approval controls. Emulator tests and index deployment remain pending.
 - [ ] Authorized tenant addition within assigned properties.
 - [ ] Record permitted collections with tenant, house, amount, date, method and collector.
 - [ ] Caretaker cannot change landlord financial totals, verify own collections or access unassigned properties.
