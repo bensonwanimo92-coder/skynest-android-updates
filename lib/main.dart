@@ -4,6 +4,7 @@ import 'security/message_encryption.dart';
 import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
 import 'media/media_centre_screen.dart';
+import 'marketplace/marketplace_inventory_screen.dart';
 // ignore: duplicate_import -- retained for the legacy direct-message route.
 import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
@@ -1373,6 +1374,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ]);
     }
 
+    items.add(_MenuItem('Inventory', Icons.storefront_rounded, const Color(0xFF2563EB), const MarketplaceInventoryScreen()));
     items.add(_MenuItem('Discovery', Icons.explore_rounded, const Color(0xFF06B6D4), const MarketDiscoveryScreen()));
     items.add(_MenuItem('Media Centre', Icons.library_music_rounded, const Color(0xFF22D3EE), const MediaCentreScreen()));
     items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
@@ -7281,6 +7283,7 @@ String _modulePreviewDescription(String title) {
     'Caretakers & invitations': 'Create time-limited invitations, manage linked caretakers and control property access.',
     'Complaints': 'Receive, prioritise, respond to and track property or maintenance complaints.',
     'Tenant groups': 'Communicate with tenant groups, share updates and follow group activity.',
+    'Inventory': 'Browse approved SkyNest website adverts in the app, search by category or location, view photos and contact advertisers directly.',
     'Discovery': 'Explore SkyNest Market for property, land, vehicles, jobs, restaurants and services across Kenya.',
     'Notices': 'Publish notices, choose urgency and templates, and track tenant acknowledgements.',
     'Electricity': 'Register meters, allocate usage and keep electricity billing records.',
