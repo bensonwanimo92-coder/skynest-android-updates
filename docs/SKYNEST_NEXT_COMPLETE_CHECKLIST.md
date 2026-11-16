@@ -172,3 +172,12 @@ Last pre-integration APK candidate: version 1.1.3+5447, run 43862420394, artifac
 - Verified: end-to-end behaviour confirmed on the required environment/device.
 
 An item is not complete until the required integration, tests and verification are recorded.
+
+
+## 10. M-Pesa architecture decision — direct landlord settlement
+- [x] User selected central SkyNest-managed payment integration with rent settling directly to each landlord's own PayBill/Till; SkyNest must not hold rent and landlords must not enter Daraja Consumer Key/Secret/Passkey in the app. Decision recorded in `docs/MPESA_DIRECT_LANDLORD_SETTLEMENT.md`.
+- [x] Reviewed current Worker: it is still per-landlord Daraja credentials, encrypted server-side; it is not yet the selected architecture.
+- [ ] Obtain a Safaricom-approved provider/platform arrangement that explicitly supports merchant onboarding and direct settlement to each landlord's own account. A central Daraja app credential by itself is not evidence of arbitrary third-party shortcode routing.
+- [ ] Select provider only after written confirmation that funds do not enter a SkyNest-controlled wallet or pooled balance.
+- [ ] Implement provider adapter, landlord onboarding/verification, authenticated callbacks, reconciliation and duplicate protection against the selected provider's actual API contract.
+- [ ] Verify PayBill and Till sandbox flows and obtain production approval before enabling tenant payments.
