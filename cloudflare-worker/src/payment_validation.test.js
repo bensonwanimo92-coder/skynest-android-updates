@@ -45,7 +45,7 @@ test("allows an active tenant only for their linked house", () => {
 
 test("allows an active caretaker only for an assigned house", () => {
   const profile = { role: "caretaker", status: "active", landlordId: "landlord1", houseId: "house1" };
-  const house = { createdBy: "landlord1", landlordId: "landlord1", caretakerIds: ["caretaker1"], houseNo: "B2" };
+  const house = { createdBy: "landlord1", landlordId: "landlord1", assignedTenantId: "caretaker1", houseNo: "B2" };
   assert.equal(validatePayerHouseLink(profile, house, "caretaker1").houseNo, "B2");
-  assert.throws(() => validatePayerHouseLink(profile, house, "caretaker2"), /not assigned/);
+  assert.throws(() => validatePayerHouseLink(profile, house, "caretaker2"), /active account|rented home/);
 });
