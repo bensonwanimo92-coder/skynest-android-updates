@@ -232,6 +232,726 @@ service cloud.firestore {
         get(housePath).data.houseNo == houseNo;
     }
 
+    function landlordInvoiceMatchesTenant(tenantId, landlordId, houseId, houseNo) {
+      let tenantPath = /databases/$(database)/documents/users/$(tenantId);
+      let housePath = /databases/$(database)/documents/houses/$(houseId);
+      return exists(tenantPath) && exists(housePath) &&
+        get(tenantPath).data.role == 'tenant' &&
+        get(tenantPath).data.status == 'active' &&
+        get(tenantPath).data.landlordId == landlordId &&
+        get(tenantPath).data.houseId == houseId &&
+        get(tenantPath).data.houseNo == houseNo &&
+        get(housePath).data.createdBy == landlordId &&
+        get(housePath).data.landlordId == landlordId &&
+        get(housePath).data.houseNo == houseNo &&
+        get(housePath).data.assignedTenantId == tenantId;
+    }
+
+    match /rentInvoices/{invoiceId} {
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.landlordId == request.auth.uid &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.tenantId is string &&
+        request.resource.data.houseId is string &&
+        request.resource.data.houseNo is string &&
+        request.resource.data.period.matches('^[0-9]{4}-(0[1-9]|1[0-2])      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.landlordId == request.auth.uid &&
+        request.resource.data.houseId is string &&
+        request.resource.data.houseNo is string &&
+        landlordOwnsPaymentHouse(request.resource.data.houseId, request.auth.uid, request.resource.data.houseNo);
+      allow read: if activeUser() && (
+        resource.data.createdBy == request.auth.uid ||
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
+        (myRole() == 'tenant' && resource.data.tenantId == request.auth.uid)
+      );
+      allow update: if activeUser() && myRole() == 'landlord' && resource.data.createdBy == request.auth.uid;
+      allow delete: if activeUser() && myRole() == 'landlord' && resource.data.createdBy == request.auth.uid;
+    }
+
+    function validMpesaClaim(code) {
+      let submissionPath = /databases/$(database)/documents/paymentSubmissions/$(request.resource.data.submissionId);
+      return existsAfter(submissionPath) &&
+        getAfter(submissionPath).data.tenantId == request.auth.uid &&
+        getAfter(submissionPath).data.landlordId == profile(request.auth.uid).landlordId &&
+        getAfter(submissionPath).data.transactionCode == code &&
+        getAfter(submissionPath).data.method == 'MPESA';
+    }
+
+
+    match /paymentConfirmations/{id} {
+      allow read: if activeUser() && myRole() == 'caretaker' &&
+        resource.data.caretakerId == request.auth.uid &&
+        resource.data.landlordId == profile(request.auth.uid).landlordId &&
+        resource.data.houseId is string &&
+        caretakerAssignedToHouse(resource.data.houseId, resource.data.landlordId);
+      allow update: if activeUser() && myRole() == 'caretaker' &&
+        profile(request.auth.uid).caretakerPermission == 'can_collect' &&
+        resource.data.caretakerId == request.auth.uid &&
+        resource.data.landlordId == profile(request.auth.uid).landlordId &&
+        resource.data.houseId is string &&
+        caretakerAssignedToHouse(resource.data.houseId, resource.data.landlordId) &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'confirmed_by_caretaker' &&
+        request.resource.data.confirmedBy == request.auth.uid &&
+        request.resource.data.confirmedAt == request.time &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedBy', 'confirmedAt']);
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.landlordId == request.auth.uid &&
+        request.resource.data.houseId is string &&
+        houseHasCaretaker(request.resource.data.houseId, request.auth.uid, request.resource.data.caretakerId) &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.keys().hasOnly(['landlordId', 'caretakerId', 'houseId', 'tenantName', 'houseNo', 'paymentId', 'status', 'createdAt']);
+      allow delete: if false;
+    }
+
+    match /complaints/{id} {
+      allow create: if activeUser() && request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.landlordId != null &&
+        (myRole() == 'tenant' || myRole() == 'caretaker' || myRole() == 'landlord');
+      allow read: if activeUser() && (
+        resource.data.createdBy == request.auth.uid ||
+        landlordFor(resource.data.landlordId)
+      );
+      allow update: if activeUser() && landlordFor(resource.data.landlordId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'lastUpdatedAt', 'lastUpdatedBy', 'response']);
+      allow delete: if false;
+    }
+
+    match /directConversations/{conversationId} {
+      allow create: if activeUser() &&
+        request.resource.data.keys().hasOnly(['participantIds', 'participantNames', 'createdAt', 'updatedAt']) &&
+        request.resource.data.participantIds is list &&
+        request.resource.data.participantIds.size() == 2 &&
+        request.auth.uid in request.resource.data.participantIds &&
+        request.resource.data.participantNames is map &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp;
+      // The deterministic conversation ID contains exactly the two sorted
+      // participant UIDs. Permit a participant to check a not-yet-created
+      // conversation document, while existing documents remain participant-only.
+      allow get: if activeUser() && (
+        (resource == null && conversationId.split('__').hasAny([request.auth.uid])) ||
+        (resource != null && request.auth.uid in resource.data.participantIds)
+      );
+      allow list: if activeUser() &&
+        request.auth.uid in resource.data.participantIds;
+      allow update: if activeUser() &&
+        request.auth.uid in resource.data.participantIds &&
+        request.resource.data.participantIds == resource.data.participantIds &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt']) &&
+        request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        function participants() {
+          return get(/databases/$(database)/documents/directConversations/$(conversationId)).data.participantIds;
+        }
+        allow read: if activeUser() && request.auth.uid in participants();
+        allow create: if activeUser() &&
+          request.resource.data.keys().hasOnly([
+            'encryptionVersion', 'encryptionAlgorithm', 'senderPublicKey',
+            'nonce', 'ciphertext', 'mac', 'keyEnvelopes',
+            'senderId', 'senderName', 'senderPhotoUrl', 'createdAt'
+          ]) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.auth.uid in participants() &&
+          request.resource.data.encryptionVersion == 1 &&
+          request.resource.data.encryptionAlgorithm == 'X25519-HKDF-SHA256-AES-256-GCM' &&
+          request.resource.data.senderPublicKey is string &&
+          request.resource.data.nonce is string &&
+          request.resource.data.ciphertext is string &&
+          request.resource.data.mac is string &&
+          request.resource.data.keyEnvelopes is map &&
+          request.resource.data.keyEnvelopes.keys().hasAll(participants()) &&
+          request.resource.data.createdAt is timestamp;
+        allow update: if false;
+        allow delete: if activeUser() &&
+          request.auth.uid in participants() &&
+          resource.data.senderId == request.auth.uid;
+      }
+    }
+
+
+
+    match /groups/{groupId} {
+      allow create: if activeUser() && request.resource.data.createdBy == request.auth.uid &&
+        linkedTo(request.resource.data.landlordId) && request.auth.uid in request.resource.data.memberIds;
+      allow read: if linkedTo(resource.data.landlordId);
+      allow update: if activeUser() && linkedTo(resource.data.landlordId) && (
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds']) &&
+          request.resource.data.memberIds.hasAll(resource.data.memberIds) &&
+          request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1 &&
+          request.auth.uid in request.resource.data.memberIds
+        ) ||
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds']) &&
+          resource.data.memberIds.hasAll(request.resource.data.memberIds) &&
+          resource.data.memberIds.size() == request.resource.data.memberIds.size() + 1 &&
+          request.auth.uid in resource.data.memberIds &&
+          !(request.auth.uid in request.resource.data.memberIds)
+        ) ||
+        (
+          resource.data.createdBy == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        )
+      );
+      allow delete: if activeUser() && resource.data.createdBy == request.auth.uid;
+      match /members/{memberId} {
+        allow read: if activeUser() && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+        allow create: if activeUser() && request.auth.uid == memberId &&
+          request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+        allow update: if activeUser() && request.auth.uid == memberId;
+        allow delete: if activeUser() && (
+          request.auth.uid == memberId ||
+          request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.createdBy
+        );
+      }
+      match /messages/{messageId} {
+        allow read: if activeUser() && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+        // New messages must contain authenticated ciphertext and a wrapped
+        // content key for every current group member. Plaintext "text" writes
+        // are rejected so a client cannot silently fall back to cleartext.
+        allow create: if activeUser() &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds &&
+          request.resource.data.encryptionVersion == 1 &&
+          request.resource.data.encryptionAlgorithm == 'X25519-HKDF-SHA256-AES-256-GCM' &&
+          request.resource.data.senderPublicKey is string &&
+          request.resource.data.ciphertext is string &&
+          request.resource.data.nonce is string &&
+          request.resource.data.mac is string &&
+          request.resource.data.keyEnvelopes is map &&
+          request.resource.data.keyEnvelopes.keys().hasAll(
+            get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds
+          ) &&
+          (
+            !request.resource.data.keys().hasAny(['attachment']) ||
+            (
+              request.resource.data.attachment is map &&
+              request.resource.data.attachment.keys().hasOnly([
+                'name', 'mimeType', 'storagePath', 'size'
+              ]) &&
+              request.resource.data.attachment.name is string &&
+              request.resource.data.attachment.mimeType in [
+                'image/jpeg', 'image/png', 'image/webp', 'application/pdf'
+              ] &&
+              request.resource.data.attachment.storagePath is string &&
+              request.resource.data.attachment.size is int &&
+              request.resource.data.attachment.size > 0 &&
+              request.resource.data.attachment.size <= 10 * 1024 * 1024
+            )
+          ) &&
+          !request.resource.data.keys().hasAny(['text']);
+        allow update: if false;
+        allow delete: if activeUser() && (
+          (
+            request.auth.uid == resource.data.senderId &&
+            request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds
+          ) ||
+          request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.createdBy
+        );
+      }
+    }
+
+    match /houseRequests/{id} {
+      allow create: if activeUser() && myRole() == 'tenant' && request.resource.data.tenantId == request.auth.uid &&
+        request.resource.data.landlordId == profile(request.auth.uid).landlordId;
+      allow read: if activeUser() && (
+        resource.data.tenantId == request.auth.uid ||
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
+        (myRole() == 'caretaker' &&
+          resource.data.landlordId == profile(request.auth.uid).landlordId &&
+          resource.data.houseId is string &&
+          caretakerAssignedToHouse(resource.data.houseId, resource.data.landlordId))
+      );
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy']);
+      allow delete: if false;
+    }
+
+    match /notices/{id} {
+      allow create: if activeUser() && landlordFor(request.resource.data.landlordId) &&
+        request.resource.data.createdBy == request.auth.uid;
+      allow read: if landlordFor(resource.data.landlordId) || (activeUser() && resource.data.audience == 'all' && linkedTo(resource.data.landlordId));
+      allow update, delete: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
+    }
+
+
+    match /pamphlets/{pamphletId} {
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.keys().hasOnly([
+          'title', 'type', 'message', 'swahiliMessage', 'copies',
+          'landlordId', 'createdBy', 'createdAt', 'isPrinted'
+        ]) &&
+        request.resource.data.landlordId == request.auth.uid &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 120 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() > 0 &&
+        request.resource.data.message.size() <= 5000 &&
+        request.resource.data.swahiliMessage is string &&
+        request.resource.data.swahiliMessage.size() <= 5000 &&
+        request.resource.data.type in ['rentNotice', 'eviction', 'appreciation', 'rules'] &&
+        request.resource.data.copies is int &&
+        request.resource.data.copies >= 1 &&
+        request.resource.data.copies <= 500 &&
+        request.resource.data.isPrinted == false;
+      allow read, delete: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid;
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid &&
+        request.resource.data.landlordId == request.auth.uid &&
+        request.resource.data.createdBy == resource.data.createdBy &&
+        request.resource.data.keys().hasOnly([
+          'title', 'type', 'message', 'swahiliMessage', 'copies',
+          'landlordId', 'createdBy', 'createdAt', 'isPrinted', 'printedAt'
+        ]) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'type', 'message', 'swahiliMessage', 'copies', 'isPrinted', 'printedAt'
+        ]) &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 120 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() > 0 &&
+        request.resource.data.message.size() <= 5000 &&
+        request.resource.data.swahiliMessage is string &&
+        request.resource.data.swahiliMessage.size() <= 5000 &&
+        request.resource.data.type in ['rentNotice', 'eviction', 'appreciation', 'rules'] &&
+        request.resource.data.copies is int &&
+        request.resource.data.copies >= 1 &&
+        request.resource.data.copies <= 500 &&
+        request.resource.data.isPrinted is bool &&
+        (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'title', 'type', 'message', 'swahiliMessage', 'copies'
+          ]) ||
+          (
+            request.resource.data.isPrinted == false &&
+            !request.resource.data.keys().hasAny(['printedAt'])
+          )
+        ) &&
+        (
+          request.resource.data.isPrinted == false
+            ? !request.resource.data.keys().hasAny(['printedAt'])
+            : request.resource.data.printedAt is timestamp
+        );
+    }
+
+    match /meters/{id} {
+      allow create: if activeUser() && myRole() == 'landlord' && request.resource.data.landlordId == request.auth.uid;
+      allow read, update, delete: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
+    }
+    match /electricityAllocations/{id} {
+      allow create: if activeUser() && myRole() == 'landlord' && request.resource.data.landlordId == request.auth.uid;
+      allow read, update, delete: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
+    }
+
+    match /calendarEvents/{eventId} {
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.landlordId == request.auth.uid &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.eventDate is timestamp &&
+        request.resource.data.type in ['rentDue', 'inspection', 'meeting', 'loan', 'blackout', 'other'] &&
+        request.resource.data.note is string &&
+        request.resource.data.isRecurring is bool;
+      allow read: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid;
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid &&
+        request.resource.data.landlordId == request.auth.uid &&
+        request.resource.data.createdBy == resource.data.createdBy &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['title', 'note', 'type', 'eventDate', 'isRecurring']
+        );
+      allow delete: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid;
+    }
+
+    // Landlord-owned scheduled reminders. Only the owning Landlord can
+    // manage reminder definitions; Cloud Functions owns execution history.
+    match /automations/{automationId} {
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.keys().hasOnly(['ownerId', 'title', 'message', 'frequency', 'nextRunAt', 'enabled', 'createdAt', 'updatedAt', 'attemptCount']) &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 100 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() > 0 &&
+        request.resource.data.message.size() <= 500 &&
+        request.resource.data.frequency in ['once', 'daily', 'weekly', 'monthly'] &&
+        request.resource.data.nextRunAt is timestamp &&
+        request.resource.data.enabled is bool &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp &&
+        request.resource.data.attemptCount is int &&
+        request.resource.data.attemptCount >= 0;
+      allow read, delete: if activeUser() && myRole() == 'landlord' &&
+        resource.data.ownerId == request.auth.uid;
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.ownerId == request.auth.uid &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['title', 'message', 'frequency', 'nextRunAt', 'enabled', 'updatedAt']
+        ) &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 100 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() > 0 &&
+        request.resource.data.message.size() <= 500 &&
+        request.resource.data.frequency in ['once', 'daily', 'weekly', 'monthly'] &&
+        request.resource.data.nextRunAt is timestamp &&
+        request.resource.data.enabled is bool &&
+        request.resource.data.updatedAt is timestamp;
+
+      match /runs/{runId} {
+        allow read: if activeUser() && myRole() == 'landlord' &&
+          get(/databases/$(database)/documents/automations/$(automationId)).data.ownerId == request.auth.uid;
+        allow write: if false;
+      }
+    }
+
+    match /activityLogs/{id} {
+      allow read: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
+      allow create: if activeUser() &&
+        request.resource.data.actorId == request.auth.uid &&
+        (
+          landlordFor(request.resource.data.landlordId) ||
+          (
+            myRole() == 'tenant' &&
+            profile(request.auth.uid).landlordId == request.resource.data.landlordId
+          )
+        );
+      allow update: if false;
+      // Only the landlord who owns the audit stream may remove an entry.
+      allow delete: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
+    }
+
+    // Landlord-owned soft-deleted business records. The original document is
+    // restored only by its owner; this bin is never visible to other accounts.
+    match /recycleBin/{itemId} {
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.keys().hasOnly([
+          'ownerId', 'originalCollection', 'originalId', 'recordType',
+          'title', 'originalData', 'deletedAt'
+        ]) &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.originalCollection in ['houses', 'tenants', 'calendarEvents', 'plans', 'pamphlets'] &&
+        request.resource.data.originalId is string &&
+        request.resource.data.recordType is string &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() <= 160 &&
+        request.resource.data.originalData is map &&
+        (
+          request.resource.data.originalData.createdBy == request.auth.uid ||
+          request.resource.data.originalData.landlordId == request.auth.uid
+        ) &&
+        request.resource.data.deletedAt is timestamp;
+      allow read, delete: if activeUser() && myRole() == 'landlord' &&
+        resource.data.ownerId == request.auth.uid;
+      allow update: if false;
+    }
+
+    match /plans/{recordId} {
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.createdBy == request.auth.uid;
+      allow update: if signedIn() && resource.data.createdBy == request.auth.uid &&
+        request.resource.data.createdBy == request.auth.uid;
+    }
+    // Tenant-submitted payments: tenant owns creation; linked landlord reviews.
+    function tenantOwnsAssignedHouse(houseId, landlordId) {
+      let housePath = /databases/$(database)/documents/houses/$(houseId);
+      return exists(housePath) &&
+        get(housePath).data.createdBy == landlordId &&
+        get(housePath).data.landlordId == landlordId &&
+        get(housePath).data.assignedTenantId == request.auth.uid;
+    }
+
+    match /paymentSubmissions/{id} {
+      allow create: if activeUser() && myRole() == 'tenant' &&
+        request.resource.data.tenantId == request.auth.uid &&
+        request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
+        request.resource.data.houseId is string &&
+        request.resource.data.houseId == profile(request.auth.uid).houseId &&
+        request.resource.data.houseNo == profile(request.auth.uid).houseNo &&
+        tenantOwnsAssignedHouse(request.resource.data.houseId, profile(request.auth.uid).landlordId) &&
+        request.resource.data.amount is number && request.resource.data.amount > 0 &&
+        request.resource.data.method in ['MPESA', 'CASH', 'BANK', 'OTHER'] &&
+        request.resource.data.status == 'pending';
+      allow read: if activeUser() && (
+        resource.data.tenantId == request.auth.uid ||
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid)
+      );
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['status', 'ledgerPaymentId', 'reviewedAt']
+        ) &&
+        request.resource.data.status in ['received', 'rejected', 'awaiting_caretaker'];
+      allow delete: if false;
+    }
+
+    // M-Pesa transaction-code reservation must be atomically paired with its submission.
+    match /mpesaTransactionCodes/{code} {
+      allow create: if activeUser() && myRole() == 'tenant' &&
+        code.matches('^[A-Z0-9]{8,16}$') &&
+        request.resource.data.keys().hasOnly(['tenantId', 'landlordId', 'submissionId', 'createdAt']) &&
+        request.resource.data.tenantId == request.auth.uid &&
+        request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
+        request.resource.data.submissionId is string &&
+        validMpesaClaim(code);
+      allow read: if activeUser() && (
+        resource.data.tenantId == request.auth.uid ||
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid)
+      );
+      allow update, delete: if false;
+    }
+
+    // Calculator notes are private to the account that created them.
+    match /savedCalculations/{calculationId} {
+      allow create: if activeUser() &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0;
+      allow read, delete: if activeUser() &&
+        resource.data.createdBy == request.auth.uid;
+      allow update: if activeUser() &&
+        resource.data.createdBy == request.auth.uid &&
+        request.resource.data.createdBy == request.auth.uid;
+    }
+
+    match /subscriptions/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
+    // One-to-one voice/video call signalling. Media stays peer-to-peer; Firestore
+    // stores only call metadata, SDP offers/answers and ICE candidates.
+    match /calls/{callId} {
+      function isCallParticipant() {
+        return signedIn() &&
+          (resource.data.callerId == request.auth.uid ||
+           resource.data.calleeId == request.auth.uid);
+      }
+      allow create: if activeUser() &&
+        request.resource.data.keys().hasOnly([
+          'groupId', 'callerId', 'calleeId', 'callerName', 'calleeName',
+          'type', 'status', 'createdAt'
+        ]) &&
+        request.resource.data.callerId == request.auth.uid &&
+        request.resource.data.calleeId is string &&
+        request.resource.data.calleeId != request.auth.uid &&
+        request.resource.data.groupId is string &&
+        request.resource.data.type in ['voice', 'video'] &&
+        request.resource.data.status == 'preparing' &&
+        request.resource.data.createdAt is timestamp &&
+        exists(/databases/$(database)/documents/groups/$(request.resource.data.groupId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.memberIds &&
+        request.resource.data.calleeId in get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.memberIds &&
+        linkedTo(get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.landlordId);
+      allow get, list: if activeUser() &&
+        (resource.data.callerId == request.auth.uid ||
+         resource.data.calleeId == request.auth.uid);
+      allow update: if activeUser() && isCallParticipant() &&
+        request.resource.data.callerId == resource.data.callerId &&
+        request.resource.data.calleeId == resource.data.calleeId &&
+        request.resource.data.groupId == resource.data.groupId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'offer', 'answer', 'status', 'answeredAt', 'endedAt', 'endedBy'
+        ]) &&
+        (
+          (request.auth.uid == resource.data.callerId &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offer', 'status']) &&
+            request.resource.data.status == 'ringing' &&
+            request.resource.data.offer is map) ||
+          (request.auth.uid == resource.data.callerId &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'endedAt', 'endedBy']) &&
+            request.resource.data.status == 'missed' &&
+            request.resource.data.endedBy == request.auth.uid) ||
+          (request.auth.uid == resource.data.calleeId &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'answeredAt', 'answer']) &&
+            request.resource.data.status in ['connecting', 'active'] &&
+            (!request.resource.data.keys().hasAny(['answer']) || request.resource.data.answer is map)) ||
+          (request.auth.uid == resource.data.calleeId &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'endedAt', 'endedBy']) &&
+            request.resource.data.status == 'declined' &&
+            request.resource.data.endedBy == request.auth.uid) ||
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'endedAt', 'endedBy']) &&
+            request.resource.data.status == 'ended' &&
+            request.resource.data.endedBy == request.auth.uid)
+        );
+      allow delete: if false;
+
+      match /candidates/{candidateId} {
+        function parentCall() {
+          return get(/databases/$(database)/documents/calls/$(callId)).data;
+        }
+        allow read: if activeUser() &&
+          (parentCall().callerId == request.auth.uid ||
+           parentCall().calleeId == request.auth.uid);
+        allow create: if activeUser() &&
+          request.resource.data.senderId == request.auth.uid &&
+          (parentCall().callerId == request.auth.uid ||
+           parentCall().calleeId == request.auth.uid) &&
+          request.resource.data.candidate is string;
+        allow update, delete: if false;
+      }
+    }
+
+
+    // Public marketplace is isolated from private houses, tenants and payment records.
+    match /publicListings/{listingId} {
+      function validListingFields(data) {
+        return data.keys().hasOnly([
+          'ownerUid', 'title', 'category', 'advertType', 'county', 'town',
+          'estate', 'price', 'currency', 'description', 'contactPhone',
+          'photoUrls', 'bedrooms', 'bathrooms', 'status', 'createdAt',
+          'updatedAt', 'submittedAt', 'reviewedAt', 'reviewedBy',
+          'rejectionReason', 'expiresAt', 'featured', 'media', 'details', 'advertiserTier', 'videoUrls', 'coverImagePath', 'businessName', 'websiteUrl', 'latitude', 'longitude'
+        ]) &&
+        data.ownerUid is string && data.title is string &&
+        data.title.size() >= 8 && data.title.size() <= 120 &&
+        data.category in ['Residential', 'Commercial', 'Land', 'Development', 'Farms', 'Vehicles', 'Jobs', 'Restaurants', 'Hospitality', 'Products', 'Services', 'Luxury', 'Business', 'Other'] &&
+        data.advertType is string && data.advertType.size() > 0 && data.advertType.size() <= 60 &&
+        data.county is string && data.county.size() > 0 && data.county.size() <= 80 &&
+        data.town is string && data.town.size() > 0 && data.town.size() <= 120 &&
+        (!data.keys().hasAny(['estate']) || (data.estate is string && data.estate.size() <= 120)) &&
+        (!data.keys().hasAny(['bedrooms']) || (data.bedrooms is int && data.bedrooms >= 0 && data.bedrooms <= 50)) &&
+        (!data.keys().hasAny(['bathrooms']) || (data.bathrooms is number && data.bathrooms >= 0 && data.bathrooms <= 50)) &&
+        data.price is number && data.price > 0 &&
+        data.currency == 'KES' &&
+        data.description is string && data.description.size() >= 20 &&
+        data.description.size() <= 5000 &&
+        data.contactPhone is string && data.contactPhone.size() >= 7 &&
+        data.contactPhone.size() <= 20 &&
+        data.photoUrls is list && data.photoUrls.size() <= 20 &&
+        (!data.keys().hasAny(['media']) || (data.media is list && data.media.size() <= 20)) &&
+        (!data.keys().hasAny(['videoUrls']) || (data.videoUrls is list && data.videoUrls.size() <= 5)) &&
+        (!data.keys().hasAny(['details']) || (data.details is map && data.details.size() <= 30)) &&
+        (!data.keys().hasAny(['advertiserTier']) || data.advertiserTier in ['basic', 'standard', 'premium']) &&
+        (!data.keys().hasAny(['businessName']) || (data.businessName is string && data.businessName.size() <= 120)) &&
+        (!data.keys().hasAny(['websiteUrl']) || (data.websiteUrl is string && data.websiteUrl.size() <= 300)) &&
+        (!data.keys().hasAny(['latitude']) || data.latitude is number) &&
+        (!data.keys().hasAny(['longitude']) || data.longitude is number) &&
+        (!data.keys().hasAny(['coverImagePath']) || (data.coverImagePath is string && data.coverImagePath.size() <= 500)) &&
+        data.status in ['draft', 'pending', 'approved', 'rejected', 'changes_requested', 'paused', 'expired'] &&
+        data.createdAt is timestamp && data.updatedAt is timestamp;
+      }
+
+      allow get, list: if
+        (resource.data.status == 'approved' &&
+         resource.data.expiresAt is timestamp &&
+         resource.data.expiresAt > request.time) ||
+        (signedIn() && resource.data.ownerUid == request.auth.uid) ||
+        marketplaceAdmin();
+
+      allow create: if signedIn() && request.auth.token.email_verified == true &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        validListingFields(request.resource.data) &&
+        request.resource.data.status == 'draft' &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
+        !request.resource.data.keys().hasAny([
+          'submittedAt', 'reviewedAt', 'reviewedBy', 'rejectionReason',
+          'expiresAt', 'featured', 'advertiserTier'
+        ]);
+
+      allow update: if signedIn() && request.auth.token.email_verified == true &&
+        resource.data.ownerUid == request.auth.uid &&
+        resource.data.status in ['draft', 'rejected', 'changes_requested'] &&
+        request.resource.data.ownerUid == resource.data.ownerUid &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.status in ['draft', 'pending'] &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'category', 'advertType', 'county', 'town', 'estate',
+          'price', 'currency', 'description', 'contactPhone', 'photoUrls', 'media', 'videoUrls', 'details', 'businessName', 'websiteUrl', 'latitude', 'longitude', 'coverImagePath',
+          'bedrooms', 'bathrooms', 'status', 'submittedAt', 'updatedAt'
+        ]) &&
+        request.resource.data.updatedAt == request.time &&
+        validListingFields(request.resource.data);
+
+      allow update: if marketplaceAdmin() &&
+        request.resource.data.ownerUid == resource.data.ownerUid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'reviewedAt', 'reviewedBy', 'rejectionReason',
+          'expiresAt', 'featured', 'advertiserTier', 'updatedAt'
+        ]) &&
+        request.resource.data.status in ['approved', 'rejected', 'changes_requested', 'paused', 'expired'] &&
+        (request.resource.data.status != 'approved' ||
+          (request.resource.data.expiresAt is timestamp && request.resource.data.expiresAt > request.time)) &&
+        (!request.resource.data.keys().hasAny(['featured']) || request.resource.data.featured is bool) &&
+        request.resource.data.reviewedBy == request.auth.uid &&
+        request.resource.data.reviewedAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+
+      allow delete: if marketplaceAdmin() ||
+        (signedIn() && resource.data.ownerUid == request.auth.uid &&
+         resource.data.status in ['draft', 'rejected']);
+    }
+
+    match /marketplaceModerationLogs/{logId} {
+      allow create: if marketplaceAdmin() &&
+        request.resource.data.keys().hasOnly([
+          'listingId', 'ownerUid', 'action', 'reason', 'advertiserTier',
+          'actorUid', 'actorEmail', 'createdAt'
+        ]) &&
+        request.resource.data.listingId is string &&
+        request.resource.data.ownerUid is string &&
+        request.resource.data.action in ['approved', 'rejected', 'changes_requested', 'paused', 'tier_changed'] &&
+        request.resource.data.reason is string &&
+        request.resource.data.reason.size() <= 1000 &&
+        request.resource.data.advertiserTier in ['basic', 'standard', 'premium'] &&
+        request.resource.data.actorUid == request.auth.uid &&
+        request.resource.data.actorEmail is string &&
+        request.resource.data.createdAt == request.time;
+      allow get, list: if marketplaceAdmin();
+      allow update, delete: if false;
+    }
+
+    match /marketplaceListingReports/{reportId} {
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasOnly([
+          'listingId', 'reporterUid', 'reason', 'details', 'createdAt', 'status'
+        ]) &&
+        request.resource.data.reporterUid == request.auth.uid &&
+        request.resource.data.listingId is string &&
+        request.resource.data.reason in [
+          'fraud', 'misleading', 'unavailable', 'duplicate', 'other'
+        ] &&
+        request.resource.data.details is string &&
+        request.resource.data.details.size() <= 1000 &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.status == 'open';
+      allow get, list: if signedIn() &&
+        (marketplaceAdmin() ||
+         resource.data.reporterUid == request.auth.uid);
+      allow update, delete: if marketplaceAdmin();
+    }
+
+  }
+}) &&
+        request.resource.data.amountDueKes is number && request.resource.data.amountDueKes > 0 &&
+        request.resource.data.rentAtIssue == request.resource.data.amountDueKes &&
+        request.resource.data.status == 'issued' &&
+        request.resource.data.createdAt == request.time &&
+        landlordInvoiceMatchesTenant(request.resource.data.tenantId, request.auth.uid,
+          request.resource.data.houseId, request.resource.data.houseNo);
+      allow read: if activeUser() && (
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
+        (myRole() == 'tenant' && resource.data.tenantId == request.auth.uid)
+      );
+      allow update, delete: if false;
+    }
+
     match /payments/{recordId} {
       allow create: if activeUser() && myRole() == 'landlord' &&
         request.resource.data.createdBy == request.auth.uid &&
