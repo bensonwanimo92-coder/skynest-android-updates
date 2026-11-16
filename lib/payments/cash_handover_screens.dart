@@ -59,10 +59,16 @@ class _CaretakerCashCollectionScreenState extends State<CaretakerCashCollectionS
       final tenantIds = result.docs
           .map((house) => house.data()['assignedTenantId']?.toString() ?? '')
           .where((id) => id.isNotEmpty).toSet();
-      final tenantProfiles = await Future.wait(tenantIds.map((id) =>
-          FirebaseFirestore.instance.collection('users').doc(id).get()));
+      final tenantProfiles = await Future.wait(tenantIds.map((id) async {
+        try {
+          return await FirebaseFirestore.instance.collection('users').doc(id).get();
+        } catch (_) {
+          return null;
+        }
+      }));
       final names = <String, String>{};
       for (final tenant in tenantProfiles) {
+        if (tenant == null || !tenant.exists) continue;
         final tenantData = tenant.data() ?? {};
         names[tenant.id] = (tenantData['displayName'] ?? tenantData['name'] ?? 'Tenant').toString();
       }
