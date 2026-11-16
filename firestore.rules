@@ -239,7 +239,10 @@ service cloud.firestore {
         request.resource.data.houseId is string &&
         request.resource.data.houseNo is string &&
         landlordOwnsPaymentHouse(request.resource.data.houseId, request.auth.uid, request.resource.data.houseNo);
-      allow read: if activeUser() && resource.data.createdBy == request.auth.uid;
+      allow read: if activeUser() && (
+        resource.data.createdBy == request.auth.uid ||
+        (myRole() == 'tenant' && resource.data.tenantId == request.auth.uid)
+      );
       allow update: if activeUser() && myRole() == 'landlord' && resource.data.createdBy == request.auth.uid;
       allow delete: if activeUser() && myRole() == 'landlord' && resource.data.createdBy == request.auth.uid;
     }
