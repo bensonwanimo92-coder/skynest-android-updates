@@ -1,6 +1,13 @@
 name: Validate and deploy SkyNest M-Pesa Cloudflare Worker
 
 on:
+  pull_request:
+    branches:
+      - integration/skynest-next-complete
+    paths:
+      - 'cloudflare-worker/**'
+      - 'lib/payments/mpesa_service.dart'
+      - '.github/workflows/deploy-mpesa-cloudflare.yml'
   workflow_dispatch:
     inputs:
       confirm_deploy:
@@ -20,7 +27,7 @@ jobs:
       - name: Check out selected release branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -36,7 +43,7 @@ jobs:
   deploy:
     name: Deploy approved Worker
     needs: validate
-    if: ${{ inputs.confirm_deploy == true }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm_deploy == true }}
     runs-on: ubuntu-latest
     environment: mpesa-sandbox-deployment-approval
     steps:
