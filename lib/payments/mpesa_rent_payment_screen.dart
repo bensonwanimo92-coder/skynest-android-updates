@@ -43,7 +43,7 @@ class _MpesaRentPaymentScreenState extends State<MpesaRentPaymentScreen> {
       if (houseId == null || houseId.isEmpty) houseId = profile['houseId']?.toString();
       if ((houseId == null || houseId.isEmpty) && role == 'caretaker') {
         final ids = (profile['propertyIds'] as List?)?.whereType<String>().toList() ?? <String>[];
-        if (ids.length == 1) houseId = ids.first;
+        if (ids.isNotEmpty) houseId = ids.first;
       }
       if (houseId == null || houseId.isEmpty) {
         throw StateError(role == 'caretaker'
