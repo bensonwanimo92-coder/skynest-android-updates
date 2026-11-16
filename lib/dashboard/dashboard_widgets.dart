@@ -11,7 +11,7 @@ const _purple = Color(0xFF8050C7);
 const _orange = Color(0xFFF19A37);
 
 class DashboardOverviewCard extends StatelessWidget {
-  const _DashboardOverviewCard({required this.userRole});
+  const DashboardOverviewCard({required this.userRole});
   final String userRole;
 
   @override
@@ -192,7 +192,7 @@ class _ActivityEmpty extends StatelessWidget {
 }
 
 class DashboardQuickActions extends StatelessWidget {
-  const _DashboardQuickActions({required this.onAddHouse, required this.onCollectPayment, required this.onPostNotice});
+  const DashboardQuickActions({required this.onAddHouse, required this.onCollectPayment, required this.onPostNotice});
   final VoidCallback onAddHouse;
   final VoidCallback onCollectPayment;
   final VoidCallback onPostNotice;
