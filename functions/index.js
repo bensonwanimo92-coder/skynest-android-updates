@@ -180,7 +180,7 @@ exports.requestTenantAccess = onCall(async (request) => {
   }
   const uid = request.auth.uid;
   const landlordEmail = String((request.data && request.data.landlordEmail) || "").trim().toLowerCase();
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(landlordEmail)) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(landlordEmail)) {
     throw new HttpsError("invalid-argument", "Enter a valid landlord email address.");
   }
   const db = getFirestore();
@@ -262,7 +262,7 @@ exports.changeAccountRole = onCall(async (request) => {
       if (user.status !== "active") {
         throw new HttpsError("failed-precondition", "Only an active Landlord account can switch to Tenant.");
       }
-      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(landlordEmail)) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(landlordEmail)) {
         throw new HttpsError("invalid-argument", "Enter your new landlord’s registered email address.");
       }
 
