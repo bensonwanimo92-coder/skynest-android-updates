@@ -303,8 +303,14 @@ service cloud.firestore {
         (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
         (myRole() == 'tenant' && resource.data.tenantId == request.auth.uid)
       );
-      allow update: if activeUser() && myRole() == 'landlord' && resource.data.createdBy == request.auth.uid;
-      allow delete: if activeUser() && myRole() == 'landlord' && resource.data.createdBy == request.auth.uid;
+      // Cash-handover ledger entries are immutable after creation; corrections
+      // must use an explicit audited reversal, not edit/delete the original receipt.
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.createdBy == request.auth.uid &&
+        !resource.data.keys().hasAny(['cashHandoverId']);
+      allow delete: if activeUser() && myRole() == 'landlord' &&
+        resource.data.createdBy == request.auth.uid &&
+        !resource.data.keys().hasAny(['cashHandoverId']);
     }
 
     function validMpesaClaim(code) {
