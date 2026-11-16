@@ -84,15 +84,8 @@ export function validatePayerHouseLink(profile, house, uid) {
        String(house?.houseNo || "") !== houseNo)) {
     throw new Error("Your tenant house assignment could not be verified.");
   }
-  if (role === "caretaker" &&
-      !Array.isArray(house?.caretakerIds || []) &&
-      !(Array.isArray(profile?.propertyIds) && profile.propertyIds.includes(houseId))) {
-    throw new Error("This house is not assigned to your caretaker account.");
-  }
-  if (role === "caretaker" &&
-      !(Array.isArray(house?.caretakerIds) && house.caretakerIds.includes(uid)) &&
-      !(Array.isArray(profile?.propertyIds) && profile.propertyIds.includes(houseId))) {
-    throw new Error("This house is not assigned to your caretaker account.");
+  if (role === "caretaker" && String(house?.assignedTenantId || "") !== uid) {
+    throw new Error("The selected house is not recorded as your rented home. Ask the landlord to link your rent-house assignment.");
   }
   return { landlordId, houseId, houseNo: houseNo || String(house?.houseNo || "") };
 }
