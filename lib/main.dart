@@ -6565,9 +6565,20 @@ class HouseRequestsScreen extends StatelessWidget {
           if (!profile.hasData) return const Center(child: CircularProgressIndicator());
           final p = profile.data?.data() ?? {};
           final role = p['role']?.toString() ?? 'tenant';
+          final houseIds = (p['propertyIds'] as List?)?.whereType<String>().toList() ?? <String>[];
+          if (role == 'caretaker' && houseIds.isEmpty) {
+            return const EmptyView('No assigned properties are available for house requests.');
+          }
+          if (role == 'caretaker' && houseIds.length > 30) {
+            return const EmptyView('Your account has more than 30 assigned houses. Ask the landlord to review house requests until paginated filtering is available.');
+          }
+          final requests = FirebaseFirestore.instance.collection('houseRequests');
           final stream = role == 'tenant'
-            ? FirebaseFirestore.instance.collection('houseRequests').where('tenantId', isEqualTo: uid).snapshots()
-            : FirebaseFirestore.instance.collection('houseRequests').where('landlordId', isEqualTo: role == 'landlord' ? uid : p['landlordId']).snapshots();
+            ? requests.where('tenantId', isEqualTo: uid).snapshots()
+            : role == 'caretaker'
+              ? requests.where('landlordId', isEqualTo: p['landlordId'])
+                  .where('houseId', whereIn: houseIds).snapshots()
+              : requests.where('landlordId', isEqualTo: uid).snapshots();
           return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(stream: stream, builder: (context, snap) {
             if (snap.hasError) return errorView('Requests could not load.');
             if (!snap.hasData) return const Center(child: CircularProgressIndicator());
@@ -6576,10 +6587,10 @@ class HouseRequestsScreen extends StatelessWidget {
               final d = doc.data();
               return Card(child: ListTile(title: Text('House ' + (d['houseNo'] ?? '').toString()),
                 subtitle: Text((d['tenantName'] ?? 'Tenant').toString() + ' • ' + (d['status'] ?? 'pending').toString()),
-                trailing: role == 'tenant' ? null : Wrap(children: [
+                trailing: role == 'landlord' ? Wrap(children: [
                   IconButton(tooltip: 'Approve', onPressed: d['status'] == 'pending' ? () => decide(context, doc.id, 'approved', d) : null, icon: const Icon(Icons.check_circle, color: Colors.green)),
                   IconButton(tooltip: 'Decline', onPressed: d['status'] == 'pending' ? () => decide(context, doc.id, 'declined', d) : null, icon: const Icon(Icons.cancel_outlined, color: Colors.red)),
-                ])));
+                ]) : null));
             }).toList());
           });
         },
