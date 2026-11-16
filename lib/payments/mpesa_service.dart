@@ -6,7 +6,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 /// Calls the SkyNest Cloudflare Worker M-Pesa API. The base URL is injected at
 /// build time; no Daraja credentials are ever stored in the Android app.
 class SkyNestMpesaService {
-  static const String _baseUrl = String.fromEnvironment('SKYNEST_API_BASE_URL');
+  static const String _baseUrl = String.fromEnvironment(
+    'SKYNEST_API_BASE_URL',
+    defaultValue: 'https://mpesaapi.bensonwanimo92.workers.dev',
+  );
 
   static Future<Map<String, dynamic>> _call(String path, {String method = 'GET', Map<String, dynamic>? body}) async {
     if (_baseUrl.isEmpty) throw StateError('M-Pesa service is not configured in this app build yet.');
