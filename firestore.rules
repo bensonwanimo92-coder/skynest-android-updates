@@ -224,11 +224,24 @@ service cloud.firestore {
         myRole() == 'landlord' && resource.data.createdBy == request.auth.uid;
     }
 
+    function landlordOwnsPaymentHouse(houseId, landlordId, houseNo) {
+      let housePath = /databases/$(database)/documents/houses/$(houseId);
+      return exists(housePath) &&
+        get(housePath).data.createdBy == landlordId &&
+        get(housePath).data.landlordId == landlordId &&
+        get(housePath).data.houseNo == houseNo;
+    }
+
     match /payments/{recordId} {
-      allow create: if activeUser() && myRole() == 'landlord' && request.resource.data.createdBy == request.auth.uid;
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.landlordId == request.auth.uid &&
+        request.resource.data.houseId is string &&
+        request.resource.data.houseNo is string &&
+        landlordOwnsPaymentHouse(request.resource.data.houseId, request.auth.uid, request.resource.data.houseNo);
       allow read: if activeUser() && resource.data.createdBy == request.auth.uid;
-      allow update: if activeUser() && resource.data.createdBy == request.auth.uid;
-      allow delete: if activeUser() && resource.data.createdBy == request.auth.uid;
+      allow update: if activeUser() && myRole() == 'landlord' && resource.data.createdBy == request.auth.uid;
+      allow delete: if activeUser() && myRole() == 'landlord' && resource.data.createdBy == request.auth.uid;
     }
 
     function validMpesaClaim(code) {
