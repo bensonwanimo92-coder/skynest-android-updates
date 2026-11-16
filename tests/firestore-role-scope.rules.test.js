@@ -186,6 +186,45 @@ test("landlord payment records must point to a house owned by that landlord", as
 });
 
 
+test("landlord can issue immutable rent invoices only for an active assigned tenant and house", async () => {
+  await seed();
+  const db = env.authenticatedContext("landlord-1").firestore();
+  const valid = {
+    landlordId: "landlord-1", createdBy: "landlord-1", tenantId: "tenant-1",
+    tenantName: "Tenant One", houseId: "house-assigned", houseNo: "A1",
+    period: "2026-11", amountDueKes: 15000, rentAtIssue: 15000,
+    status: "issued", createdAt: serverTimestamp()
+  };
+  await assertSucceeds(setDoc(doc(db, "rentInvoices", "tenant-1_house-assigned_2026-11"), valid));
+  await assertFails(setDoc(doc(db, "rentInvoices", "wrong-house-invoice"), {
+    ...valid, houseId: "house-other", houseNo: "B1"
+  }));
+  await assertFails(setDoc(doc(db, "rentInvoices", "wrong-tenant-invoice"), {
+    ...valid, tenantId: "another-tenant"
+  }));
+});
+
+test("tenant can read only their own rent invoices and invoices cannot be edited", async () => {
+  await seed();
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "rentInvoices", "tenant-own-invoice"), {
+      landlordId: "landlord-1", tenantId: "tenant-1", houseId: "house-assigned",
+      houseNo: "A1", period: "2026-11", amountDueKes: 15000, rentAtIssue: 15000,
+      status: "issued", createdBy: "landlord-1", createdAt: new Date()
+    });
+    await setDoc(doc(db, "rentInvoices", "other-tenant-invoice"), {
+      landlordId: "landlord-1", tenantId: "another-tenant", houseId: "house-other",
+      houseNo: "B1", period: "2026-11", amountDueKes: 20000, rentAtIssue: 20000,
+      status: "issued", createdBy: "landlord-1", createdAt: new Date()
+    });
+  });
+  const tenant = env.authenticatedContext("tenant-1").firestore();
+  await assertSucceeds(getDoc(doc(tenant, "rentInvoices", "tenant-own-invoice")));
+  await assertFails(getDoc(doc(tenant, "rentInvoices", "other-tenant-invoice")));
+  await assertFails(updateDoc(doc(tenant, "rentInvoices", "tenant-own-invoice"), { amountDueKes: 1 }));
+});
+
 test("tenant can read only payment records linked to their own UID", async () => {
   await seed();
   const tenant = env.authenticatedContext("tenant-1").firestore();
