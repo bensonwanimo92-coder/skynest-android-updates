@@ -1,0 +1,66 @@
+name: Deploy SkyNest M-Pesa Cloudflare Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_deploy:
+        description: "Confirm deployment of the M-Pesa API Worker"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: inputs.confirm_deploy == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the explicitly selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate Worker source
+        working-directory: cloudflare-worker
+        run: |
+          npm run check
+          npm test
+
+      - name: Validate required deployment secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.SKYNEST_FIREBASE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::CLOUDFLARE_API_TOKEN is missing."; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::CLOUDFLARE_ACCOUNT_ID is missing."; exit 1; }
+          test -n "$FIREBASE_PROJECT_ID" || { echo "::error::FIREBASE_PROJECT_ID is missing."; exit 1; }
+          test -n "$FIREBASE_WEB_API_KEY" || { echo "::error::FIREBASE_WEB_API_KEY is missing."; exit 1; }
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || { echo "::error::SKYNEST_FIREBASE_KEY is missing."; exit 1; }
+          python3 -c 'import json,os; d=json.loads(os.environ["FIREBASE_SERVICE_ACCOUNT_JSON"]); assert d.get("type")=="service_account"; assert d.get("project_id")==os.environ["FIREBASE_PROJECT_ID"]; assert d.get("client_email") and d.get("private_key")'
+          echo "Required credentials are present and the Firebase service account matches the project."
+
+      - name: Deploy Worker and install server-side Firebase secrets
+        working-directory: cloudflare-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.SKYNEST_FIREBASE_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$FIREBASE_PROJECT_ID" | npx --yes wrangler@4 secret put FIREBASE_PROJECT_ID --name mpesaapi
+          printf '%s' "$FIREBASE_WEB_API_KEY" | npx --yes wrangler@4 secret put FIREBASE_WEB_API_KEY --name mpesaapi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" | npx --yes wrangler@4 secret put FIREBASE_SERVICE_ACCOUNT_JSON --name mpesaapi
+          npx --yes wrangler@4 deploy --name mpesaapi
