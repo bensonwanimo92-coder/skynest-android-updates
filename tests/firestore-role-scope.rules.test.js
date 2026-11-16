@@ -496,6 +496,7 @@ test("landlord acknowledgement atomically creates exactly one verified cash rent
     transaction.set(paymentRef, payment);
   }));
   await assertSucceeds(getDoc(paymentRef));
+  await assertFails(setDoc(paymentRef, payment));
   const tenant = env.authenticatedContext("tenant-1").firestore();
   await assertSucceeds(getDoc(doc(tenant, "payments", "cash_cash-ledger-1")));
   await assertFails(updateDoc(paymentRef, { amount: 1 }));
