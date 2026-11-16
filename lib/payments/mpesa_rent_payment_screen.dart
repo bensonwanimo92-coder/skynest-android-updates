@@ -161,12 +161,16 @@ class _MpesaRentPaymentScreenState extends State<MpesaRentPaymentScreen> {
             const SizedBox(height: 14),
             const Text('HOW TO PAY', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .7)),
             const SizedBox(height: 8),
-            ...((_recipient!['instructions'] as List?)?.asMap().entries ?? const Iterable<MapEntry<int, dynamic>>.empty())
-              .map((entry) => ListTile(
-                dense: true,
-                leading: CircleAvatar(radius: 14, child: Text('${entry.key + 1}', style: const TextStyle(fontSize: 12))),
-                title: Text(entry.value.toString()),
-              )),
+            if ((_recipient!['accountType']?.toString() ?? 'paybill') == 'paybill') ...[
+              const ListTile(leading: CircleAvatar(child: Text('1')), title: Text('Open M-Pesa and select Lipa na M-Pesa.')),
+              const ListTile(leading: CircleAvatar(child: Text('2')), title: Text('Choose PayBill and enter the recipient number above.')),
+              const ListTile(leading: CircleAvatar(child: Text('3')), title: Text('Enter your house number as the account/reference.')),
+              const ListTile(leading: CircleAvatar(child: Text('4')), title: Text('Enter the rent amount and confirm using your M-Pesa PIN.')),
+            ] else ...[
+              const ListTile(leading: CircleAvatar(child: Text('1')), title: Text('Open M-Pesa and select Lipa na M-Pesa.')),
+              const ListTile(leading: CircleAvatar(child: Text('2')), title: Text('Choose Buy Goods and Services and enter the Till number above.')),
+              const ListTile(leading: CircleAvatar(child: Text('3')), title: Text('Enter the rent amount and confirm using your M-Pesa PIN.')),
+            ],
             const Divider(height: 28),
             const Text('SUBMIT YOUR M-PESA RECEIPT', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .7)),
             const SizedBox(height: 8),
