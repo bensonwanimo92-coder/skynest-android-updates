@@ -126,7 +126,7 @@ class TenantRentOverviewScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       const Text(
-                        'You can pay all or part of your outstanding balance. The payment is sent to your linked landlord’s verified PayBill or Till.',
+                        'You can pay all or part of your outstanding balance. Payment goes to your linked landlord’s verified PayBill or Till.',
                         style: TextStyle(fontSize: 12),
                       ),
                     ],
@@ -202,7 +202,7 @@ class TenantRentOverviewScreen extends StatelessWidget {
 
   Future<void> _startMpesaPayment(BuildContext context, int outstandingBalance) async {
     final amountController = TextEditingController(
-      text: outstandingBalance > 150000 ? '150000' : outstandingBalance.toString(),
+      text: (outstandingBalance > 150000 ? 150000 : outstandingBalance).toString(),
     );
     final phoneController = TextEditingController();
     try {
@@ -266,15 +266,10 @@ class TenantRentOverviewScreen extends StatelessWidget {
         );
         return;
       }
-      if (!RegExp(r'^(?:07|01)\d{8}$|^254[17]\d{8}
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(children: [
-      Expanded(child: Text(label)),
-      Text(_kes.format(amount), style: TextStyle(color: color, fontWeight: FontWeight.w800)),
-    ]),
-  );
-}
-).hasMatch(phone)) {
+      final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+      final validPhone = (digits.length == 10 && (digits.startsWith('07') || digits.startsWith('01'))) ||
+          (digits.length == 12 && (digits.startsWith('2547') || digits.startsWith('2541')));
+      if (!validPhone) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Enter a valid Kenyan M-Pesa phone number.')),
         );
@@ -285,14 +280,14 @@ class TenantRentOverviewScreen extends StatelessWidget {
       );
       final message = await SkyNestMpesaService.requestStkPush(
         amountKes: amount,
-        phone: phone,
+        phone: digits,
       );
       if (!context.mounted) return;
-      showDialog<void>(
+      await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('M-Pesa prompt requested'),
-          content: Text(message + '\n\nYour balance will update after Safaricom confirms the payment.'),
+          content: Text(message + '\n\nYour balance updates after Safaricom confirms the payment.'),
           actions: [
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext),
