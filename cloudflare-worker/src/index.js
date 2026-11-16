@@ -259,15 +259,18 @@ async function getPaymentRecipient(request, env) {
       String(profile.status || "").toLowerCase() !== "active" || !profile.landlordId) {
     throw new HttpError("Only an active tenant or caretaker linked to a landlord can view rent payment details.", 403);
   }
-  if (role === "tenant") {
-    const houseId = String(profile.houseId || "");
-    if (!houseId) throw new HttpError("Your account has no assigned house. Contact your landlord.", 409);
-    const houseResult = await firestore(env, "houses/" + encodeURIComponent(houseId));
-    if (houseResult.status === 404) throw new HttpError("Your assigned house could not be found.", 409);
-    const house = decodeFields(houseResult.data.fields);
-    try { validatePayerHouseLink(profile, house, uid); }
-    catch (error) { throw new HttpError(error.message, 403); }
+  const url = new URL(request.url);
+  const houseId = String(url.searchParams.get("houseId") || "");
+  if (!houseId) throw new HttpError("Choose the house linked to this rent payment.", 400);
+  if (role === "tenant" && houseId !== String(profile.houseId || "")) {
+    throw new HttpError("You can only view payment details for your assigned house.", 403);
   }
+  const houseResult = await firestore(env, "houses/" + encodeURIComponent(houseId));
+  if (houseResult.status === 404) throw new HttpError("The selected house could not be found.", 409);
+  const house = decodeFields(houseResult.data.fields);
+  try { validatePayerHouseLink({ ...profile, houseId }, house, uid); }
+  catch (error) { throw new HttpError(error.message, 403); }
+
   const result = await firestore(env, "landlordPaymentAccounts/" + encodeURIComponent(String(profile.landlordId)));
   if (result.status === 404) throw new HttpError("Your landlord has not added M-Pesa payment details yet.", 409);
   const recipient = decodeFields(result.data.fields);
@@ -280,11 +283,9 @@ async function getPaymentRecipient(request, env) {
     accountNumber: recipient.accountNumber,
     registeredBusinessName: recipient.registeredBusinessName,
     landlordId: String(profile.landlordId),
-    houseNo: String(profile.houseNo || ""),
+    houseId,
+    houseNo: String(house.houseNo || profile.houseNo || ""),
     paymentMethod: "manual_mpesa",
-    instructions: recipient.accountType === "paybill"
-      ? ["Open M-Pesa", "Select Lipa na M-Pesa, then PayBill", "Enter the PayBill number", "Use your house number as the account number", "Enter the rent amount and confirm"]
-      : ["Open M-Pesa", "Select Lipa na M-Pesa, then Buy Goods and Services", "Enter the Till number", "Enter the rent amount and confirm"],
   });
 }
 
