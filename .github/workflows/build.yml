@@ -512,6 +512,19 @@ jobs:
           test "$actual" = "$expected" || { echo "ERROR: Built APK certificate does not match original"; echo "Actual: $actual"; exit 1; }
           echo "Built APK package and original signing certificate verified."
 
+      - name: Enable KVM for Android 14 emulator
+        run: |
+          if [ ! -e /dev/kvm ]; then
+            echo "::error::KVM device /dev/kvm is unavailable on this runner."
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            echo "::error::The runner still cannot access /dev/kvm."
+            exit 1
+          fi
+          echo "KVM access verified for the Android 14 emulator."
+
       - name: Test APK installation and launch on Android 14
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -519,6 +532,7 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          disable-linux-hw-accel: false
           disable-animations: false
           # Resolve the actual launcher component from the installed package instead of
           # assuming Flutter's generated activity name. Keep diagnostics on every failure.
