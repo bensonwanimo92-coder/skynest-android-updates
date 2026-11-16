@@ -14,7 +14,7 @@ class TenantRentOverviewScreen extends StatelessWidget {
 
   String _periodFor(Map<String, dynamic> data) {
     final explicit = data['period']?.toString();
-    if (explicit != null && RegExp(r'^\d{4}-\d{2}.hasMatch(explicit)) return explicit;
+    if (explicit != null && RegExp(r'^\d{4}-\d{2}$').hasMatch(explicit)) return explicit;
     final stamp = data['createdAt'];
     if (stamp is Timestamp) return DateFormat('yyyy-MM').format(stamp.toDate());
     return 'Undated';
