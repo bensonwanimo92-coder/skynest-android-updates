@@ -170,7 +170,7 @@ service cloud.firestore {
         request.resource.data.landlordId == request.auth.uid;
       allow read: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
-        (myRole() == 'caretaker' && request.auth.uid in resource.data.caretakerIds) ||
+        (myRole() == 'caretaker' && (request.auth.uid in resource.data.caretakerIds || (resource.data.assignedTenantId == request.auth.uid && resource.data.landlordId == profile(request.auth.uid).landlordId))) ||
         (myRole() == 'tenant' && resource.data.landlordId == profile(request.auth.uid).landlordId && (resource.data.isOccupied == false || resource.data.assignedTenantId == request.auth.uid))
       );
       allow update: if activeUser() && (
