@@ -12,6 +12,7 @@ import 'services/sound_service.dart';
 import 'services/voice_service.dart';
 import 'payments/mpesa_service.dart';
 import 'payments/rent_ledger_screen.dart';
+import 'payments/mpesa_account_screen.dart';
 import 'services/notification_service.dart';
 import 'control_centre/notification_centre.dart';
 import 'control_centre/control_centre_screen.dart';
@@ -1318,6 +1319,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Account approvals', Icons.how_to_reg_outlined, Colors.green, const TenantApprovalsScreen()),
         _MenuItem('Tenants', Icons.people_alt_outlined, Colors.green, const TenantsScreen()),
         _MenuItem('Payments', Icons.payments_outlined, Colors.blue, const PaymentsScreen()),
+        _MenuItem('M-Pesa receiving account', Icons.account_balance_wallet_outlined, Colors.green, const MpesaAccountScreen()),
         _MenuItem('Tenant payment submissions', Icons.fact_check_outlined, Colors.teal, const PaymentSubmissionsScreen()),
         _MenuItem('Caretakers & invitations', Icons.badge_outlined, Colors.teal, const InvitationsScreen()),
         _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
