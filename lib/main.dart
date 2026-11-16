@@ -505,12 +505,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final confirmPassword = TextEditingController();
   final displayName = TextEditingController();
   final invitationCode = TextEditingController();
+  final landlordEmail = TextEditingController();
   String selectedRole = 'landlord';
   bool busy = false, obscure = true, creating = false;
 
   @override
   void dispose() {
-    email.dispose(); password.dispose(); confirmPassword.dispose(); displayName.dispose(); invitationCode.dispose();
+    email.dispose(); password.dispose(); confirmPassword.dispose(); displayName.dispose(); invitationCode.dispose(); landlordEmail.dispose();
     super.dispose();
   }
   void message(String text) {
@@ -587,8 +588,11 @@ class _LoginScreenState extends State<LoginScreen> {
     if (password.text.length < 6) { message('Use a password with at least 6 characters.'); return; }
     if (password.text != confirmPassword.text) { message('The passwords do not match.'); return; }
     if (!['landlord', 'caretaker', 'tenant'].contains(selectedRole)) { message('Choose an account type.'); return; }
-    if (selectedRole != 'landlord' && invitationCode.text.trim().length < 6) {
+    if (selectedRole == 'caretaker' && invitationCode.text.trim().length < 6) {
       message('Enter the invitation code provided by your landlord.'); return;
+    }
+    if (selectedRole == 'tenant' && !validEmail(landlordEmail.text)) {
+      message('Enter your landlord’s registered email address.'); return;
     }
     setState(() => busy = true);
     User? newUser;
@@ -601,7 +605,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (selectedRole == 'landlord') {
         await profile.set({'displayName': displayName.text.trim(), 'email': email.text.trim(),
           'role': 'landlord', 'status': 'active', 'createdAt': FieldValue.serverTimestamp()});
-      } else {
+      } else if (selectedRole == 'caretaker') {
         final code = invitationCode.text.trim().toUpperCase();
         final inviteRef = FirebaseFirestore.instance.collection('invitations').doc(code);
         await FirebaseFirestore.instance.runTransaction((transaction) async {
@@ -609,19 +613,38 @@ class _LoginScreenState extends State<LoginScreen> {
           if (!inviteSnapshot.exists) throw StateError('Invitation code not found.');
           final invite = inviteSnapshot.data()!;
           final expiry = invite['expiresAt'];
-          if (invite['status'] != 'open' || invite['role'] != selectedRole ||
+          if (invite['status'] != 'open' || invite['role'] != 'caretaker' ||
               invite['landlordId'] == null || expiry is! Timestamp || !expiry.toDate().isAfter(DateTime.now())) {
             throw StateError('This invitation is invalid, expired, already used, or for a different role.');
           }
           transaction.set(profile, {'displayName': displayName.text.trim(), 'email': email.text.trim(),
-            'role': selectedRole, 'status': 'pending', 'landlordId': invite['landlordId'],
+            'role': 'caretaker', 'status': 'pending', 'landlordId': invite['landlordId'],
             'propertyIds': invite['propertyIds'] ?? [],
-            if (selectedRole == 'caretaker') 'caretakerPermission': invite['permission'] ?? 'view_only',
-            'invitationCode': code,
-            'createdAt': FieldValue.serverTimestamp()});
+            'caretakerPermission': invite['permission'] ?? 'view_only',
+            'invitationCode': code, 'createdAt': FieldValue.serverTimestamp()});
           transaction.update(inviteRef, {'status': 'used', 'usedBy': newUser!.uid,
             'usedAt': FieldValue.serverTimestamp()});
         });
+      } else {
+        final client = HttpClient();
+        try {
+          final token = await newUser!.getIdToken();
+          final request = await client.postUrl(Uri.parse(
+            'https://us-central1-hello-chuka.cloudfunctions.net/requestTenantAccess'));
+          request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + token!);
+          request.headers.contentType = ContentType.json;
+          request.write(jsonEncode({'data': {'landlordEmail': landlordEmail.text.trim().toLowerCase()}}));
+          final response = await request.close().timeout(const Duration(seconds: 35));
+          final responseText = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 20));
+          Map<String, dynamic> decoded;
+          try { decoded = jsonDecode(responseText) as Map<String, dynamic>; }
+          catch (_) { throw StateError('The tenant registration service returned an unreadable response.'); }
+          if (response.statusCode < 200 || response.statusCode >= 300 || decoded['error'] != null) {
+            final error = decoded['error'];
+            final details = error is Map ? error['message']?.toString() : null;
+            throw StateError(details ?? 'Tenant registration could not be linked to that landlord.');
+          }
+        } finally { client.close(force: true); }
       }
       if (!mounted) return;
       if (selectedRole == 'landlord') {
@@ -629,7 +652,9 @@ class _LoginScreenState extends State<LoginScreen> {
         message('Landlord account created successfully.');
       } else {
         Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const PendingApprovalScreen()));
-        message('Account created. Your landlord must approve your access.');
+        message(selectedRole == 'tenant'
+          ? 'Tenant request sent. Your landlord must approve your access.'
+          : 'Caretaker account created. Your landlord must approve your access.');
       }
     } on FirebaseAuthException catch (e) {
       message(authMessage(e));
@@ -740,10 +765,18 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
             onChanged: (value) => setDialogState(() => selectedRole = value ?? 'landlord'),
           ),
-          if (selectedRole != 'landlord') ...[
+          if (selectedRole == 'caretaker') ...[
             const SizedBox(height: 12),
             TextField(controller: invitationCode, textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(labelText: 'Landlord invitation code', prefixIcon: Icon(Icons.key_outlined))),
+              decoration: const InputDecoration(labelText: 'Caretaker invitation code', prefixIcon: Icon(Icons.key_outlined))),
+          ],
+          if (selectedRole == 'tenant') ...[
+            const SizedBox(height: 12),
+            TextField(controller: landlordEmail, keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(labelText: 'Landlord email address', prefixIcon: Icon(Icons.alternate_email))),
+            const Padding(padding: EdgeInsets.only(top: 6), child: Text(
+              'No invitation code is needed. Your landlord will review and approve your request.',
+              style: TextStyle(fontSize: 12, color: Colors.black54))),
           ],
           const SizedBox(height: 12),
           TextField(controller: email, keyboardType: TextInputType.emailAddress,
