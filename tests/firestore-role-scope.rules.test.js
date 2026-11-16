@@ -62,6 +62,13 @@ async function seed() {
   });
 }
 
+test("tenant can read only their own assigned house", async () => {
+  await seed();
+  const db = env.authenticatedContext("tenant-1").firestore();
+  await assertSucceeds(getDoc(doc(db, "houses", "house-assigned")));
+  await assertFails(getDoc(doc(db, "houses", "house-other")));
+});
+
 test("caretaker can create tenant record only for a house assigned by the linked landlord", async () => {
   await seed();
   const db = env.authenticatedContext("caretaker-1").firestore();
