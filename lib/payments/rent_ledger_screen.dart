@@ -71,6 +71,7 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
         'houseNo': houseNo,
         'period': period,
         'dueKes': dueKes,
+        'dueKnown': true,
         'payments': <RentPaymentRecord>[],
       });
     }
@@ -166,6 +167,9 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
         period: period,
         dueKes: dueKes,
       );
+      if (persisted == null && data['rentAtIssue'] is! num) {
+        grouped['$tenantId|$houseId|$period']!['dueKnown'] = false;
+      }
       final state = rentTransactionStateFromStatus(data['status']);
       final amount = (data['amount'] as num?)?.round() ?? 0;
       if (amount <= 0) continue;
@@ -191,6 +195,7 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
         tenantName: data['tenantName'] as String?,
         houseNo: data['houseNo'] as String?,
         amountDueKes: data['dueKes'] as int,
+        dueAmountKnown: data['dueKnown'] as bool? ?? true,
         payments: List<RentPaymentRecord>.from(data['payments'] as List<RentPaymentRecord>),
       );
     }).toList()
@@ -204,6 +209,7 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
       case RentInvoiceState.partiallyPaid: return Colors.orange;
       case RentInvoiceState.overpaid: return Colors.blue;
       case RentInvoiceState.unpaid: return Colors.red;
+      case RentInvoiceState.unknown: return Colors.grey;
     }
   }
 
@@ -213,6 +219,7 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
       case RentInvoiceState.partiallyPaid: return 'PARTIAL';
       case RentInvoiceState.overpaid: return 'CREDIT';
       case RentInvoiceState.unpaid: return 'UNPAID';
+      case RentInvoiceState.unknown: return 'DUE UNKNOWN';
     }
   }
 
@@ -241,9 +248,11 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
           padding: EdgeInsets.all(24),
           child: Text('No tenant rent invoices or payment history are available yet.', textAlign: TextAlign.center),
         ));
-        final due = invoices.fold<int>(0, (sum, item) => sum + item.amountDueKes);
+        final due = invoices.where((item) => item.dueAmountKnown)
+            .fold<int>(0, (sum, item) => sum + item.amountDueKes);
         final received = invoices.fold<int>(0, (sum, item) => sum + item.totalConfirmedKes);
-        final outstanding = invoices.fold<int>(0, (sum, item) => sum + item.balanceKes);
+        final outstanding = invoices.where((item) => item.dueAmountKnown)
+            .fold<int>(0, (sum, item) => sum + item.balanceKes);
         final credit = invoices.fold<int>(0, (sum, item) => sum + item.creditKes);
         return RefreshIndicator(
           onRefresh: () async => setState(() => _ledgerFuture = _loadLedger()),
@@ -283,9 +292,12 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
                     trailing: Text(_stateLabel(invoice.state), style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 11)),
                     childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     children: [
-                      _summaryRow('Rent due', invoice.amountDueKes, Colors.blue),
+                      if (invoice.dueAmountKnown) ...[
+                        _summaryRow('Rent due', invoice.amountDueKes, Colors.blue),
+                        _summaryRow('Balance', invoice.balanceKes, invoice.balanceKes > 0 ? Colors.red : Colors.green),
+                      ] else
+                        const Align(alignment: Alignment.centerLeft, child: Text('Original rent due for this period was not saved. Balance cannot be reliably reconstructed.')),
                       _summaryRow('Verified paid', paid, Colors.green),
-                      _summaryRow('Balance', invoice.balanceKes, invoice.balanceKes > 0 ? Colors.red : Colors.green),
                       if (invoice.creditKes > 0) _summaryRow('Credit', invoice.creditKes, Colors.teal),
                       const SizedBox(height: 8),
                       LinearProgressIndicator(value: invoice.paidFraction, minHeight: 7),
