@@ -296,10 +296,12 @@ class LandlordCashHandoverScreen extends StatelessWidget {
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance.collection('cashHandovers')
             .where('landlordId', isEqualTo: uid).snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) return Center(child: Text('Cash handovers could not load: ${snapshot.error}'));
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          final docs = snapshot.data!.docs.toList()
+        builder: (context, handoverSnapshot) {
+          if (handoverSnapshot.hasError) {
+            return Center(child: Text('Cash handovers could not load: ${handoverSnapshot.error}'));
+          }
+          if (!handoverSnapshot.hasData) return const Center(child: CircularProgressIndicator());
+          final docs = handoverSnapshot.data!.docs.toList()
             ..sort((a, b) {
               final ad = a.data()['submittedAt'];
               final bd = b.data()['submittedAt'];
@@ -307,26 +309,82 @@ class LandlordCashHandoverScreen extends StatelessWidget {
               final bt = bd is Timestamp ? bd.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
               return bt.compareTo(at);
             });
-          if (docs.isEmpty) return const Center(child: Padding(
-            padding: EdgeInsets.all(24), child: Text('No caretaker cash handovers have been submitted.')));
-          return ListView(padding: const EdgeInsets.all(16), children: docs.map((doc) {
-            final d = doc.data();
-            final acknowledged = d['status'] == 'acknowledged';
-            final stamp = d['submittedAt'];
-            final date = stamp is Timestamp ? stamp.toDate().toLocal().toString().split('.').first : 'Date pending';
-            return Card(child: ListTile(
-              leading: Icon(acknowledged ? Icons.verified : Icons.pending_actions,
-                color: acknowledged ? Colors.green : Colors.orange),
-              title: Text('KSh ${d['amountKes'] ?? 0} • House ${d['houseNo'] ?? ''}'),
-              subtitle: Text('${d['tenantName'] ?? 'Tenant'} • Caretaker ${d['caretakerId'] ?? ''}\n$date • ${acknowledged ? 'ACKNOWLEDGED' : 'AWAITING RECEIPT'}'),
-              isThreeLine: true,
-              trailing: acknowledged ? const Icon(Icons.check_circle, color: Colors.green)
-                : IconButton(tooltip: 'Acknowledge receipt', icon: const Icon(Icons.check_circle_outline),
-                    onPressed: () => _acknowledge(context, doc)),
-            ));
-          }).toList());
+          final handoverByCollection = <String, Map<String, dynamic>>{
+            for (final doc in docs) doc.id: doc.data(),
+          };
+          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance.collection('cashCollections')
+                .where('landlordId', isEqualTo: uid).snapshots(),
+            builder: (context, collectionSnapshot) {
+              if (collectionSnapshot.hasError) {
+                return Center(child: Text('Cash collection totals could not load: ${collectionSnapshot.error}'));
+              }
+              if (!collectionSnapshot.hasData) return const Center(child: CircularProgressIndicator());
+              final collections = collectionSnapshot.data!.docs;
+              final totalCollected = collections.fold<int>(0, (sum, item) =>
+                  sum + ((item.data()['amountKes'] as num?)?.round() ?? 0));
+              final totalAcknowledged = docs.where((doc) => doc.data()['status'] == 'acknowledged')
+                  .fold<int>(0, (sum, item) =>
+                      sum + ((item.data()['amountKes'] as num?)?.round() ?? 0));
+              final awaitingHandover = collections.where((item) =>
+                  !handoverByCollection.containsKey(item.id))
+                  .fold<int>(0, (sum, item) =>
+                      sum + ((item.data()['amountKes'] as num?)?.round() ?? 0));
+              final awaitingAcknowledgement = docs.where((doc) =>
+                  doc.data()['status'] == 'submitted')
+                  .fold<int>(0, (sum, item) =>
+                      sum + ((item.data()['amountKes'] as num?)?.round() ?? 0));
+              final outstanding = (totalCollected - totalAcknowledged).clamp(0, totalCollected);
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Card(child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('CASH RECONCILIATION', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .8)),
+                      const SizedBox(height: 10),
+                      _summaryRow('Total collected by caretakers', totalCollected, Colors.blueGrey),
+                      _summaryRow('Cash handovers acknowledged', totalAcknowledged, Colors.green),
+                      _summaryRow('Awaiting physical handover', awaitingHandover, Colors.orange),
+                      _summaryRow('Awaiting your acknowledgement', awaitingAcknowledgement, Colors.orange),
+                      const Divider(),
+                      _summaryRow('Outstanding cash to reconcile', outstanding, outstanding > 0 ? Colors.red : Colors.green),
+                    ]),
+                  )),
+                  const SizedBox(height: 12),
+                  const Text('HANDOVER HISTORY', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .8)),
+                  if (docs.isEmpty) const Padding(
+                    padding: EdgeInsets.all(18), child: Text('No caretaker cash handovers have been submitted.')),
+                  ...docs.map((doc) {
+                    final d = doc.data();
+                    final acknowledged = d['status'] == 'acknowledged';
+                    final stamp = d['submittedAt'];
+                    final date = stamp is Timestamp ? stamp.toDate().toLocal().toString().split('.').first : 'Date pending';
+                    return Card(child: ListTile(
+                      leading: Icon(acknowledged ? Icons.verified : Icons.pending_actions,
+                        color: acknowledged ? Colors.green : Colors.orange),
+                      title: Text('KSh ${d['amountKes'] ?? 0} • House ${d['houseNo'] ?? ''}'),
+                      subtitle: Text('${d['tenantName'] ?? 'Tenant'} • Caretaker ${d['caretakerId'] ?? ''}\\n$date • ${acknowledged ? 'ACKNOWLEDGED' : 'AWAITING RECEIPT'}'),
+                      isThreeLine: true,
+                      trailing: acknowledged ? const Icon(Icons.check_circle, color: Colors.green)
+                        : IconButton(tooltip: 'Acknowledge receipt', icon: const Icon(Icons.check_circle_outline),
+                            onPressed: () => _acknowledge(context, doc)),
+                    ));
+                  }),
+                ],
+              );
+            },
+          );
         },
       ),
     );
   }
+
+  Widget _summaryRow(String label, int amount, Color color) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(children: [
+      Expanded(child: Text(label)),
+      Text('KSh $amount', style: TextStyle(color: color, fontWeight: FontWeight.w800)),
+    ]),
+  );
 }
