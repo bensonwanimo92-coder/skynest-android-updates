@@ -87,7 +87,8 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
       if (!mounted) return;
       setState(() {
         _status = result['status']?.toString() ?? 'pending_verification';
-        _maskedAccount = (_type == 'till' ? _till.text : _shortcode.text).trim();
+        final accountNumber = (_type == 'till' ? _till.text : _shortcode.text).trim();
+        _maskedAccount = accountNumber.length <= 4 ? '••••' : '••••' + accountNumber.substring(accountNumber.length - 4);
         _consumerKey.clear();
         _consumerSecret.clear();
         _passkey.clear();
