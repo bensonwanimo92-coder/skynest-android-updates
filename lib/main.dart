@@ -7279,10 +7279,20 @@ class CaretakerPaymentsScreen extends StatelessWidget {
   const CaretakerPaymentsScreen({super.key});
   Future<void> confirm(BuildContext context, String id) async {
     try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) throw StateError('Sign in again to continue.');
+      final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (profile.data()?['caretakerPermission'] != 'can_collect') {
+        if (context.mounted) snack(context, 'This caretaker account has View Only permission. Ask the landlord to update your access.');
+        return;
+      }
       final confirmationRef = FirebaseFirestore.instance.collection('paymentConfirmations').doc(id);
       final confirmation = await confirmationRef.get();
+      if (!confirmation.exists || confirmation.data()?['caretakerId'] != uid || confirmation.data()?['status'] != 'pending') {
+        throw StateError('This payment confirmation is no longer assigned to your account.');
+      }
       await confirmationRef.update({
-        'status': 'confirmed_by_caretaker', 'confirmedBy': FirebaseAuth.instance.currentUser?.uid,
+        'status': 'confirmed_by_caretaker', 'confirmedBy': uid,
         'confirmedAt': FieldValue.serverTimestamp(),
       });
       final landlordId = confirmation.data()?['landlordId']?.toString();
