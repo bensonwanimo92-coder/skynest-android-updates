@@ -83,6 +83,7 @@ Last pre-integration APK candidate: version 1.1.3+5447, run 43862420394, artifac
 - [ ] Permission levels: Can Collect and View Only.
 - [x] Caretaker house-request reads are restricted to their assigned house IDs; only landlords can approve/decline requests or change a tenant's house assignment. The caretaker screen now shows assigned-house requests without approval controls. Firestore emulator tests passed on run 43877400028; production index deployment and full end-to-end role-flow verification remain pending.
 - [ ] Authorized tenant addition within assigned properties.
+- [x] Corrected caretaker cash-collection and handover history streams to include the selected assigned `houseId`, matching the Firestore rule query constraints; history is now shown per selected house rather than issuing an over-broad multi-house query. Automated release-candidate and rules tests are running for commit `d9603bad267740286700e3c01492fc2881e449d8`.
 - [ ] Record permitted collections with tenant, house, amount, date, method and collector.
 - [ ] Caretaker cannot change landlord financial totals, verify own collections or access unassigned properties.
 - [ ] Landlord can revoke access.
