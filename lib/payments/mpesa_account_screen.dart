@@ -119,7 +119,27 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
               validator: (v) {
                 final value = v?.trim() ?? '';
                 if (value.isEmpty) return 'Enter the ${_type == 'paybill' ? 'PayBill' : 'Till'} number.';
-                if (!RegExp(r'^\\d{5,20}$').hasMatch(value)) return 'Enter a valid account number.';
+                if (!RegExp(r'^\d{5,20}.hasMatch(value)) return 'Enter a valid account number.';
+                return null;
+              },
+              decoration: InputDecoration(
+                labelText: _type == 'paybill' ? 'PayBill number' : 'Buy Goods Till number',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save_outlined),
+              label: Text(_saving ? 'Saving…' : 'SAVE PAYMENT DETAILS'),
+            ),
+          ])),
+          const SizedBox(height: 14),
+          const Text('Note: Saving these details publishes the recipient instructions inside the linked tenant and caretaker payment screens. Automatic STK Push remains subject to SkyNest’s authorised Daraja merchant integration.'),
+        ]),
+  );
+}
+).hasMatch(value)) return 'Enter a valid account number.';
                 return null;
               },
               decoration: InputDecoration(
