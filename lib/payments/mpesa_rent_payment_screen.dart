@@ -114,6 +114,7 @@ class _MpesaRentPaymentScreenState extends State<MpesaRentPaymentScreen> {
       batch.set(submission, {
         'tenantId': uid,
         'tenantName': (profile['displayName'] ?? 'Payer').toString(),
+        'payerRole': profile['role']?.toString() ?? 'tenant',
         'landlordId': landlordId,
         'houseId': _houseId,
         'houseNo': _houseNo,
