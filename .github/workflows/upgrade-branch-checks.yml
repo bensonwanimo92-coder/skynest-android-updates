@@ -38,3 +38,5 @@ jobs:
 
       - name: Run Flutter tests
         run: flutter test --no-pub
+      - name: Validate Firebase Cloud Functions syntax
+        run: node --check functions/index.js
