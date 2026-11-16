@@ -10,7 +10,7 @@ const _green = Color(0xFF43B581);
 const _purple = Color(0xFF8050C7);
 const _orange = Color(0xFFF19A37);
 
-class _DashboardOverviewCard extends StatelessWidget {
+class DashboardOverviewCard extends StatelessWidget {
   const _DashboardOverviewCard({required this.userRole});
   final String userRole;
 
@@ -99,7 +99,7 @@ class _OverviewMetric extends StatelessWidget {
   );
 }
 
-class _DashboardRecentActivity extends StatelessWidget {
+class DashboardRecentActivity extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -187,7 +187,7 @@ class _ActivityEmpty extends StatelessWidget {
   );
 }
 
-class _DashboardQuickActions extends StatelessWidget {
+class DashboardQuickActions extends StatelessWidget {
   const _DashboardQuickActions({required this.onAddHouse, required this.onCollectPayment, required this.onPostNotice});
   final VoidCallback onAddHouse;
   final VoidCallback onCollectPayment;
