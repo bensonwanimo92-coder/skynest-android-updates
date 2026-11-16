@@ -1519,7 +1519,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             : 'Your home updates and helpful tools, all in one place.';
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF3F4F8),
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF3F4F8),
+        foregroundColor: const Color(0xFF252733),
+        elevation: 0,
+        scrolledUnderElevation: 0,
         title: AnimatedSwitcher(
           duration: const Duration(milliseconds: 320),
           transitionBuilder: (child, animation) => FadeTransition(
