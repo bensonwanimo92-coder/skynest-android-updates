@@ -2999,6 +2999,8 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
     );
     if (confirmed != true || !mounted) return;
     try {
+      final ownerId = FirebaseAuth.instance.currentUser?.uid;
+      if (ownerId == null) throw StateError('Sign in again before verifying payments.');
       final collection = FirebaseFirestore.instance.collection('paymentSubmissions');
       final snapshots = await Future.wait(ids.map((id) => collection.doc(id).get()));
       final batch = FirebaseFirestore.instance.batch();
@@ -3006,16 +3008,37 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
       for (final snapshot in snapshots) {
         final data = snapshot.data();
         if (!snapshot.exists || data == null || data['status'] != 'pending') continue;
+        if (data['landlordId'] != ownerId) {
+          throw StateError('A selected submission does not belong to this landlord.');
+        }
+        var houseId = data['houseId']?.toString() ?? '';
+        if (houseId.isEmpty) {
+          final matches = await FirebaseFirestore.instance.collection('houses')
+              .where('createdBy', isEqualTo: ownerId)
+              .where('houseNo', isEqualTo: (data['houseNo'] ?? '').toString())
+              .limit(2).get();
+          if (matches.docs.length != 1) {
+            throw StateError('Every selected payment must match exactly one landlord-owned house.');
+          }
+          houseId = matches.docs.single.id;
+        }
+        final house = await FirebaseFirestore.instance.collection('houses').doc(houseId).get();
+        if (!house.exists || house.data()?['createdBy'] != ownerId ||
+            house.data()?['landlordId'] != ownerId ||
+            house.data()?['houseNo'] != data['houseNo']) {
+          throw StateError('A selected payment has an invalid house assignment. No payments were recorded.');
+        }
         final paymentRef = FirebaseFirestore.instance.collection('payments').doc();
         batch.set(paymentRef, {
           'tenantName': data['tenantName'] ?? 'Tenant',
           'houseNo': data['houseNo'] ?? '',
+          'houseId': houseId,
           'amount': data['amount'] ?? 0,
           'method': data['method'] ?? 'Manual',
           'status': 'Received (landlord verified)',
           'createdAt': FieldValue.serverTimestamp(),
-          'createdBy': FirebaseAuth.instance.currentUser?.uid,
-          'landlordId': FirebaseAuth.instance.currentUser?.uid,
+          'createdBy': ownerId,
+          'landlordId': ownerId,
           'tenantId': data['tenantId'],
         });
         batch.update(snapshot.reference, {
@@ -3027,8 +3050,7 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
       }
       if (count == 0) throw StateError('No selected submissions are still pending.');
       await batch.commit();
-      final ownerId = FirebaseAuth.instance.currentUser?.uid;
-      if (ownerId != null) await recordActivity(ownerId, 'Bulk verified $count tenant rent payment submission(s)');
+      await recordActivity(ownerId, 'Bulk verified $count tenant rent payment submission(s)');
       if (mounted) {
         setState(() => selectedSubmissionIds.clear());
         snack(context, '$count payment submission(s) verified and added to the ledger.');
