@@ -151,14 +151,16 @@ class _CaretakerCashCollectionScreenState extends State<CaretakerCashCollectionS
         : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance.collection('cashCollections')
                 .where('caretakerId', isEqualTo: uid)
-                .where('landlordId', isEqualTo: landlordId).snapshots(),
+                .where('landlordId', isEqualTo: landlordId)
+                .where('houseId', isEqualTo: selectedHouseId).snapshots(),
             builder: (context, collections) {
               if (collections.hasError) return Center(child: Text('Cash records could not load: ${collections.error}'));
               if (!collections.hasData) return const Center(child: CircularProgressIndicator());
               return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: FirebaseFirestore.instance.collection('cashHandovers')
                     .where('caretakerId', isEqualTo: uid)
-                    .where('landlordId', isEqualTo: landlordId).snapshots(),
+                    .where('landlordId', isEqualTo: landlordId)
+                    .where('houseId', isEqualTo: selectedHouseId).snapshots(),
                 builder: (context, handovers) {
                   if (handovers.hasError) return Center(child: Text('Handover records could not load: ${handovers.error}'));
                   if (!handovers.hasData) return const Center(child: CircularProgressIndicator());
@@ -209,7 +211,7 @@ class _CaretakerCashCollectionScreenState extends State<CaretakerCashCollectionS
                         ]),
                       )),
                       const SizedBox(height: 14),
-                      const Text('COLLECTION HISTORY', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .7)),
+                      Text('COLLECTION HISTORY • HOUSE ${houses.firstWhere((house) => house.id == selectedHouseId).data()['houseNo'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, letterSpacing: .7)),
                       if (docs.isEmpty) const Padding(
                         padding: EdgeInsets.all(18), child: Text('No cash collections recorded yet.')),
                       ...docs.map((doc) {
