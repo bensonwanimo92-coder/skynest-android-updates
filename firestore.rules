@@ -194,6 +194,13 @@ service cloud.firestore {
       return houseHasCaretaker(houseId, landlordId, request.auth.uid);
     }
 
+    function caretakerTenantRecordMatchesHouse(houseId, landlordId) {
+      let housePath = /databases/$(database)/documents/houses/$(houseId);
+      return caretakerAssignedToHouse(houseId, landlordId) &&
+        request.resource.data.houseNo == get(housePath).data.houseNo &&
+        request.resource.data.rentAmount == get(housePath).data.rent;
+    }
+
     match /tenants/{recordId} {
       allow create: if activeUser() && (
         (myRole() == 'landlord' && request.resource.data.createdBy == request.auth.uid &&
@@ -202,7 +209,7 @@ service cloud.firestore {
           request.resource.data.createdBy == request.auth.uid &&
           request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
           request.resource.data.houseId is string &&
-          caretakerAssignedToHouse(request.resource.data.houseId, profile(request.auth.uid).landlordId))
+          caretakerTenantRecordMatchesHouse(request.resource.data.houseId, profile(request.auth.uid).landlordId))
       );
       allow read: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
