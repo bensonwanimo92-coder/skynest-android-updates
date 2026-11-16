@@ -628,7 +628,8 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         final client = HttpClient();
         try {
-          final token = await newUser!.getIdToken();
+          final token = await newUser.getIdToken();
+          if (token == null || token.isEmpty) throw StateError('Could not refresh your secure sign-in token.');
           final request = await client.postUrl(Uri.parse(
             'https://us-central1-hello-chuka.cloudfunctions.net/requestTenantAccess'));
           request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + token);
