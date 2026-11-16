@@ -1,0 +1,46 @@
+name: Validate M-Pesa recipient and caretaker payment changes
+
+on:
+  pull_request:
+    branches:
+      - integration/skynest-next-complete
+    paths:
+      - 'lib/payments/**'
+      - 'lib/main.dart'
+      - 'cloudflare-worker/**'
+      - 'firestore.rules'
+      - '.github/workflows/validate-mpesa-recipient.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  worker-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate Cloudflare Worker
+        working-directory: cloudflare-worker
+        run: |
+          npm run check
+          npm test
+
+  flutter-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Resolve Flutter dependencies
+        run: flutter pub get
+      - name: Analyze Android app source
+        run: flutter analyze --no-pub
