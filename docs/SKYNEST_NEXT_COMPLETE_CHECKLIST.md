@@ -2,13 +2,15 @@
 
 ## Live progress — 16 November 2026
 
+- [x] Caretaker/non-landlord tenant approval path blocked in the app UI; approval writes now require the active linked landlord in Firestore rules. Source commits: `74d88846049bdbe66c4f9745ff09b9356a24e66a` (app) and `530318c0ea4fd4ec041c47797a51efcee004cf3e` (rules). Not yet emulator-tested or end-to-end verified.
+
 - [x] Dedicated integration branch established: `integration/skynest-next-complete`.
 - [x] Master checklist committed to this branch.
 - [x] Dashboard horizontal PageView/3D carousel replaced in the working branch with a vertically stacked ListView of photo-background tiles, grey-toned dark overlay, restrained borders and the existing preview interaction.
 - [ ] Dashboard change awaiting CI/build validation and visual review; it is not yet marked tested or verified.
 - [ ] Draft PR #20 opened against `integration/skynest-complete-release-candidate`: https://github.com/bensonwanimo92-coder/skynest-android-updates/pull/20
-- [ ] Role/onboarding integration remains outstanding. Current registration still requires invitation codes for both tenants and caretakers; target behaviour is tenant registration without a mandatory invitation code while caretaker invitation remains mandatory. A secure tenant-to-landlord discovery/approval path must be designed before changing Firestore rules.
-- [ ] Caretaker permission review remains outstanding. Existing UI exposes tenant approvals to caretakers; authorization must be checked against the intended role policy in both app code and Firestore rules.
+- [ ] Tenant onboarding integration remains outstanding. Current registration still requires invitation codes for both tenants and caretakers. Caretaker invitation must remain mandatory. Tenant signup can only safely remove the invitation requirement once a privacy-preserving landlord/property discovery and approval route is implemented; an unlinked pending tenant must not be able to nominate arbitrary landlord/property IDs or read another account's data.
+- [x] Approval-authority hardening implemented in the working branch: the approvals screen now blocks non-landlords, the approval action checks for an active landlord, and Firestore tenant-approval writes require the linked landlord UID. Automated/emulator tests and full role-flow verification are still pending.
 - [ ] Existing tenant M-Pesa STK path and manual payment-submission path are present, but full tenant/caretaker/landlord reconciliation, cash handover, persistent invoice history and real callback verification remain unproven.
 - [ ] Do not create a release APK from this checkpoint; it is an incremental dashboard foundation, not the complete approved release.
 
