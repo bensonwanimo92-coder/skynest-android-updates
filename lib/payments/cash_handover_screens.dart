@@ -10,9 +10,9 @@ class CaretakerCashCollectionScreen extends StatefulWidget {
 }
 
 class _CaretakerCashCollectionScreenState extends State<CaretakerCashCollectionScreen> {
-  final tenantName = TextEditingController();
   final amount = TextEditingController();
   List<QueryDocumentSnapshot<Map<String, dynamic>>> houses = [];
+  Map<String, String> tenantNames = {};
   String? landlordId;
   String? selectedHouseId;
   bool loading = true;
@@ -27,7 +27,6 @@ class _CaretakerCashCollectionScreenState extends State<CaretakerCashCollectionS
 
   @override
   void dispose() {
-    tenantName.dispose();
     amount.dispose();
     super.dispose();
   }
@@ -57,10 +56,21 @@ class _CaretakerCashCollectionScreenState extends State<CaretakerCashCollectionS
       final result = await FirebaseFirestore.instance.collection('houses')
           .where('landlordId', isEqualTo: owner)
           .where('caretakerIds', arrayContains: uid).get();
+      final tenantIds = result.docs
+          .map((house) => house.data()['assignedTenantId']?.toString() ?? '')
+          .where((id) => id.isNotEmpty).toSet();
+      final tenantProfiles = await Future.wait(tenantIds.map((id) =>
+          FirebaseFirestore.instance.collection('users').doc(id).get()));
+      final names = <String, String>{};
+      for (final tenant in tenantProfiles) {
+        final tenantData = tenant.data() ?? {};
+        names[tenant.id] = (tenantData['displayName'] ?? tenantData['name'] ?? 'Tenant').toString();
+      }
       if (!mounted) return;
       setState(() {
         landlordId = owner;
         houses = result.docs;
+        tenantNames = names;
         selectedHouseId = result.docs.isNotEmpty ? result.docs.first.id : null;
         loading = false;
       });
@@ -93,7 +103,7 @@ class _CaretakerCashCollectionScreenState extends State<CaretakerCashCollectionS
         'landlordId': owner,
         'caretakerId': uid,
         'tenantId': tenantId,
-        'tenantName': tenantName.text.trim().isEmpty ? 'Tenant' : tenantName.text.trim(),
+        'tenantName': tenantNames[tenantId] ?? 'Tenant',
         'houseId': house.id,
         'houseNo': houseNo,
         'amountKes': value.round(),
@@ -102,7 +112,6 @@ class _CaretakerCashCollectionScreenState extends State<CaretakerCashCollectionS
         'collectedAt': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
       });
-      tenantName.clear();
       amount.clear();
       _message('Cash collection recorded. Submit a handover when you give the cash to the landlord.');
     } catch (error) {
@@ -193,9 +202,6 @@ class _CaretakerCashCollectionScreenState extends State<CaretakerCashCollectionS
                             )).toList(),
                             onChanged: saving ? null : (value) => setState(() => selectedHouseId = value),
                           ),
-                          const SizedBox(height: 10),
-                          TextField(controller: tenantName, textCapitalization: TextCapitalization.words,
-                            decoration: const InputDecoration(labelText: 'Tenant name (optional)')),
                           const SizedBox(height: 10),
                           TextField(controller: amount, keyboardType: const TextInputType.numberWithOptions(decimal: false),
                             decoration: const InputDecoration(labelText: 'Cash received (KSh)')),
