@@ -40,7 +40,9 @@ class _MpesaRentPaymentScreenState extends State<MpesaRentPaymentScreen> {
         throw StateError('This payment page is available to tenants and caretakers.');
       }
       String? houseId = profile['rentHouseId']?.toString();
-      if (houseId == null || houseId.isEmpty) houseId = profile['houseId']?.toString();
+      if (role == 'tenant' && (houseId == null || houseId.isEmpty)) {
+        houseId = profile['houseId']?.toString();
+      }
       if ((houseId == null || houseId.isEmpty) && role == 'caretaker') {
         final rentedHomes = await FirebaseFirestore.instance.collection('houses')
           .where('landlordId', isEqualTo: profile['landlordId'])
