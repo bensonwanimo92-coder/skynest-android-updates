@@ -2505,11 +2505,23 @@ class _TenantsScreenState extends State<TenantsScreen> {
         FilledButton(onPressed: () async {
           if (!key.currentState!.validate()) return;
           try {
+            final uid = FirebaseAuth.instance.currentUser?.uid;
+            if (uid == null) throw StateError('Sign in before adding a tenant.');
+            final matchingHouses = await FirebaseFirestore.instance.collection('houses')
+                .where('createdBy', isEqualTo: uid)
+                .where('houseNo', isEqualTo: house.text.trim())
+                .limit(2).get();
+            if (matchingHouses.docs.length != 1) {
+              throw StateError(matchingHouses.docs.isEmpty
+                  ? 'That house number is not in your property records. Add the house first.'
+                  : 'More than one house has that number. Resolve the duplicate house numbers first.');
+            }
+            final houseDoc = matchingHouses.docs.single;
             await FirebaseFirestore.instance.collection('tenants').add({
               'name': name.text.trim(), 'phone': phone.text.trim(), 'houseNo': house.text.trim(),
-              'rentAmount': double.parse(rent.text), 'createdAt': FieldValue.serverTimestamp(),
-              'createdBy': FirebaseAuth.instance.currentUser?.uid, 'landlordId': FirebaseAuth.instance.currentUser?.uid,
-              'status': 'active',
+              'houseId': houseDoc.id, 'rentAmount': double.parse(rent.text),
+              'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+              'landlordId': uid, 'status': 'active',
             });
             if (d.mounted) Navigator.pop(d);
           } catch (e) { snack(context, 'Could not save tenant: ' + e.toString()); }
