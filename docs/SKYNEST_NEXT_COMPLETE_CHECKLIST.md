@@ -41,6 +41,8 @@ Last pre-integration APK candidate: version 1.1.3+5447, run 43862420394, artifac
 ## Delivery rules
 - This branch is the sole working integration target for the next complete Android release.
 - Do not publish or compile a user-facing APK until the approved scope is integrated and release checks pass.
+- Do not add or run Android emulators/simulators or virtual-device tests unless the user explicitly authorizes them first; use approved real-device verification instead.
+- Release-build workflow is manual-only; do not publish a release from `main` before the integrated release candidate is approved.
 - Do not mark an item complete because a screen or model exists; require integration and relevant tests.
 - Preserve existing Firebase data, authentication, package ID, signing identity and working user flows.
 - Do not blindly merge divergent feature branches; port and reconcile changes selectively.
