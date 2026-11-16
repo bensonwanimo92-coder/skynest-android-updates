@@ -210,8 +210,24 @@ test("only landlord can change a tenant's house assignment", async () => {
   await assertFails(updateDoc(doc(caretaker, "users", "tenant-1"), {
     houseId: "house-other", houseNo: "B1"
   }));
+
+  // A caretaker may update occupancy metadata for an assigned house, but
+  // must never be able to set, replace or clear its assigned tenant UID.
+  await assertSucceeds(updateDoc(doc(caretaker, "houses", "house-assigned"), {
+    isOccupied: true, status: "occupied"
+  }));
+  await assertFails(updateDoc(doc(caretaker, "houses", "house-assigned"), {
+    assignedTenantId: "another-tenant"
+  }));
+  await assertFails(updateDoc(doc(caretaker, "houses", "house-assigned"), {
+    isOccupied: true, status: "occupied", assignedTenantId: "another-tenant"
+  }));
+
   const landlord = env.authenticatedContext("landlord-1").firestore();
   await assertSucceeds(updateDoc(doc(landlord, "users", "tenant-1"), {
     houseId: "house-other", houseNo: "B1"
+  }));
+  await assertSucceeds(updateDoc(doc(landlord, "houses", "house-assigned"), {
+    assignedTenantId: "another-tenant"
   }));
 });
