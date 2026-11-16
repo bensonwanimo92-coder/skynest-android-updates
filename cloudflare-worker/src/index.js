@@ -381,6 +381,13 @@ async function requestStkPush(request, env) {
     throw new HttpError("Only an active tenant linked to a landlord can pay rent.", 403);
   }
 
+  const landlordResult = await firestore(env, "users/" + encodeURIComponent(String(profile.landlordId)));
+  if (landlordResult.status === 404) throw new HttpError("The linked landlord account was not found.", 403);
+  const landlordProfile = decodeFields(landlordResult.data.fields);
+  if (String(landlordProfile.role || "").toLowerCase() !== "landlord" ||
+      String(landlordProfile.status || "").toLowerCase() !== "active") {
+    throw new HttpError("The linked landlord account is not active. Contact SkyNest support.", 403);
+  }
   const accountResult = await firestore(env, "landlordPaymentAccounts/" + encodeURIComponent(String(profile.landlordId)));
   if (accountResult.status === 404) throw new HttpError("Your landlord has not configured an M-Pesa receiving account yet.", 409);
   const accountMeta = decodeFields(accountResult.data.fields);
