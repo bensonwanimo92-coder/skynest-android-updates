@@ -1082,9 +1082,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String searchQuery = '';
   List<String> _dashboardOrder = [];
   Set<String> _hiddenDashboardTiles = {};
-  final PageController _dashboardPageController = PageController(viewportFraction: 0.78);
-  int _activeDashboardIndex = 0;
-
+  
   @override
   void initState() {
     super.initState();
@@ -1656,7 +1654,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         separatorBuilder: (_, __) => const SizedBox(height: 14),
                         itemBuilder: (context, index) {
                           final item = filteredItems[index];
-                          final scheme = Theme.of(context).colorScheme;
                           return SizedBox(
                             height: 184,
                             child: DecoratedBox(
@@ -7203,12 +7200,12 @@ class TenantApprovalsScreen extends StatelessWidget {
           });
         }
       }
-      final profile = uid == null ? null : await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      final landlordId = profile?.data()?['role'] == 'landlord' ? uid : profile?.data()?['landlordId'];
+      final profile = manager;
+      final landlordId = profile.data()?['role'] == 'landlord' ? uid : profile.data()?['landlordId'];
       if (landlordId != null) {
         await FirebaseFirestore.instance.collection('activityLogs').add({
-          'landlordId': landlordId, 'actorId': uid, 'actorName': profile?.data()?['displayName'] ?? 'Manager',
-          'actorRole': profile?.data()?['role'] ?? 'unknown',
+          'landlordId': landlordId, 'actorId': uid, 'actorName': profile.data()?['displayName'] ?? 'Manager',
+          'actorRole': profile.data()?['role'] ?? 'unknown',
           'action': 'Account ' + status + ': ' + (data['displayName'] ?? data['email'] ?? id).toString(),
           'isSuspicious': status == 'rejected',
           'createdAt': FieldValue.serverTimestamp(),
