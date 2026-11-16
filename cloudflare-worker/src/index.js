@@ -277,8 +277,10 @@ async function getPaymentRecipient(request, env) {
   const result = await firestore(env, "landlordPaymentAccounts/" + encodeURIComponent(String(profile.landlordId)));
   if (result.status === 404) throw new HttpError("Your landlord has not added M-Pesa payment details yet.", 409);
   const recipient = decodeFields(result.data.fields);
-  if (!recipient.accountNumber || !recipient.registeredBusinessName) {
-    throw new HttpError("Your landlord's M-Pesa recipient details are incomplete.", 409);
+  if (!["paybill", "till"].includes(String(recipient.accountType || "").toLowerCase()) ||
+      !/^\\d{5,20}$/.test(String(recipient.accountNumber || "")) ||
+      !recipient.registeredBusinessName) {
+    throw new HttpError("Your landlord's M-Pesa recipient details are incomplete. Ask them to save a valid PayBill or Till number and business name.", 409);
   }
   return json({
     configured: true,
