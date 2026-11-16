@@ -1,7 +1,7 @@
 import { validateSuccessfulCallback } from "./payment_validation.js";
 
 // SkyNest M-Pesa Cloudflare Worker.
-// Sandbox-first single-merchant Daraja STK Push. Do not enable production until Safaricom onboarding and end-to-end tests pass.
+// Sandbox-first per-landlord Daraja STK Push. Do not enable production until Safaricom onboarding and end-to-end tests pass.
 
 const darajaTokens = new Map();
 let googleToken = null;
