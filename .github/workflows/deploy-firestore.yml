@@ -1,28 +1,26 @@
-name: Deploy SkyNest Firestore and Storage rules (Spark-compatible)
+name: Deploy SkyNest Firestore and Storage rules
 
 on:
-  push:
-    branches:
-      - integration/roles-on-current-main
-    paths:
-      - 'firestore.rules'
-      - 'firestore.indexes.json'
-      - 'storage.rules'
-      - 'firebase.json'
-      - '.github/workflows/deploy-firestore.yml'
   workflow_dispatch:
+    inputs:
+      confirm_deploy:
+        description: "Confirm deployment of Firestore rules from the selected branch"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   deploy-firestore:
+    if: inputs.confirm_deploy == true
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout validated integration branch
+      - name: Check out the explicitly selected branch
         uses: actions/checkout@v4
         with:
-          ref: integration/roles-on-current-main
+          ref: ${{ github.ref }}
 
       - name: Validate deployment configuration
         env:
@@ -57,11 +55,9 @@ jobs:
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
 
-      - name: Deploy Firestore and Storage rules
+      - name: Deploy Firestore rules and indexes
         env:
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
         run: |
           set -euo pipefail
           firebase deploy --only firestore:rules,firestore:indexes --project "$FIREBASE_PROJECT_ID" --non-interactive
-          echo "Firestore rules and indexes deployed. Cloud Storage deployment is intentionally deferred while the project remains on Spark."
-
