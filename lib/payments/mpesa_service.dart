@@ -47,8 +47,8 @@ class SkyNestMpesaService {
     'accountNumber': accountNumber,
   });
 
-  static Future<Map<String, dynamic>> getPaymentRecipient() =>
-      _call('/api/mpesa/recipient');
+  static Future<Map<String, dynamic>> getPaymentRecipient({required String houseId}) =>
+      _call('/api/mpesa/recipient?houseId=${Uri.encodeQueryComponent(houseId)}');
 
 
   static Future<Map<String, dynamic>> verifyLandlordAccount(String phone) =>
