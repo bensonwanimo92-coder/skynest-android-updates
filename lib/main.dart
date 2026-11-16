@@ -659,9 +659,26 @@ class _LoginScreenState extends State<LoginScreen> {
     } on FirebaseAuthException catch (e) {
       message(authMessage(e));
     } catch (e) {
-      // Do not leave an unusable Firebase Auth account behind if invitation validation fails.
-      try { await newUser?.delete(); } catch (_) {}
-      message(e is StateError ? e.message.toString() : 'Account creation could not be completed. Check your connection and try again.');
+      // If the tenant callable completed but its response was interrupted, preserve
+      // the linked account and take the user to the pending-approval screen.
+      var tenantRequestSaved = false;
+      if (selectedRole == 'tenant' && newUser != null) {
+        try {
+          final saved = await FirebaseFirestore.instance.collection('users').doc(newUser.uid).get();
+          final data = saved.data() ?? <String, dynamic>{};
+          tenantRequestSaved = saved.exists && data['role'] == 'tenant' &&
+            data['status'] == 'pending' && data['registrationMethod'] == 'landlord_email';
+        } catch (_) {}
+      }
+      if (tenantRequestSaved) {
+        if (mounted) {
+          Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const PendingApprovalScreen()));
+          message('Tenant request received. Your landlord must approve your access.');
+        }
+      } else {
+        try { await newUser?.delete(); } catch (_) {}
+        message(e is StateError ? e.message.toString() : 'Account creation could not be completed. Check your connection and try again.');
+      }
     } finally { if (mounted) setState(() => busy = false); }
   }
 
