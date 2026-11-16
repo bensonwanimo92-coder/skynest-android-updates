@@ -56,6 +56,8 @@ function decodeFields(fields = {}) {
     else if ("doubleValue" in value) result[key] = value.doubleValue;
     else if ("booleanValue" in value) result[key] = value.booleanValue;
     else if ("timestampValue" in value) result[key] = value.timestampValue;
+    else if ("arrayValue" in value) result[key] = (value.arrayValue.values || []).map(item =>
+      item.stringValue ?? item.integerValue ?? item.doubleValue ?? item.booleanValue ?? null);
     else if ("nullValue" in value) result[key] = null;
   }
   return result;
