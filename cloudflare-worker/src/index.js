@@ -283,6 +283,76 @@ function assertConfiguration(env) {
   if (String(env.STK_CALLBACK_TOKEN).length < 32) throw new HttpError("STK_CALLBACK_TOKEN must be at least 32 characters.", 500);
   if (!String(env.STK_CALLBACK_URL).startsWith("https://")) throw new HttpError("STK_CALLBACK_URL must use HTTPS.", 500);
 }
+async function verifyLandlordPaymentAccount(request, env) {
+  assertConfiguration(env);
+  const uid = await verifyFirebaseUser(request, env);
+  const profileResult = await firestore(env, "users/" + encodeURIComponent(uid));
+  if (profileResult.status === 404) throw new HttpError("Landlord profile not found.", 403);
+  const profile = decodeFields(profileResult.data.fields);
+  if (String(profile.role || "").toLowerCase() !== "landlord" ||
+      String(profile.status || "").toLowerCase() !== "active") {
+    throw new HttpError("Only an active landlord can verify a receiving account.", 403);
+  }
+  const accountResult = await firestore(env, "landlordPaymentAccounts/" + encodeURIComponent(uid));
+  if (accountResult.status === 404) throw new HttpError("Save your PayBill or Till details first.", 409);
+  const accountMeta = decodeFields(accountResult.data.fields);
+  const merchant = await decryptLandlordConfig(env, accountMeta.encryptedConfig);
+  const input = await request.json().catch(() => ({}));
+  const phone = normalizePhone(input.phone);
+  const amount = 1;
+  const timestamp = darajaTimestamp();
+  const callbackUrl = String(env.STK_CALLBACK_URL);
+  const expectedCallback = new URL(callbackUrl);
+  if (!expectedCallback.pathname.endsWith("/hooks/stk/result/" + env.STK_CALLBACK_TOKEN)) {
+    throw new HttpError("STK_CALLBACK_URL path must end with /hooks/stk/result/<STK_CALLBACK_TOKEN>.", 500);
+  }
+  const host = env.DARAJA_ENV === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
+  const accessToken = await darajaAccessToken(env, merchant);
+  const accountReference = "SNVERIFY" + crypto.randomUUID().replace(/-/g, "").slice(0, 5).toUpperCase();
+  const payload = {
+    BusinessShortCode: merchant.businessShortCode,
+    Password: btoa(merchant.businessShortCode + merchant.passkey + timestamp),
+    Timestamp: timestamp,
+    TransactionType: merchant.accountType === "till" ? "CustomerBuyGoodsOnline" : "CustomerPayBillOnline",
+    Amount: amount,
+    PartyA: phone,
+    PartyB: merchant.accountType === "till" ? merchant.tillNumber : merchant.businessShortCode,
+    PhoneNumber: phone,
+    CallBackURL: callbackUrl,
+    AccountReference: accountReference,
+    TransactionDesc: "SkyNest verify",
+  };
+  const response = await fetch(host + "/mpesa/stkpush/v1/processrequest", {
+    method: "POST",
+    headers: { authorization: "Bearer " + accessToken, "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ResponseCode !== "0" || !data.CheckoutRequestID) {
+    throw new HttpError(data.errorMessage || data.ResponseDescription || "Safaricom did not accept the verification prompt.", 502);
+  }
+  const checkoutId = String(data.CheckoutRequestID);
+  const pending = {
+    checkoutRequestId: checkoutId,
+    merchantRequestId: String(data.MerchantRequestID || ""),
+    tenantId: uid,
+    tenantName: String(profile.displayName || "Landlord"),
+    landlordId: uid,
+    createdBy: uid,
+    amountKes: amount,
+    phone,
+    accountReference,
+    purpose: "account_verification",
+    status: "pending",
+    method: "MPESA",
+    createdAt: { __firestoreTimestamp: new Date() },
+  };
+  const created = await createDocument(env, "mpesaPaymentRequests", checkoutId, pending);
+  if (created.status === 409) throw new HttpError("Verification checkout already exists. Please retry.", 409);
+  return json({ accepted: true, purpose: "account_verification", checkoutRequestId: checkoutId,
+    message: data.CustomerMessage || "Approve the KES 1 verification payment on your phone. It will not be recorded as rent." });
+}
+
 async function requestStkPush(request, env) {
   assertConfiguration(env);
   const uid = await verifyFirebaseUser(request, env);
@@ -403,30 +473,41 @@ async function settleCallback(env, body, knownPending = null) {
   for (const item of callback.CallbackMetadata?.Item || []) metadata[item.Name] = item.Value;
   if (successful) {
     const { receipt, paidAmount, paidPhone } = validateSuccessfulCallback(pending, metadata);
-    const payment = {
-      tenantId: pending.tenantId,
-      tenantName: pending.tenantName || "Tenant",
-      landlordId: pending.landlordId,
-      createdBy: pending.landlordId,
-      houseId: pending.houseId || "",
-      houseNo: pending.houseNo || "",
-      amount: paidAmount,
-      method: "MPESA",
-      transactionCode: receipt,
-      mpesaReceipt: receipt,
-      status: "Paid",
-      confirmedBy: "safaricom_callback",
-      checkoutRequestId: checkoutId,
-      phone: paidPhone,
-      createdAt: { __firestoreTimestamp: new Date() },
-      confirmedAt: { __firestoreTimestamp: new Date() },
-    };
-    const paymentCreated = await createDocument(env, "payments", receipt, payment);
-    if (paymentCreated.status === 409) {
-      const existing = await firestore(env, "payments/" + encodeURIComponent(receipt));
-      const existingFields = decodeFields(existing.data.fields);
-      if (existingFields.checkoutRequestId !== checkoutId) {
-        throw new HttpError("M-Pesa receipt is already linked to another payment. Manual review required.", 409);
+    if (pending.purpose === "account_verification") {
+      if (pending.landlordId !== pending.tenantId) throw new HttpError("Invalid landlord verification request.", 403);
+      await patchDocument(env, "landlordPaymentAccounts/" + encodeURIComponent(pending.landlordId), {
+        status: "verified",
+        verifiedAt: { __firestoreTimestamp: new Date() },
+        verificationReceipt: receipt,
+        verificationPhone: paidPhone,
+        verifiedEnvironment: String(env.DARAJA_ENV || "sandbox"),
+      });
+    } else {
+      const payment = {
+        tenantId: pending.tenantId,
+        tenantName: pending.tenantName || "Tenant",
+        landlordId: pending.landlordId,
+        createdBy: pending.landlordId,
+        houseId: pending.houseId || "",
+        houseNo: pending.houseNo || "",
+        amount: paidAmount,
+        method: "MPESA",
+        transactionCode: receipt,
+        mpesaReceipt: receipt,
+        status: "Paid",
+        confirmedBy: "safaricom_callback",
+        checkoutRequestId: checkoutId,
+        phone: paidPhone,
+        createdAt: { __firestoreTimestamp: new Date() },
+        confirmedAt: { __firestoreTimestamp: new Date() },
+      };
+      const paymentCreated = await createDocument(env, "payments", receipt, payment);
+      if (paymentCreated.status === 409) {
+        const existing = await firestore(env, "payments/" + encodeURIComponent(receipt));
+        const existingFields = decodeFields(existing.data.fields);
+        if (existingFields.checkoutRequestId !== checkoutId) {
+          throw new HttpError("M-Pesa receipt is already linked to another payment. Manual review required.", 409);
+        }
       }
     }
   }
@@ -464,6 +545,9 @@ export default {
       }
       if (request.method === "POST" && url.pathname === "/api/mpesa/account") {
         return await saveLandlordPaymentAccount(request, env);
+      }
+      if (request.method === "POST" && url.pathname === "/api/mpesa/account/verify") {
+        return await verifyLandlordPaymentAccount(request, env);
       }
       if (request.method === "POST" && url.pathname === "/api/mpesa/stkpush") {
         return await requestStkPush(request, env);
