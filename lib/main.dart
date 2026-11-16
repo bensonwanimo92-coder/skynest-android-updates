@@ -1651,229 +1651,157 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                       )
-                    : PageView.builder(
-                        controller: _dashboardPageController,
-                        padEnds: true,
-                        onPageChanged: (index) => setState(() => _activeDashboardIndex = index),
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
                         itemCount: filteredItems.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 14),
                         itemBuilder: (context, index) {
                           final item = filteredItems[index];
                           final scheme = Theme.of(context).colorScheme;
-                          final cardOffset = (index - _activeDashboardIndex).toDouble();
-                          final cardDepth = cardOffset.abs().clamp(0.0, 1.0);
-                          var hovered = false;
-                          return StatefulBuilder(
-                            builder: (context, setTileState) => MouseRegion(
-                              onEnter: (_) => setTileState(() => hovered = true),
-                              onExit: (_) => setTileState(() => hovered = false),
-                              child: AnimatedScale(
-                                scale: hovered ? 1.035 : (index == _activeDashboardIndex ? 1.0 : 0.86),
-                                duration: const Duration(milliseconds: 190),
-                                curve: Curves.easeOutCubic,
-                                child: Transform(
-                                  alignment: Alignment.center,
-                                  transform: Matrix4.identity()
-                                    ..setEntry(3, 2, 0.0012)
-                                    ..translate(math.sin(cardOffset * 0.85) * 42.0, cardDepth * 12.0)
-                                    ..rotateY(-cardOffset * 0.28),
-                                  child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 190),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(25),
-                                    border: Border.all(
-                                      color: item.color.withOpacity(hovered ? 0.95 : 0.52),
-                                      width: hovered ? 1.8 : 1.15,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: item.color.withOpacity(hovered ? 0.30 : 0.16),
-                                        blurRadius: hovered ? 24 : 15,
-                                        spreadRadius: hovered ? 1 : 0,
-                                        offset: const Offset(0, 8),
-                                      ),
-                                      const BoxShadow(
-                                        color: Color(0x33020A18),
-                                        blurRadius: 16,
-                                        offset: Offset(0, 7),
-                                      ),
-                                    ],
+                          return SizedBox(
+                            height: 184,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: const Color(0xFF9A9A9A).withOpacity(0.42),
+                                  width: 1,
+                                ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x26000000),
+                                    blurRadius: 15,
+                                    offset: Offset(0, 7),
                                   ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(24),
-                                    child: Material(
-                                      color: const Color(0xFF09172B),
-                                      child: InkWell(
-                                        onLongPress: () => _openControlCentre(context, items),
-                                        onTap: () async {
-                                          await SkyNestFeedback.playTap();
-                                          if (!context.mounted) return;
-                                          await _previewModule(context, item);
-                                        },
-                                        child: Stack(
-                                          fit: StackFit.expand,
-                                          children: [
-                                            Image.network(
-                                              _menuImageFor(item.title),
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) => DecoratedBox(
-                                                decoration: BoxDecoration(
-                                                  gradient: LinearGradient(
-                                                    begin: Alignment.topLeft,
-                                                    end: Alignment.bottomRight,
-                                                    colors: [
-                                                      Color.lerp(item.color, const Color(0xFF07152F), 0.35)!,
-                                                      const Color(0xFF07152F),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            DecoratedBox(
-                                              decoration: BoxDecoration(
-                                                gradient: LinearGradient(
-                                                  begin: Alignment.topCenter,
-                                                  end: Alignment.bottomCenter,
-                                                  colors: [
-                                                    const Color(0x99071327),
-                                                    const Color(0x44071327),
-                                                    const Color(0xF2071022),
-                                                  ],
-                                                  stops: const [0, 0.36, 1],
-                                                ),
-                                              ),
-                                            ),
-                                            Positioned(
-                                              top: 0,
-                                              left: 0,
-                                              right: 0,
-                                              height: 3,
-                                              child: DecoratedBox(
-                                                decoration: BoxDecoration(
-                                                  gradient: LinearGradient(
-                                                    colors: [
-                                                      item.color.withOpacity(0.15),
-                                                      item.color,
-                                                      scheme.tertiary,
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            Positioned(
-                                              top: 13,
-                                              right: 13,
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0x7708172B),
-                                                  borderRadius: BorderRadius.circular(30),
-                                                  border: Border.all(color: Colors.white.withOpacity(0.22)),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Icon(Icons.auto_awesome, size: 11, color: item.color.withOpacity(0.95)),
-                                                    const SizedBox(width: 5),
-                                                    const Text(
-                                                      'SKYNEST',
-                                                      style: TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 8,
-                                                        letterSpacing: 1.15,
-                                                        fontWeight: FontWeight.w800,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                            Positioned(
-                                              right: -18,
-                                              top: 45,
-                                              child: Icon(item.icon, size: 112, color: Colors.white.withOpacity(0.075)),
-                                            ),
-                                            Padding(
-                                              padding: const EdgeInsets.fromLTRB(15, 17, 15, 15),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Container(
-                                                    width: 56,
-                                                    height: 56,
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.white.withOpacity(0.13),
-                                                      borderRadius: BorderRadius.circular(18),
-                                                      border: Border.all(color: Colors.white.withOpacity(0.36)),
-                                                      boxShadow: [
-                                                        BoxShadow(
-                                                          color: item.color.withOpacity(0.22),
-                                                          blurRadius: 15,
-                                                          spreadRadius: 1,
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    child: Icon(item.icon, size: 29, color: Colors.white),
-                                                  ),
-                                                  const Spacer(),
-                                                  Text(
-                                                    item.title,
-                                                    maxLines: 2,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 16,
-                                                      fontWeight: FontWeight.w800,
-                                                      height: 1.14,
-                                                      letterSpacing: -0.25,
-                                                      shadows: [
-                                                        Shadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 9),
-                                                  Row(
-                                                    children: [
-                                                      Text(
-                                                        'Explore module',
-                                                        style: TextStyle(
-                                                          color: Colors.white.withOpacity(0.78),
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                      const Spacer(),
-                                                      Container(
-                                                        width: 29,
-                                                        height: 29,
-                                                        decoration: BoxDecoration(
-                                                          color: item.color.withOpacity(0.22),
-                                                          shape: BoxShape.circle,
-                                                          border: Border.all(color: item.color.withOpacity(0.8)),
-                                                        ),
-                                                        child: const Icon(
-                                                          Icons.arrow_forward_rounded,
-                                                          size: 16,
-                                                          color: Colors.white,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(17),
+                                child: Material(
+                                  color: const Color(0xFF34383D),
+                                  child: InkWell(
+                                    onLongPress: () => _openControlCentre(context, items),
+                                    onTap: () async {
+                                      await SkyNestFeedback.playTap();
+                                      if (!context.mounted) return;
+                                      await _previewModule(context, item);
+                                    },
+                                    child: Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        Image.network(
+                                          _menuImageFor(item.title),
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => DecoratedBox(
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                begin: Alignment.topLeft,
+                                                end: Alignment.bottomRight,
+                                                colors: [
+                                                  Color.lerp(item.color, const Color(0xFF34383D), 0.65)!,
+                                                  const Color(0xFF25292E),
                                                 ],
                                               ),
                                             ),
-                                          ],
+                                          ),
                                         ),
-                                      ),
+                                        const DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: [
+                                                Color(0x553B3B3B),
+                                                Color(0x66333333),
+                                                Color(0xE6191B1E),
+                                              ],
+                                              stops: [0, 0.42, 1],
+                                            ),
+                                          ),
+                                        ),
+                                        Positioned(
+                                          top: 13,
+                                          right: 14,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0x665B5B5B),
+                                              borderRadius: BorderRadius.circular(20),
+                                              border: Border.all(color: Colors.white.withOpacity(0.28)),
+                                            ),
+                                            child: const Text(
+                                              'SKYNEST',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 8,
+                                                letterSpacing: 1.2,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        Positioned(
+                                          right: 12,
+                                          top: 35,
+                                          child: Icon(item.icon, size: 104, color: Colors.white.withOpacity(0.10)),
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(18, 17, 18, 15),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Container(
+                                                    width: 43,
+                                                    height: 43,
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0x665D6268),
+                                                      borderRadius: BorderRadius.circular(13),
+                                                      border: Border.all(color: Colors.white.withOpacity(0.36)),
+                                                    ),
+                                                    child: Icon(item.icon, size: 23, color: Colors.white),
+                                                  ),
+                                                  const Spacer(),
+                                                  Icon(Icons.arrow_outward_rounded,
+                                                    color: Colors.white.withOpacity(0.92), size: 21),
+                                                ],
+                                              ),
+                                              const Spacer(),
+                                              Text(
+                                                item.title,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 19,
+                                                  fontWeight: FontWeight.w700,
+                                                  height: 1.12,
+                                                  letterSpacing: -0.2,
+                                                  shadows: [Shadow(color: Colors.black87, blurRadius: 9, offset: Offset(0, 2))],
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                'Explore section',
+                                                style: TextStyle(
+                                                  color: Colors.white.withOpacity(0.82),
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
                                   ),
                                 ),
                               ),
                             ),
                           );
                         },
-                      ),
-              ),
+                      ),              ),
               Padding(
                 padding: const EdgeInsets.only(bottom: 8, top: 2),
                 child: Row(
