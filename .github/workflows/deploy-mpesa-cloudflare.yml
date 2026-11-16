@@ -38,7 +38,7 @@ jobs:
     needs: validate
     if: ${{ inputs.confirm_deploy == true }}
     runs-on: ubuntu-latest
-    environment: mpesa-production-approval
+    environment: mpesa-sandbox-deployment-approval
     steps:
       - name: Check out validated release branch
         uses: actions/checkout@v4
