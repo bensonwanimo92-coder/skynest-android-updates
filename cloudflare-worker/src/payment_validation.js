@@ -1,9 +1,9 @@
 // Pure validation for successful Daraja STK callbacks. Never infer missing values.
 function normalizePhone(value) {
-  let phone = String(value ?? "").replace(/[\\s+()\\-]/g, "");
+  let phone = String(value ?? "").replace(/[\s+()\-]/g, "");
   if (phone.startsWith("0")) phone = "254" + phone.slice(1);
-  else if (/^[17]\\d{8}$/.test(phone)) phone = "254" + phone;
-  if (!/^254[17]\\d{8}$/.test(phone)) {
+  else if (/^[17]\d{8}$/.test(phone)) phone = "254" + phone;
+  if (!/^254[17]\d{8}$/.test(phone)) {
     throw new Error("M-Pesa callback contains an invalid payer phone.");
   }
   return phone;
