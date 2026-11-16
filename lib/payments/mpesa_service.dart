@@ -11,6 +11,23 @@ class SkyNestMpesaService {
     defaultValue: 'https://mpesaapi.bensonwanimo92.workers.dev',
   );
 
+  static Map<String, dynamic> _decodeResponse(String raw, int statusCode) {
+    if (raw.trim().isEmpty) {
+      if (statusCode >= 200 && statusCode < 300) return <String, dynamic>{};
+      throw StateError('M-Pesa service returned an empty response (HTTP $statusCode).');
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) return decoded;
+      throw const FormatException('Expected a JSON object.');
+    } on FormatException {
+      throw StateError(
+        'M-Pesa service returned an unreadable response (HTTP $statusCode). '
+        'The payment server may be unavailable or misconfigured. Please try again later.',
+      );
+    }
+  }
+
   static Future<Map<String, dynamic>> _call(String path, {String method = 'GET', Map<String, dynamic>? body}) async {
     if (_baseUrl.isEmpty) throw StateError('M-Pesa service is not configured in this app build yet.');
     final user = FirebaseAuth.instance.currentUser;
@@ -25,7 +42,7 @@ class SkyNestMpesaService {
       if (body != null) request.write(jsonEncode(body));
       final response = await request.close().timeout(const Duration(seconds: 45));
       final raw = await response.transform(utf8.decoder).join();
-      final data = raw.isEmpty ? <String, dynamic>{} : jsonDecode(raw) as Map<String, dynamic>;
+      final data = _decodeResponse(raw, response.statusCode);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw StateError(data['error']?.toString() ?? 'M-Pesa request failed. Try again.');
       }
@@ -81,7 +98,7 @@ class SkyNestMpesaService {
       request.write(jsonEncode({'amountKes': amountKes, 'phone': phone}));
       final response = await request.close().timeout(const Duration(seconds: 45));
       final body = await response.transform(utf8.decoder).join();
-      final data = body.isEmpty ? <String, dynamic>{} : jsonDecode(body) as Map<String, dynamic>;
+      final data = _decodeResponse(body, response.statusCode);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw StateError(data['error']?.toString() ?? 'M-Pesa request failed. Try again.');
       }
