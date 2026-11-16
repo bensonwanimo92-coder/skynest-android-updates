@@ -91,6 +91,7 @@ test("caretaker confirmation query and update remain restricted to assigned hous
   const assignedQuery = query(
     collection(db, "paymentConfirmations"),
     where("caretakerId", "==", "caretaker-1"),
+    where("landlordId", "==", "landlord-1"),
     where("houseId", "==", "house-assigned")
   );
   const results = await assertSucceeds(getDocs(assignedQuery));
