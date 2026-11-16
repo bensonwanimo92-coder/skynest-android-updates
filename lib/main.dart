@@ -2838,7 +2838,7 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
           'houseId': houseDoc.id, 'amount': value,
           'method': paymentMethod.toUpperCase(), 'transactionCode': paymentMethod == 'mpesa' ? code : '',
           'status': 'Pending verification', 'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+          'updatedAt': FieldValue.serverTimestamp(), 'createdBy': uid, 'landlordId': uid,
         });
         final assigned = (houseDoc.data()['caretakerIds'] as List?)?.whereType<String>().toList() ?? <String>[];
         if (assigned.isNotEmpty) {
