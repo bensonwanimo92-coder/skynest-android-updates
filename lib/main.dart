@@ -1605,320 +1605,137 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          _AnimatedPhotoBackdrop(
-            screen: 'Dashboard',
-            themeName: themeManager.selectedName,
-            enabled: themeManager.slideshowEnabled,
-          ),
-          ColoredBox(
-            color: Theme.of(context).colorScheme.surface.withOpacity(0.88),
-          ),
-          Column(
+      body: Container(
+        color: const Color(0xFFF3F4F8),
+        child: SafeArea(
+          top: false,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Theme.of(context).colorScheme.primary,
-                        Color.lerp(
-                          Theme.of(context).colorScheme.primary,
-                          Theme.of(context).colorScheme.tertiary,
-                          0.52,
-                        )!,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Theme.of(context).colorScheme.primary.withOpacity(0.20),
-                        blurRadius: 18,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
+              Text(
+                '$greeting, $firstName',
+                style: const TextStyle(
+                  color: Color(0xFF252733),
+                  fontSize: 29,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.8,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(dailyMessage, style: const TextStyle(
+                color: Color(0xFF535765), fontSize: 14, height: 1.35,
+              )),
+              const SizedBox(height: 5),
+              Text(DateFormat('EEEE, d MMMM').format(now),
+                style: const TextStyle(color: Color(0xFF535765), fontSize: 13)),
+              const SizedBox(height: 20),
+              TextField(
+                onChanged: (value) => setState(() => searchQuery = value),
+                style: const TextStyle(color: Color(0xFF252733)),
+                decoration: InputDecoration(
+                  hintText: 'Search houses, tenants, payments...',
+                  hintStyle: const TextStyle(color: Color(0xFF777B86)),
+                  prefixIcon: const Icon(Icons.search, color: Color(0xFF777B86)),
+                  suffixIcon: searchQuery.isEmpty ? null : IconButton(
+                    tooltip: 'Clear search',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => setState(() => searchQuery = ''),
                   ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '$greeting, $firstName',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.35,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              dailyMessage,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.88),
-                                fontSize: 12.5,
-                                height: 1.35,
-                              ),
-                            ),
-                            const SizedBox(height: 11),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.calendar_today_rounded,
-                                  size: 13,
-                                  color: Colors.white.withOpacity(0.88),
-                                ),
-                                const SizedBox(width: 7),
-                                Text(
-                                  DateFormat('EEEE, d MMMM').format(now),
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.92),
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.16),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white.withOpacity(0.22)),
-                        ),
-                        child: const Icon(
-                          Icons.auto_awesome_rounded,
-                          color: Colors.white,
-                          size: 25,
-                        ),
-                      ),
-                    ],
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 17),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(32),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(32),
+                    borderSide: const BorderSide(color: Color(0xFFE3E5EB), width: 1),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(32),
+                    borderSide: const BorderSide(color: Color(0xFF3987D8), width: 1.4),
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-                child: TextField(
-                  onChanged: (value) => setState(() => searchQuery = value),
-                  decoration: InputDecoration(
-                    hintText: 'Search modules...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: searchQuery.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: 'Clear search',
-                            icon: const Icon(Icons.close),
-                            onPressed: () => setState(() => searchQuery = ''),
-                          ),
-                    filled: true,
-                    fillColor: Theme.of(context).colorScheme.surface,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
+              const SizedBox(height: 22),
+              const Text('Overview', style: TextStyle(
+                color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
+              )),
+              const SizedBox(height: 10),
+              _DashboardOverviewCard(userRole: userRole),
+              const SizedBox(height: 22),
+              if (userRole == 'landlord') ...[
+                const Text('Recent activity', style: TextStyle(
+                  color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
+                )),
+                const SizedBox(height: 8),
+                _DashboardRecentActivity(),
+                const SizedBox(height: 22),
+                const Text('Quick actions', style: TextStyle(
+                  color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
+                )),
+                const SizedBox(height: 10),
+                _DashboardQuickActions(
+                  onAddHouse: () => _open(context, items.firstWhere((e) => e.title == 'Houses')),
+                  onCollectPayment: () => _open(context, items.firstWhere((e) => e.title == 'Payments')),
+                  onPostNotice: () => _open(context, items.firstWhere((e) => e.title == 'Notices')),
                 ),
-              ),
-              Expanded(
+                const SizedBox(height: 22),
+              ] else ...[
+                const Text('Your recent activity', style: TextStyle(
+                  color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
+                )),
+                const SizedBox(height: 10),
+                _DashboardRecentActivity(),
+                const SizedBox(height: 22),
+              ],
+              const Text('Modules', style: TextStyle(
+                color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
+              )),
+              const SizedBox(height: 10),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(19),
+                  boxShadow: const [BoxShadow(
+                    color: Color(0x12000000), blurRadius: 14, offset: Offset(0, 5),
+                  )],
+                ),
                 child: filteredItems.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(28),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.search_off_rounded,
-                                  size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                              const SizedBox(height: 10),
-                              const Text('No modules found'),
-                              const SizedBox(height: 4),
-                              Text('Try another search term.',
-                                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                            ],
-                          ),
-                        ),
+                    ? const Padding(
+                        padding: EdgeInsets.all(22),
+                        child: Text('No modules found.', style: TextStyle(color: Color(0xFF555966))),
                       )
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
-                        itemCount: filteredItems.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 14),
-                        itemBuilder: (context, index) {
-                          final item = filteredItems[index];
-                          return SizedBox(
-                            height: 184,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(
-                                  color: const Color(0xFF9A9A9A).withOpacity(0.42),
-                                  width: 1,
-                                ),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x26000000),
-                                    blurRadius: 15,
-                                    offset: Offset(0, 7),
-                                  ),
-                                ],
+                    : Column(
+                        children: [
+                          for (var i = 0; i < filteredItems.length; i++) ...[
+                            ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 17, vertical: 2),
+                              leading: CircleAvatar(
+                                radius: 20,
+                                backgroundColor: filteredItems[i].color.withOpacity(0.13),
+                                child: Icon(filteredItems[i].icon, color: filteredItems[i].color, size: 22),
                               ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(17),
-                                child: Material(
-                                  color: const Color(0xFF34383D),
-                                  child: InkWell(
-                                    onLongPress: () => _openControlCentre(context, items),
-                                    onTap: () async {
-                                      await SkyNestFeedback.playTap();
-                                      if (!context.mounted) return;
-                                      await _previewModule(context, item);
-                                    },
-                                    child: Stack(
-                                      fit: StackFit.expand,
-                                      children: [
-                                        Image.network(
-                                          _menuImageFor(item.title),
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => DecoratedBox(
-                                            decoration: BoxDecoration(
-                                              gradient: LinearGradient(
-                                                begin: Alignment.topLeft,
-                                                end: Alignment.bottomRight,
-                                                colors: [
-                                                  Color.lerp(item.color, const Color(0xFF34383D), 0.65)!,
-                                                  const Color(0xFF25292E),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              begin: Alignment.topCenter,
-                                              end: Alignment.bottomCenter,
-                                              colors: [
-                                                Color(0x553B3B3B),
-                                                Color(0x66333333),
-                                                Color(0xE6191B1E),
-                                              ],
-                                              stops: [0, 0.42, 1],
-                                            ),
-                                          ),
-                                        ),
-                                        Positioned(
-                                          top: 13,
-                                          right: 14,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0x665B5B5B),
-                                              borderRadius: BorderRadius.circular(20),
-                                              border: Border.all(color: Colors.white.withOpacity(0.28)),
-                                            ),
-                                            child: const Text(
-                                              'SKYNEST',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 8,
-                                                letterSpacing: 1.2,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        Positioned(
-                                          right: 12,
-                                          top: 35,
-                                          child: Icon(item.icon, size: 104, color: Colors.white.withOpacity(0.10)),
-                                        ),
-                                        Padding(
-                                          padding: const EdgeInsets.fromLTRB(18, 17, 18, 15),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Container(
-                                                    width: 43,
-                                                    height: 43,
-                                                    decoration: BoxDecoration(
-                                                      color: const Color(0x665D6268),
-                                                      borderRadius: BorderRadius.circular(13),
-                                                      border: Border.all(color: Colors.white.withOpacity(0.36)),
-                                                    ),
-                                                    child: Icon(item.icon, size: 23, color: Colors.white),
-                                                  ),
-                                                  const Spacer(),
-                                                  Icon(Icons.arrow_outward_rounded,
-                                                    color: Colors.white.withOpacity(0.92), size: 21),
-                                                ],
-                                              ),
-                                              const Spacer(),
-                                              Text(
-                                                item.title,
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 19,
-                                                  fontWeight: FontWeight.w700,
-                                                  height: 1.12,
-                                                  letterSpacing: -0.2,
-                                                  shadows: [Shadow(color: Colors.black87, blurRadius: 9, offset: Offset(0, 2))],
-                                                ),
-                                              ),
-                                              const SizedBox(height: 6),
-                                              Text(
-                                                'Explore section',
-                                                style: TextStyle(
-                                                  color: Colors.white.withOpacity(0.82),
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
+                              title: Text(filteredItems[i].title, style: const TextStyle(
+                                color: Color(0xFF252733), fontSize: 16, fontWeight: FontWeight.w600,
+                              )),
+                              trailing: const Icon(Icons.chevron_right, color: Color(0xFF9A9DA6)),
+                              onTap: () async {
+                                await SkyNestFeedback.playTap();
+                                if (!context.mounted) return;
+                                await _previewModule(context, filteredItems[i]);
+                              },
                             ),
-                          );
-                        },
-                      ),              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8, top: 2),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.swipe_rounded, size: 15, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 7),
-                    Text('Tap a section to preview · Hold for dashboard controls',
-                      style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                  ],
-                ),
+                            if (i != filteredItems.length - 1)
+                              const Divider(height: 1, indent: 72, color: Color(0xFFE6E7EB)),
+                          ],
+                        ],
+                      ),
               ),
             ],
           ),
-        ],
+        ),
       ),
       bottomNavigationBar: loaded && banner != null
           ? SizedBox(
