@@ -139,6 +139,8 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
         tenantId: data['tenantId'] as String,
         houseId: data['houseId'] as String,
         period: data['period'] as String,
+        tenantName: data['tenantName'] as String?,
+        houseNo: data['houseNo'] as String?,
         amountDueKes: data['dueKes'] as int,
         payments: List<RentPaymentRecord>.from(data['payments'] as List<RentPaymentRecord>),
       );
@@ -227,8 +229,8 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
                       height: 54,
                       decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
                     ),
-                    title: Text(invoice.tenantId, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text('House ${invoice.houseId} • ${invoice.period}'),
+                    title: Text(invoice.tenantName ?? invoice.tenantId, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text('House ${invoice.houseNo ?? invoice.houseId} • ${invoice.period}'),
                     trailing: Text(_stateLabel(invoice.state), style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 11)),
                     childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     children: [
