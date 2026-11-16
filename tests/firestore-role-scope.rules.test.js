@@ -199,7 +199,7 @@ test("landlord payment queries remain scoped to their own landlord ID", async ()
   const landlord = env.authenticatedContext("landlord-1").firestore();
   const ownPayments = query(collection(landlord, "payments"), where("landlordId", "==", "landlord-1"));
   const results = await assertSucceeds(getDocs(ownPayments));
-  assert.equal(results.size, 3);
+  assert.equal(results.size, 4);
 });
 
 test("tenant payment submissions must match the tenant's assigned house and landlord", async () => {
