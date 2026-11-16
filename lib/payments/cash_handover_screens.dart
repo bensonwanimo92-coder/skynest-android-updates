@@ -351,6 +351,29 @@ class LandlordCashHandoverScreen extends StatelessWidget {
                       _summaryRow('Outstanding cash to reconcile', outstanding, outstanding > 0 ? Colors.red : Colors.green),
                     ]),
                   )),
+                  const SizedBox(height: 16),
+                  const Text('COLLECTIONS AWAITING PHYSICAL HANDOVER',
+                    style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .7)),
+                  if (collections.where((item) => !handoverByCollection.containsKey(item.id)).isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text('All recorded collections have been submitted for handover.'),
+                    ),
+                  ...collections.where((item) => !handoverByCollection.containsKey(item.id)).map((item) {
+                    final data = item.data();
+                    final stamp = data['collectedAt'];
+                    final date = stamp is Timestamp
+                        ? stamp.toDate().toLocal().toString().split('.').first
+                        : 'Date pending';
+                    return Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.pending_actions, color: Colors.orange),
+                        title: Text('KSh ${data['amountKes'] ?? 0} • House ${data['houseNo'] ?? ''}'),
+                        subtitle: Text('${data['tenantName'] ?? 'Tenant'} • Caretaker ${data['caretakerId'] ?? ''}\\n$date • NOT YET HANDED OVER'),
+                        isThreeLine: true,
+                      ),
+                    );
+                  }),
                   const SizedBox(height: 12),
                   const Text('HANDOVER HISTORY', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .8)),
                   if (docs.isEmpty) const Padding(
