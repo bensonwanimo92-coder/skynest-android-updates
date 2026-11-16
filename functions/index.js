@@ -541,19 +541,20 @@ exports.runScheduledAutomations = onSchedule({
 });
 
 
-// Create the month's immutable rent snapshots automatically on the first day
-// in Nairobi time. Deterministic IDs and transaction.create make retries safe.
+// Reconcile the current month's immutable rent snapshots every day in Nairobi
+// time. Daily catch-up avoids missing a billing month after a transient outage;
+// deterministic IDs and transaction.create make retries safe.
 exports.generateMonthlyRentInvoices = onSchedule({
-  schedule: "5 0 1 * *",
+  schedule: "5 0 * * *",
   timeZone: "Africa/Nairobi",
   region: "africa-south1",
   maxInstances: 1,
 }, async () => {
   const db = getFirestore();
   const period = rentPeriodAt(new Date(), "Africa/Nairobi");
-  const houses = await db.collection("houses")
-    .where("assignedTenantId", "!=", null)
-    .get();
+  // Read the landlord-owned house collection and filter assignments in code.
+  // This avoids a not-equal-to-null query edge case and includes older records.
+  const houses = await db.collection("houses").get();
 
   let created = 0;
   let skipped = 0;
