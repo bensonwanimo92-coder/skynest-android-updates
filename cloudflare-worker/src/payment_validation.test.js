@@ -1,92 +1,51 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  validateSuccessfulCallback,
-  validateTenantHouseLink,
-  validateMerchantAccountInput,
-} from "./payment_validation.js";
+import { validateMerchantAccountInput, validatePayerHouseLink } from "./payment_validation.js";
 
-test("accepts a callback only when receipt, amount and payer match", () => {
-  const pending = { amountKes: 1200, phone: "254712345678" };
-  const metadata = {
-    MpesaReceiptNumber: "QAB12CD34E",
-    Amount: 1200,
-    PhoneNumber: "254712345678",
-  };
-  assert.deepEqual(validateSuccessfulCallback(pending, metadata), {
-    receipt: "QAB12CD34E",
-    paidAmount: 1200,
-    paidPhone: "254712345678",
+test("accepts PayBill and business name without Daraja credentials", () => {
+  assert.deepEqual(validateMerchantAccountInput({
+    accountType: "paybill",
+    registeredBusinessName: "Example Rentals",
+    accountNumber: "123456",
+  }), {
+    accountType: "paybill",
+    businessName: "Example Rentals",
+    accountNumber: "123456",
   });
 });
 
-test("rejects a callback with a mismatched amount", () => {
-  assert.throws(
-    () => validateSuccessfulCallback(
-      { amountKes: 1200, phone: "254712345678" },
-      { MpesaReceiptNumber: "QAB12CD34E", Amount: 100, PhoneNumber: "254712345678" },
-    ),
-    /amount does not match/,
-  );
+test("accepts Buy Goods Till and business name", () => {
+  assert.equal(validateMerchantAccountInput({
+    accountType: "till",
+    registeredBusinessName: "Example Rentals",
+    accountNumber: "987654",
+  }).accountType, "till");
 });
 
-test("rejects a callback from a different payer phone", () => {
-  assert.throws(
-    () => validateSuccessfulCallback(
-      { amountKes: 1200, phone: "254712345678" },
-      { MpesaReceiptNumber: "QAB12CD34E", Amount: 1200, PhoneNumber: "254700000000" },
-    ),
-    /payer does not match/,
-  );
+test("rejects missing recipient account number", () => {
+  assert.throws(() => validateMerchantAccountInput({
+    accountType: "paybill", registeredBusinessName: "Example Rentals", accountNumber: "",
+  }), /valid 5–20 digit/);
 });
 
-test("normalizes Kenyan local phone numbers in callback validation", () => {
-  const result = validateSuccessfulCallback(
-    { amountKes: 500, phone: "0712345678" },
-    { MpesaReceiptNumber: "QAB12CD34E", Amount: 500, PhoneNumber: "254712345678" },
-  );
-  assert.equal(result.paidPhone, "254712345678");
+test("rejects unsupported receiving account types", () => {
+  assert.throws(() => validateMerchantAccountInput({
+    accountType: "bank", registeredBusinessName: "Example Rentals", accountNumber: "123456",
+  }), /Choose PayBill or Buy Goods Till/);
 });
 
-test("requires tenant to remain assigned to the exact landlord house", () => {
-  const profile = {
-    role: "tenant", status: "active", landlordId: "landlord-1",
-    houseId: "house-4", houseNo: "4",
-  };
-  const house = {
-    createdBy: "landlord-1", landlordId: "landlord-1",
-    assignedTenantId: "tenant-1", houseNo: "4",
-  };
-  assert.deepEqual(validateTenantHouseLink(profile, house, "tenant-1"), {
-    landlordId: "landlord-1", houseId: "house-4", houseNo: "4",
+test("allows an active tenant only for their linked house", () => {
+  const profile = { role: "tenant", status: "active", landlordId: "landlord1", houseId: "house1", houseNo: "A1" };
+  const house = { createdBy: "landlord1", landlordId: "landlord1", assignedTenantId: "tenant1", houseNo: "A1" };
+  assert.deepEqual(validatePayerHouseLink(profile, house, "tenant1"), {
+    landlordId: "landlord1", houseId: "house1", houseNo: "A1",
   });
-  assert.throws(
-    () => validateTenantHouseLink(profile, { ...house, assignedTenantId: "tenant-2" }, "tenant-1"),
-    /assigned house could not be verified/,
-  );
+  assert.throws(() => validatePayerHouseLink(profile, house, "tenant2"), /assignment could not be verified/);
 });
 
-test("validates landlord PayBill and Till receiving-account inputs", () => {
-  const paybill = validateMerchantAccountInput({
-    accountType: "paybill", registeredBusinessName: "Example Rentals",
-    businessShortCode: "123456", consumerKey: "consumer-key-123",
-    consumerSecret: "consumer-secret-123", passkey: "passkey-123",
-  });
-  assert.equal(paybill.accountType, "paybill");
-  const till = validateMerchantAccountInput({
-    accountType: "till", registeredBusinessName: "Example Rentals",
-    businessShortCode: "123456", tillNumber: "987654",
-    consumerKey: "consumer-key-123", consumerSecret: "consumer-secret-123",
-    passkey: "passkey-123",
-  });
-  assert.equal(till.tillNumber, "987654");
-  assert.throws(
-    () => validateMerchantAccountInput({
-      accountType: "paybill", registeredBusinessName: "Example Rentals",
-      businessShortCode: "123456", tillNumber: "987654",
-      consumerKey: "consumer-key-123", consumerSecret: "consumer-secret-123",
-      passkey: "passkey-123",
-    }),
-    /Till number is not used for PayBill/,
-  );
+test("allows an active caretaker only for an assigned house", () => {
+  const profile = { role: "caretaker", status: "active", landlordId: "landlord1", houseId: "house1" };
+  const house = { createdBy: "landlord1", landlordId: "landlord1", assignedTenantId: "caretaker1", houseNo: "B2" };
+  assert.equal(validatePayerHouseLink(profile, house, "caretaker1").houseNo, "B2");
+  assert.throws(() => validatePayerHouseLink(profile, house, "caretaker2"), /active account|rented home/);
 });
