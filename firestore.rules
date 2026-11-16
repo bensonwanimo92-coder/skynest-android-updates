@@ -841,6 +841,259 @@ service cloud.firestore {
         request.resource.data.houseNo == get(/databases/$(database)/documents/houses/$(request.resource.data.houseId)).data.houseNo &&
         payerOwnsAssignedHouse(request.resource.data.houseId, profile(request.auth.uid).landlordId) &&
         request.resource.data.amount is number && request.resource.data.amount > 0 &&
+        (request.resource.data.method != 'MPESA' || (request.resource.data.payerPhone is string && request.resource.data.payerPhone.size() >= 10 && request.resource.data.payerPhone.size() <= 16 && request.resource.data.transactionCode is string && request.resource.data.transactionCode.matches('^[A-Z0-9]{8,16}
+        request.resource.data.status == 'pending';
+      allow read: if activeUser() && (
+        resource.data.tenantId == request.auth.uid ||
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid)
+      );
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['status', 'ledgerPaymentId', 'reviewedAt']
+        ) &&
+        request.resource.data.status in ['received', 'rejected', 'awaiting_caretaker'];
+      allow delete: if false;
+    }
+
+    // M-Pesa transaction-code reservation must be atomically paired with its submission.
+    match /mpesaTransactionCodes/{code} {
+      allow create: if activeUser() && myRole() in ['tenant', 'caretaker'] &&
+        code.matches('^[A-Z0-9]{8,16}$') &&
+        request.resource.data.keys().hasOnly(['tenantId', 'landlordId', 'submissionId', 'createdAt']) &&
+        request.resource.data.tenantId == request.auth.uid &&
+        request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
+        request.resource.data.submissionId is string &&
+        validMpesaClaim(code);
+      allow read: if activeUser() && (
+        resource.data.tenantId == request.auth.uid ||
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid)
+      );
+      allow update, delete: if false;
+    }
+
+    // Calculator notes are private to the account that created them.
+    match /savedCalculations/{calculationId} {
+      allow create: if activeUser() &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0;
+      allow read, delete: if activeUser() &&
+        resource.data.createdBy == request.auth.uid;
+      allow update: if activeUser() &&
+        resource.data.createdBy == request.auth.uid &&
+        request.resource.data.createdBy == request.auth.uid;
+    }
+
+    match /subscriptions/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
+    // One-to-one voice/video call signalling. Media stays peer-to-peer; Firestore
+    // stores only call metadata, SDP offers/answers and ICE candidates.
+    match /calls/{callId} {
+      function isCallParticipant() {
+        return signedIn() &&
+          (resource.data.callerId == request.auth.uid ||
+           resource.data.calleeId == request.auth.uid);
+      }
+      allow create: if activeUser() &&
+        request.resource.data.keys().hasOnly([
+          'groupId', 'callerId', 'calleeId', 'callerName', 'calleeName',
+          'type', 'status', 'createdAt'
+        ]) &&
+        request.resource.data.callerId == request.auth.uid &&
+        request.resource.data.calleeId is string &&
+        request.resource.data.calleeId != request.auth.uid &&
+        request.resource.data.groupId is string &&
+        request.resource.data.type in ['voice', 'video'] &&
+        request.resource.data.status == 'preparing' &&
+        request.resource.data.createdAt is timestamp &&
+        exists(/databases/$(database)/documents/groups/$(request.resource.data.groupId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.memberIds &&
+        request.resource.data.calleeId in get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.memberIds &&
+        linkedTo(get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.landlordId);
+      allow get, list: if activeUser() &&
+        (resource.data.callerId == request.auth.uid ||
+         resource.data.calleeId == request.auth.uid);
+      allow update: if activeUser() && isCallParticipant() &&
+        request.resource.data.callerId == resource.data.callerId &&
+        request.resource.data.calleeId == resource.data.calleeId &&
+        request.resource.data.groupId == resource.data.groupId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'offer', 'answer', 'status', 'answeredAt', 'endedAt', 'endedBy'
+        ]) &&
+        (
+          (request.auth.uid == resource.data.callerId &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offer', 'status']) &&
+            request.resource.data.status == 'ringing' &&
+            request.resource.data.offer is map) ||
+          (request.auth.uid == resource.data.callerId &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'endedAt', 'endedBy']) &&
+            request.resource.data.status == 'missed' &&
+            request.resource.data.endedBy == request.auth.uid) ||
+          (request.auth.uid == resource.data.calleeId &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'answeredAt', 'answer']) &&
+            request.resource.data.status in ['connecting', 'active'] &&
+            (!request.resource.data.keys().hasAny(['answer']) || request.resource.data.answer is map)) ||
+          (request.auth.uid == resource.data.calleeId &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'endedAt', 'endedBy']) &&
+            request.resource.data.status == 'declined' &&
+            request.resource.data.endedBy == request.auth.uid) ||
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'endedAt', 'endedBy']) &&
+            request.resource.data.status == 'ended' &&
+            request.resource.data.endedBy == request.auth.uid)
+        );
+      allow delete: if false;
+
+      match /candidates/{candidateId} {
+        function parentCall() {
+          return get(/databases/$(database)/documents/calls/$(callId)).data;
+        }
+        allow read: if activeUser() &&
+          (parentCall().callerId == request.auth.uid ||
+           parentCall().calleeId == request.auth.uid);
+        allow create: if activeUser() &&
+          request.resource.data.senderId == request.auth.uid &&
+          (parentCall().callerId == request.auth.uid ||
+           parentCall().calleeId == request.auth.uid) &&
+          request.resource.data.candidate is string;
+        allow update, delete: if false;
+      }
+    }
+
+
+    // Public marketplace is isolated from private houses, tenants and payment records.
+    match /publicListings/{listingId} {
+      function validListingFields(data) {
+        return data.keys().hasOnly([
+          'ownerUid', 'title', 'category', 'advertType', 'county', 'town',
+          'estate', 'price', 'currency', 'description', 'contactPhone',
+          'photoUrls', 'bedrooms', 'bathrooms', 'status', 'createdAt',
+          'updatedAt', 'submittedAt', 'reviewedAt', 'reviewedBy',
+          'rejectionReason', 'expiresAt', 'featured', 'media', 'details', 'advertiserTier', 'videoUrls', 'coverImagePath', 'businessName', 'websiteUrl', 'latitude', 'longitude'
+        ]) &&
+        data.ownerUid is string && data.title is string &&
+        data.title.size() >= 8 && data.title.size() <= 120 &&
+        data.category in ['Residential', 'Commercial', 'Land', 'Development', 'Farms', 'Vehicles', 'Jobs', 'Restaurants', 'Hospitality', 'Products', 'Services', 'Luxury', 'Business', 'Other'] &&
+        data.advertType is string && data.advertType.size() > 0 && data.advertType.size() <= 60 &&
+        data.county is string && data.county.size() > 0 && data.county.size() <= 80 &&
+        data.town is string && data.town.size() > 0 && data.town.size() <= 120 &&
+        (!data.keys().hasAny(['estate']) || (data.estate is string && data.estate.size() <= 120)) &&
+        (!data.keys().hasAny(['bedrooms']) || (data.bedrooms is int && data.bedrooms >= 0 && data.bedrooms <= 50)) &&
+        (!data.keys().hasAny(['bathrooms']) || (data.bathrooms is number && data.bathrooms >= 0 && data.bathrooms <= 50)) &&
+        data.price is number && data.price > 0 &&
+        data.currency == 'KES' &&
+        data.description is string && data.description.size() >= 20 &&
+        data.description.size() <= 5000 &&
+        data.contactPhone is string && data.contactPhone.size() >= 7 &&
+        data.contactPhone.size() <= 20 &&
+        data.photoUrls is list && data.photoUrls.size() <= 20 &&
+        (!data.keys().hasAny(['media']) || (data.media is list && data.media.size() <= 20)) &&
+        (!data.keys().hasAny(['videoUrls']) || (data.videoUrls is list && data.videoUrls.size() <= 5)) &&
+        (!data.keys().hasAny(['details']) || (data.details is map && data.details.size() <= 30)) &&
+        (!data.keys().hasAny(['advertiserTier']) || data.advertiserTier in ['basic', 'standard', 'premium']) &&
+        (!data.keys().hasAny(['businessName']) || (data.businessName is string && data.businessName.size() <= 120)) &&
+        (!data.keys().hasAny(['websiteUrl']) || (data.websiteUrl is string && data.websiteUrl.size() <= 300)) &&
+        (!data.keys().hasAny(['latitude']) || data.latitude is number) &&
+        (!data.keys().hasAny(['longitude']) || data.longitude is number) &&
+        (!data.keys().hasAny(['coverImagePath']) || (data.coverImagePath is string && data.coverImagePath.size() <= 500)) &&
+        data.status in ['draft', 'pending', 'approved', 'rejected', 'changes_requested', 'paused', 'expired'] &&
+        data.createdAt is timestamp && data.updatedAt is timestamp;
+      }
+
+      allow get, list: if
+        (resource.data.status == 'approved' &&
+         resource.data.expiresAt is timestamp &&
+         resource.data.expiresAt > request.time) ||
+        (signedIn() && resource.data.ownerUid == request.auth.uid) ||
+        marketplaceAdmin();
+
+      allow create: if signedIn() && request.auth.token.email_verified == true &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        validListingFields(request.resource.data) &&
+        request.resource.data.status == 'draft' &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
+        !request.resource.data.keys().hasAny([
+          'submittedAt', 'reviewedAt', 'reviewedBy', 'rejectionReason',
+          'expiresAt', 'featured', 'advertiserTier'
+        ]);
+
+      allow update: if signedIn() && request.auth.token.email_verified == true &&
+        resource.data.ownerUid == request.auth.uid &&
+        resource.data.status in ['draft', 'rejected', 'changes_requested'] &&
+        request.resource.data.ownerUid == resource.data.ownerUid &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.status in ['draft', 'pending'] &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'category', 'advertType', 'county', 'town', 'estate',
+          'price', 'currency', 'description', 'contactPhone', 'photoUrls', 'media', 'videoUrls', 'details', 'businessName', 'websiteUrl', 'latitude', 'longitude', 'coverImagePath',
+          'bedrooms', 'bathrooms', 'status', 'submittedAt', 'updatedAt'
+        ]) &&
+        request.resource.data.updatedAt == request.time &&
+        validListingFields(request.resource.data);
+
+      allow update: if marketplaceAdmin() &&
+        request.resource.data.ownerUid == resource.data.ownerUid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'reviewedAt', 'reviewedBy', 'rejectionReason',
+          'expiresAt', 'featured', 'advertiserTier', 'updatedAt'
+        ]) &&
+        request.resource.data.status in ['approved', 'rejected', 'changes_requested', 'paused', 'expired'] &&
+        (request.resource.data.status != 'approved' ||
+          (request.resource.data.expiresAt is timestamp && request.resource.data.expiresAt > request.time)) &&
+        (!request.resource.data.keys().hasAny(['featured']) || request.resource.data.featured is bool) &&
+        request.resource.data.reviewedBy == request.auth.uid &&
+        request.resource.data.reviewedAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+
+      allow delete: if marketplaceAdmin() ||
+        (signedIn() && resource.data.ownerUid == request.auth.uid &&
+         resource.data.status in ['draft', 'rejected']);
+    }
+
+    match /marketplaceModerationLogs/{logId} {
+      allow create: if marketplaceAdmin() &&
+        request.resource.data.keys().hasOnly([
+          'listingId', 'ownerUid', 'action', 'reason', 'advertiserTier',
+          'actorUid', 'actorEmail', 'createdAt'
+        ]) &&
+        request.resource.data.listingId is string &&
+        request.resource.data.ownerUid is string &&
+        request.resource.data.action in ['approved', 'rejected', 'changes_requested', 'paused', 'tier_changed'] &&
+        request.resource.data.reason is string &&
+        request.resource.data.reason.size() <= 1000 &&
+        request.resource.data.advertiserTier in ['basic', 'standard', 'premium'] &&
+        request.resource.data.actorUid == request.auth.uid &&
+        request.resource.data.actorEmail is string &&
+        request.resource.data.createdAt == request.time;
+      allow get, list: if marketplaceAdmin();
+      allow update, delete: if false;
+    }
+
+    match /marketplaceListingReports/{reportId} {
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasOnly([
+          'listingId', 'reporterUid', 'reason', 'details', 'createdAt', 'status'
+        ]) &&
+        request.resource.data.reporterUid == request.auth.uid &&
+        request.resource.data.listingId is string &&
+        request.resource.data.reason in [
+          'fraud', 'misleading', 'unavailable', 'duplicate', 'other'
+        ] &&
+        request.resource.data.details is string &&
+        request.resource.data.details.size() <= 1000 &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.status == 'open';
+      allow get, list: if signedIn() &&
+        (marketplaceAdmin() ||
+         resource.data.reporterUid == request.auth.uid);
+      allow update, delete: if marketplaceAdmin();
+    }
+
+  }
+}))) &&
         request.resource.data.method in ['MPESA', 'CASH', 'BANK', 'OTHER'] &&
         request.resource.data.status == 'pending';
       allow read: if activeUser() && (
