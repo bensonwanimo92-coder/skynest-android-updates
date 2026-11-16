@@ -294,6 +294,105 @@ service cloud.firestore {
     }
 
 
+
+    function caretakerCanRecordCash(data) {
+      let caretaker = profile(request.auth.uid);
+      let tenantPath = /databases/$(database)/documents/users/$(data.tenantId);
+      let housePath = /databases/$(database)/documents/houses/$(data.houseId);
+      return activeUser() && myRole() == 'caretaker' &&
+        caretaker.caretakerPermission == 'can_collect' &&
+        caretaker.status == 'active' &&
+        data.caretakerId == request.auth.uid &&
+        data.landlordId == caretaker.landlordId &&
+        data.tenantId is string && exists(tenantPath) &&
+        get(tenantPath).data.role == 'tenant' &&
+        get(tenantPath).data.status == 'active' &&
+        get(tenantPath).data.landlordId == data.landlordId &&
+        get(tenantPath).data.houseId == data.houseId &&
+        get(tenantPath).data.houseNo == data.houseNo &&
+        exists(housePath) &&
+        get(housePath).data.landlordId == data.landlordId &&
+        get(housePath).data.createdBy == data.landlordId &&
+        get(housePath).data.houseNo == data.houseNo &&
+        get(housePath).data.assignedTenantId == data.tenantId &&
+        houseHasCaretaker(data.houseId, data.landlordId, request.auth.uid);
+    }
+
+    match /cashCollections/{collectionId} {
+      allow create: if request.resource.data.keys().hasOnly([
+          'landlordId', 'caretakerId', 'tenantId', 'tenantName',
+          'houseId', 'houseNo', 'amountKes', 'method', 'status',
+          'collectedAt', 'createdAt'
+        ]) &&
+        caretakerCanRecordCash(request.resource.data) &&
+        request.resource.data.tenantName is string &&
+        request.resource.data.houseId is string &&
+        request.resource.data.houseNo is string &&
+        request.resource.data.amountKes is number &&
+        request.resource.data.amountKes > 0 &&
+        request.resource.data.method == 'CASH' &&
+        request.resource.data.status == 'collected_pending_handover' &&
+        request.resource.data.collectedAt == request.time &&
+        request.resource.data.createdAt == request.time;
+      allow read: if activeUser() && (
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
+        (myRole() == 'caretaker' &&
+          resource.data.landlordId == profile(request.auth.uid).landlordId &&
+          resource.data.caretakerId == request.auth.uid &&
+          resource.data.houseId is string &&
+          caretakerAssignedToHouse(resource.data.houseId, resource.data.landlordId))
+      );
+      allow update, delete: if false;
+    }
+
+    match /cashHandovers/{handoverId} {
+      function matchingCollection() {
+        let collectionPath = /databases/$(database)/documents/cashCollections/$(handoverId);
+        return exists(collectionPath) &&
+          get(collectionPath).data.caretakerId == request.auth.uid &&
+          get(collectionPath).data.landlordId == request.resource.data.landlordId &&
+          get(collectionPath).data.tenantId == request.resource.data.tenantId &&
+          get(collectionPath).data.tenantName == request.resource.data.tenantName &&
+          get(collectionPath).data.houseId == request.resource.data.houseId &&
+          get(collectionPath).data.houseNo == request.resource.data.houseNo &&
+          get(collectionPath).data.amountKes == request.resource.data.amountKes &&
+          get(collectionPath).data.status == 'collected_pending_handover';
+      }
+      allow create: if activeUser() && myRole() == 'caretaker' &&
+        profile(request.auth.uid).caretakerPermission == 'can_collect' &&
+        request.resource.data.keys().hasOnly([
+          'collectionId', 'landlordId', 'caretakerId', 'tenantId',
+          'tenantName', 'houseId', 'houseNo', 'amountKes',
+          'status', 'submittedAt'
+        ]) &&
+        handoverId == request.resource.data.collectionId &&
+        request.resource.data.caretakerId == request.auth.uid &&
+        request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
+        request.resource.data.status == 'submitted' &&
+        request.resource.data.submittedAt == request.time &&
+        request.resource.data.houseId is string &&
+        caretakerAssignedToHouse(request.resource.data.houseId, request.resource.data.landlordId) &&
+        matchingCollection();
+      allow read: if activeUser() && (
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
+        (myRole() == 'caretaker' &&
+          resource.data.caretakerId == request.auth.uid &&
+          resource.data.landlordId == profile(request.auth.uid).landlordId &&
+          resource.data.houseId is string &&
+          caretakerAssignedToHouse(resource.data.houseId, resource.data.landlordId))
+      );
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid &&
+        resource.data.status == 'submitted' &&
+        request.resource.data.status == 'acknowledged' &&
+        request.resource.data.acknowledgedBy == request.auth.uid &&
+        request.resource.data.acknowledgedAt == request.time &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'acknowledgedBy', 'acknowledgedAt'
+        ]);
+      allow delete: if false;
+    }
+
     match /paymentConfirmations/{id} {
       allow read: if activeUser() && myRole() == 'caretaker' &&
         resource.data.caretakerId == request.auth.uid &&
