@@ -385,7 +385,9 @@ async function requestStkPush(request, env) {
   const accountResult = await firestore(env, "landlordPaymentAccounts/" + encodeURIComponent(String(profile.landlordId)));
   if (accountResult.status === 404) throw new HttpError("Your landlord has not configured an M-Pesa receiving account yet.", 409);
   const accountMeta = decodeFields(accountResult.data.fields);
-  if (accountMeta.status !== "verified") throw new HttpError("Your landlord's M-Pesa receiving account is awaiting verification. Please use the other payment instructions for now.", 409);
+  if (accountMeta.status !== "verified" || accountMeta.verifiedEnvironment !== String(env.DARAJA_ENV || "sandbox")) {
+    throw new HttpError("Your landlord's M-Pesa account is not verified for the current " + String(env.DARAJA_ENV || "sandbox") + " environment. Ask the landlord to verify it in SkyNest.", 409);
+  }
   const merchant = await decryptLandlordConfig(env, accountMeta.encryptedConfig);
   const host = env.DARAJA_ENV === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
   const timestamp = darajaTimestamp();
