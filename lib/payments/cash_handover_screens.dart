@@ -276,12 +276,50 @@ class LandlordCashHandoverScreen extends StatelessWidget {
     );
     if (confirmed != true) return;
     try {
-      await doc.reference.update({
-        'status': 'acknowledged',
-        'acknowledgedBy': uid,
-        'acknowledgedAt': FieldValue.serverTimestamp(),
+      final db = FirebaseFirestore.instance;
+      final handoverRef = doc.reference;
+      // A deterministic payment ID makes this acknowledgement idempotent:
+      // one physical cash handover can create at most one rent-ledger entry.
+      final paymentRef = db.collection('payments').doc('cash_${doc.id}');
+      await db.runTransaction((transaction) async {
+        final current = await transaction.get(handoverRef);
+        if (!current.exists) throw StateError('Cash handover no longer exists.');
+        final data = current.data() ?? {};
+        if (data['landlordId'] != uid) {
+          throw StateError('Only the linked landlord can acknowledge this handover.');
+        }
+        if (data['status'] == 'acknowledged') {
+          final existingPayment = await transaction.get(paymentRef);
+          if (existingPayment.exists) return;
+          // Recover safely if a legacy acknowledgement was saved without its
+          // matching ledger entry; retain the original acknowledgement time.
+        } else if (data['status'] != 'submitted') {
+          throw StateError('This handover is not awaiting acknowledgement.');
+        }
+        final payment = <String, dynamic>{
+          'createdBy': uid,
+          'landlordId': uid,
+          'tenantId': data['tenantId'],
+          'tenantName': data['tenantName'],
+          'houseId': data['houseId'],
+          'houseNo': data['houseNo'],
+          'amount': data['amountKes'],
+          'method': 'CASH',
+          'status': 'Paid',
+          'transactionCode': 'CASH-${doc.id}',
+          'cashHandoverId': doc.id,
+          'createdAt': FieldValue.serverTimestamp(),
+        };
+        if (data['status'] != 'acknowledged') {
+          transaction.update(handoverRef, {
+            'status': 'acknowledged',
+            'acknowledgedBy': uid,
+            'acknowledgedAt': FieldValue.serverTimestamp(),
+          });
+        }
+        transaction.set(paymentRef, payment);
       });
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cash handover acknowledged.')));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cash handover acknowledged and added to the rent ledger.')));
     } catch (error) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not acknowledge handover: $error')));
     }
