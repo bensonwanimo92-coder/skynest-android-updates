@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - feature/skynest-release-candidate-compact
+      - integration/skynest-next-complete
   pull_request:
     branches:
       - integration/roles-on-current-main
+      - integration/skynest-complete-release-candidate
 
 permissions:
   contents: read
