@@ -7,6 +7,7 @@ on:
       - integration/roles-on-current-main
       - feature/skynest-control-centre
       - feature/skynest-build-3409
+      - feature/skynest-mpesa-cloudflare
     tags:
       - 'v*'
   workflow_dispatch:
