@@ -7153,6 +7153,11 @@ class TenantApprovalsScreen extends StatelessWidget {
   Future<void> approve(BuildContext context, String id, String status) async {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) throw StateError('Sign in again before approving an account.');
+      final manager = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (manager.data()?['role'] != 'landlord' || manager.data()?['status'] != 'active') {
+        throw StateError('Only the active landlord can approve tenant or caretaker accounts.');
+      }
       final userRef = FirebaseFirestore.instance.collection('users').doc(id);
       final user = await userRef.get();
       final data = user.data() ?? {};
@@ -7190,7 +7195,14 @@ class TenantApprovalsScreen extends StatelessWidget {
         builder: (context, profile) {
           if (!profile.hasData) return const Center(child: CircularProgressIndicator());
           final p = profile.data?.data() ?? {};
-          final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
+          if (p['role'] != 'landlord' || p['status'] != 'active') {
+            return const Center(child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('Only the active landlord can review tenant and caretaker approvals.',
+                textAlign: TextAlign.center),
+            ));
+          }
+          final landlordId = uid;
           return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance.collection('users').where('landlordId', isEqualTo: landlordId).snapshots(),
             builder: (context, snap) {
