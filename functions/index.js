@@ -174,6 +174,52 @@ exports.notifyAccountDecision = onDocumentUpdated("users/{userId}", async (event
   if (stale.length) await Promise.all(stale);
 });
 
+exports.requestTenantAccess = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in before requesting tenant access.");
+  }
+  const uid = request.auth.uid;
+  const landlordEmail = String((request.data && request.data.landlordEmail) || "").trim().toLowerCase();
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(landlordEmail)) {
+    throw new HttpsError("invalid-argument", "Enter a valid landlord email address.");
+  }
+  const db = getFirestore();
+  const authUser = await require("firebase-admin/auth").getAuth().getUser(uid);
+  const matches = await db.collection("users").where("role", "==", "landlord")
+    .where("status", "==", "active").get();
+  const landlords = matches.docs.filter((doc) =>
+    String(doc.get("email") || "").trim().toLowerCase() === landlordEmail);
+  if (!landlords.length) {
+    throw new HttpsError("not-found", "No active SkyNest landlord account uses that email. Check the address with your landlord.");
+  }
+  if (landlords.length !== 1) {
+    throw new HttpsError("failed-precondition", "That email is linked to more than one landlord account. Contact SkyNest support.");
+  }
+  const landlord = landlords[0];
+  if (landlord.id === uid) {
+    throw new HttpsError("failed-precondition", "A landlord cannot request tenant access to their own account.");
+  }
+  const userRef = db.collection("users").doc(uid);
+  await db.runTransaction(async (transaction) => {
+    const existing = await transaction.get(userRef);
+    if (existing.exists) {
+      throw new HttpsError("already-exists", "A SkyNest profile already exists for this account. Sign in instead of registering again.");
+    }
+    transaction.create(userRef, {
+      displayName: authUser.displayName || "Tenant",
+      email: String(authUser.email || "").trim(),
+      role: "tenant",
+      status: "pending",
+      landlordId: landlord.id,
+      propertyIds: [],
+      registrationMethod: "landlord_email",
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  });
+  return { role: "tenant", status: "pending", landlordId: landlord.id };
+});
+
+
 exports.changeAccountRole = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Sign in before changing your account role.");
