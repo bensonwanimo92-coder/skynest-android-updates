@@ -333,7 +333,8 @@ test("caretaker cash collection is restricted to assigned active tenants and can
   const ownQuery = query(
     collection(caretaker, "cashCollections"),
     where("caretakerId", "==", "caretaker-1"),
-    where("landlordId", "==", "landlord-1")
+    where("landlordId", "==", "landlord-1"),
+    where("houseId", "==", "house-assigned")
   );
   const own = await assertSucceeds(getDocs(ownQuery));
   assert.equal(own.size, 1);
