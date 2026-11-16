@@ -1,4 +1,4 @@
-import { validateSuccessfulCallback, validateTenantHouseLink, validateMerchantAccountInput } from "./payment_validation.js";
+import { validateSuccessfulCallback, validatePayerHouseLink, validateMerchantAccountInput } from "./payment_validation.js";
 
 // SkyNest M-Pesa Cloudflare Worker.
 // Sandbox-first per-landlord Daraja STK Push. Do not enable production until Safaricom onboarding and end-to-end tests pass.
@@ -56,6 +56,8 @@ function decodeFields(fields = {}) {
     else if ("doubleValue" in value) result[key] = value.doubleValue;
     else if ("booleanValue" in value) result[key] = value.booleanValue;
     else if ("timestampValue" in value) result[key] = value.timestampValue;
+    else if ("arrayValue" in value) result[key] = (value.arrayValue.values || []).map(item =>
+      item.stringValue ?? item.integerValue ?? item.doubleValue ?? item.booleanValue ?? null);
     else if ("nullValue" in value) result[key] = null;
   }
   return result;
@@ -207,33 +209,27 @@ async function saveLandlordPaymentAccount(request, env) {
   }
   let input;
   try { input = await request.json(); } catch { throw new HttpError("Request body must be valid JSON."); }
-  let merchantInput;
-  try {
-    merchantInput = validateMerchantAccountInput(input);
-  } catch (error) {
-    throw new HttpError(error.message || "Merchant account details are invalid.");
-  }
-  const { accountType: type, businessName, businessShortCode: shortcode,
-    tillNumber, consumerKey, consumerSecret, passkey } = merchantInput;
-  const envelope = await encryptLandlordConfig(env, {
-    accountType: type, businessName, businessShortCode: shortcode,
-    tillNumber: type === "till" ? tillNumber : "",
-    consumerKey, consumerSecret, passkey,
-  });
+  let recipient;
+  try { recipient = validateMerchantAccountInput(input); }
+  catch (error) { throw new HttpError(error.message || "Recipient details are invalid."); }
   const accountFields = {
     landlordId: uid,
-    accountType: type,
-    registeredBusinessName: businessName,
-    maskedAccount: (type === "till" ? tillNumber : shortcode).slice(-4).padStart(8, "•"),
-    encryptedConfig: envelope,
-    status: "pending_verification",
-    environment: String(env.DARAJA_ENV || "sandbox"),
+    accountType: recipient.accountType,
+    registeredBusinessName: recipient.businessName,
+    accountNumber: recipient.accountNumber,
+    encryptedConfig: null,
+    maskedAccount: recipient.accountNumber.length <= 4
+      ? recipient.accountNumber
+      : "••••" + recipient.accountNumber.slice(-4),
+    status: "configured",
     updatedAt: { __firestoreTimestamp: new Date() },
   };
   const saved = await createDocument(env, "landlordPaymentAccounts", uid, accountFields);
   if (saved.status === 409) await patchDocument(env, "landlordPaymentAccounts/" + encodeURIComponent(uid), accountFields);
-  return json({ ok: true, status: "pending_verification", message: "Receiving account saved securely. Verification is still required before tenants can pay." });
+  return json({ ok: true, status: "configured", maskedAccount: accountFields.maskedAccount,
+    message: "M-Pesa recipient details saved. They are now available to linked tenants and assigned caretakers." });
 }
+
 async function getLandlordPaymentAccount(request, env) {
   const uid = await verifyFirebaseUser(request, env);
   const profileResult = await firestore(env, "users/" + encodeURIComponent(uid));
@@ -250,10 +246,51 @@ async function getLandlordPaymentAccount(request, env) {
     configured: true,
     accountType: data.accountType || "",
     registeredBusinessName: data.registeredBusinessName || "",
+    accountNumber: data.accountNumber || "",
     maskedAccount: data.maskedAccount || "",
-    status: data.status || "pending_verification",
-    environment: data.environment || "sandbox",
-    credentialsStored: Boolean(data.encryptedConfig),
+    status: data.status || "configured",
+  });
+}
+
+async function getPaymentRecipient(request, env) {
+  const uid = await verifyFirebaseUser(request, env);
+  const profileResult = await firestore(env, "users/" + encodeURIComponent(uid));
+  if (profileResult.status === 404) throw new HttpError("Your SkyNest profile was not found.", 403);
+  const profile = decodeFields(profileResult.data.fields);
+  const role = String(profile.role || "").toLowerCase();
+  if (!["tenant", "caretaker"].includes(role) ||
+      String(profile.status || "").toLowerCase() !== "active" || !profile.landlordId) {
+    throw new HttpError("Only an active tenant or caretaker linked to a landlord can view rent payment details.", 403);
+  }
+  const url = new URL(request.url);
+  const houseId = String(url.searchParams.get("houseId") || "");
+  if (!houseId) throw new HttpError("Choose the house linked to this rent payment.", 400);
+  if (role === "tenant" && houseId !== String(profile.houseId || "")) {
+    throw new HttpError("You can only view payment details for your assigned house.", 403);
+  }
+  const houseResult = await firestore(env, "houses/" + encodeURIComponent(houseId));
+  if (houseResult.status === 404) throw new HttpError("The selected house could not be found.", 409);
+  const house = decodeFields(houseResult.data.fields);
+  try { validatePayerHouseLink({ ...profile, houseId }, house, uid); }
+  catch (error) { throw new HttpError(error.message, 403); }
+
+  const result = await firestore(env, "landlordPaymentAccounts/" + encodeURIComponent(String(profile.landlordId)));
+  if (result.status === 404) throw new HttpError("Your landlord has not added M-Pesa payment details yet.", 409);
+  const recipient = decodeFields(result.data.fields);
+  if (!["paybill", "till"].includes(String(recipient.accountType || "").toLowerCase()) ||
+      !/^[0-9]{5,20}$/.test(String(recipient.accountNumber || "")) ||
+      !recipient.registeredBusinessName) {
+    throw new HttpError("Your landlord's M-Pesa recipient details are incomplete. Ask them to save a valid PayBill or Till number and business name.", 409);
+  }
+  return json({
+    configured: true,
+    accountType: recipient.accountType,
+    accountNumber: recipient.accountNumber,
+    registeredBusinessName: recipient.registeredBusinessName,
+    landlordId: String(profile.landlordId),
+    houseId,
+    houseNo: String(house.houseNo || profile.houseNo || ""),
+    paymentMethod: "manual_mpesa",
   });
 }
 
@@ -381,7 +418,7 @@ async function requestStkPush(request, env) {
   const house = decodeFields(houseResult.data.fields);
   let houseLink;
   try {
-    houseLink = validateTenantHouseLink(profile, house, uid);
+    houseLink = validatePayerHouseLink(profile, house, uid);
   } catch (error) {
     throw new HttpError(error.message || "Your tenant house assignment could not be verified.", 403);
   }
@@ -568,6 +605,9 @@ export default {
     try {
       if (request.method === "GET" && url.pathname === "/health") {
         return json({ ok: true, service: "skynest-mpesa", environment: env.DARAJA_ENV || "sandbox" });
+      }
+      if (request.method === "GET" && url.pathname === "/api/mpesa/recipient") {
+        return await getPaymentRecipient(request, env);
       }
       if (request.method === "GET" && url.pathname === "/api/mpesa/account") {
         return await getLandlordPaymentAccount(request, env);
