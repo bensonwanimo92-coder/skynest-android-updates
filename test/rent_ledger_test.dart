@@ -88,6 +88,22 @@ void main() {
     expect(ledger.creditKes, 2000);
     expect(ledger.state, RentInvoiceState.overpaid);
   });
+  test('legacy invoice without a saved rent amount is marked unknown, not overpaid', () {
+    final invoice = RentInvoiceLedger(
+      invoiceId: 'legacy', landlordId: 'landlord', tenantId: 'tenant',
+      houseId: 'house', period: '2025-04', amountDueKes: 0,
+      dueAmountKnown: false,
+      payments: const [RentPaymentRecord(
+        transactionId: 'legacy-payment', amountKes: 12000,
+        state: RentTransactionState.confirmed,
+      )],
+    );
+    expect(invoice.state, RentInvoiceState.unknown);
+    expect(invoice.balanceKes, 0);
+    expect(invoice.creditKes, 0);
+    expect(invoice.paidFraction, 0);
+  });
+
   test('status parsing never treats unpaid or pending labels as received', () {
     for (final status in <String>[
       'unpaid', 'not paid', 'pending', 'pending verification',
