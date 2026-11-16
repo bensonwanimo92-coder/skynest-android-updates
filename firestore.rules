@@ -241,6 +241,7 @@ service cloud.firestore {
         landlordOwnsPaymentHouse(request.resource.data.houseId, request.auth.uid, request.resource.data.houseNo);
       allow read: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
         (myRole() == 'tenant' && resource.data.tenantId == request.auth.uid)
       );
       allow update: if activeUser() && myRole() == 'landlord' && resource.data.createdBy == request.auth.uid;
