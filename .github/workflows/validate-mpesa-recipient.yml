@@ -1,6 +1,9 @@
 name: Validate M-Pesa recipient and caretaker payment changes
 
 on:
+  push:
+    branches:
+      - feature/mpesa-recipient-and-caretaker-payment
   pull_request:
     branches:
       - integration/skynest-next-complete
