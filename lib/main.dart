@@ -12,6 +12,7 @@ import 'services/sound_service.dart';
 import 'services/voice_service.dart';
 import 'payments/mpesa_service.dart';
 import 'payments/rent_ledger_screen.dart';
+import 'payments/cash_handover_screens.dart';
 import 'payments/mpesa_account_screen.dart';
 import 'services/notification_service.dart';
 import 'control_centre/notification_centre.dart';
@@ -1369,6 +1370,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Payments', Icons.payments_outlined, Colors.blue, const PaymentsScreen()),
         _MenuItem('M-Pesa receiving account', Icons.account_balance_wallet_outlined, Colors.green, const MpesaAccountScreen()),
         _MenuItem('Tenant payment submissions', Icons.fact_check_outlined, Colors.teal, const PaymentSubmissionsScreen()),
+        _MenuItem('Caretaker cash handovers', Icons.account_balance_wallet_outlined, Colors.green, const LandlordCashHandoverScreen()),
         _MenuItem('Caretakers & invitations', Icons.badge_outlined, Colors.teal, const InvitationsScreen()),
         _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
@@ -1405,6 +1407,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       items.addAll([
         _MenuItem('Assigned houses', Icons.home_work_outlined, Colors.orange, const CaretakerHousesScreen()),
         _MenuItem('Rent confirmations', Icons.fact_check_outlined, Colors.blue, const CaretakerPaymentsScreen()),
+        _MenuItem('Cash collections & handovers', Icons.payments_outlined, Colors.green, const CaretakerCashCollectionScreen()),
         _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('House requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
@@ -7420,6 +7423,8 @@ String _modulePreviewDescription(String title) {
     'Tenants': 'Manage tenant profiles, balances, contract dates, family details and contact actions.',
     'Payments': 'Track rent received, pending balances, payment methods and receipt dates.',
     'Tenant payment submissions': 'Review tenant-submitted payments, check queue times, and verify or reject submissions.',
+    'Caretaker cash handovers': 'Review cash collected by caretakers and acknowledge the physical handover to the landlord.',
+    'Cash collections & handovers': 'Record cash received from assigned tenants, submit handovers, and track landlord acknowledgement.',
     'Caretakers & invitations': 'Create time-limited invitations, manage linked caretakers and control property access.',
     'Complaints': 'Receive, prioritise, respond to and track property or maintenance complaints.',
     'Tenant groups': 'Communicate with tenant groups, share updates and follow group activity.',
