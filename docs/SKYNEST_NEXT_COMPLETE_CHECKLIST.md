@@ -96,6 +96,7 @@ Last pre-integration APK candidate: version 1.1.3+5447, run 43862420394, artifac
 - [ ] Tenant digital rent payment goes to the landlord's configured merchant account.
 - [ ] Tenant cash/physical payment can be recorded by an authorized caretaker.
 - [ ] Caretaker collection record identifies tenant, house, amount, date, method and collector.
+- [x] Added landlord cash reconciliation totals for all own-property caretaker collections: total collected, acknowledged handovers, awaiting physical handover, awaiting landlord acknowledgement, and outstanding cash to reconcile. Added Firestore query coverage for landlord-scoped collection and handover lists; latest validation is pending.
 - [ ] Landlord can verify and reconcile caretaker-recorded collections.
 - [ ] Cash handover from caretaker to landlord can be recorded with amount, date and acknowledgement.
 - [ ] Track collected, handed-over and outstanding-to-handover amounts without treating caretaker as owner of funds.
