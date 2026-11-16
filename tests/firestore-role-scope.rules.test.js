@@ -23,9 +23,13 @@ async function seed() {
     await setDoc(doc(db, "users", "landlord-1"), {
       role: "landlord", status: "active"
     });
+    await setDoc(doc(db, "users", "tenant-1"), {
+      role: "tenant", status: "active", landlordId: "landlord-1",
+      houseId: "house-assigned", houseNo: "A1"
+    });
     await setDoc(doc(db, "houses", "house-assigned"), {
       createdBy: "landlord-1", landlordId: "landlord-1",
-      caretakerIds: ["caretaker-1"], houseNo: "A1", rent: 15000
+      caretakerIds: ["caretaker-1"], houseNo: "A1", rent: 15000, assignedTenantId: "tenant-1"
     });
     await setDoc(doc(db, "houses", "house-other"), {
       createdBy: "landlord-1", landlordId: "landlord-1",
@@ -152,4 +156,25 @@ test("landlord payment records must point to a house owned by that landlord", as
   }));
   const caretaker = env.authenticatedContext("caretaker-1").firestore();
   await assertFails(setDoc(doc(caretaker, "payments", "caretaker-payment"), valid));
+});
+
+
+test("tenant payment submissions must match the tenant's assigned house and landlord", async () => {
+  await seed();
+  const tenant = env.authenticatedContext("tenant-1").firestore();
+  const valid = {
+    tenantId: "tenant-1", landlordId: "landlord-1",
+    houseId: "house-assigned", houseNo: "A1",
+    amount: 15000, method: "CASH", status: "pending"
+  };
+  await assertSucceeds(setDoc(doc(tenant, "paymentSubmissions", "valid-submission"), valid));
+  await assertFails(setDoc(doc(tenant, "paymentSubmissions", "wrong-house"), {
+    ...valid, houseId: "house-other", houseNo: "B1"
+  }));
+  await assertFails(setDoc(doc(tenant, "paymentSubmissions", "wrong-house-number"), {
+    ...valid, houseNo: "B1"
+  }));
+  await assertFails(setDoc(doc(tenant, "paymentSubmissions", "wrong-landlord"), {
+    ...valid, landlordId: "another-landlord"
+  }));
 });
