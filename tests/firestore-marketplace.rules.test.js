@@ -129,32 +129,36 @@ test("pinned verified initial administrator can moderate on Spark without custom
   }));
 });
 
-test("pinned initial administrator identity cannot be impersonated with a different UID or email", async () => {
+test("verified owner mailbox bootstraps admin for a newly created UID; unverified or different emails are denied", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
-    await setDoc(doc(context.firestore(), "publicListings", "protected-pending"), listing({ status: "pending" }));
+    const db = context.firestore();
+    await setDoc(doc(db, "publicListings", "verified-owner-email"), listing({ status: "pending" }));
+    await setDoc(doc(db, "publicListings", "wrong-admin-email"), listing({ status: "pending" }));
+    await setDoc(doc(db, "publicListings", "unverified-owner-email"), listing({ status: "pending" }));
   });
-  const sameEmailWrongUid = env.authenticatedContext("not-the-admin", {
+  const newOwnerUid = "newly-created-owner-account";
+  const owner = env.authenticatedContext(newOwnerUid, {
     email: "bensonwanimo92@gmail.com",
     email_verified: true
   }).firestore();
-  const sameUidWrongEmail = env.authenticatedContext("PN9bC3ZzgSaOK1JjG4TcjCU9Grx1", {
+  const wrongEmail = env.authenticatedContext("not-the-admin", {
     email: "attacker@example.com",
     email_verified: true
   }).firestore();
-  const unverified = env.authenticatedContext("PN9bC3ZzgSaOK1JjG4TcjCU9Grx1", {
+  const unverified = env.authenticatedContext("unverified-owner", {
     email: "bensonwanimo92@gmail.com",
     email_verified: false
   }).firestore();
-  const change = {
+  const change = uid => ({
     status: "approved",
     reviewedAt: serverTimestamp(),
-    reviewedBy: "PN9bC3ZzgSaOK1JjG4TcjCU9Grx1",
+    reviewedBy: uid,
     updatedAt: serverTimestamp(),
     expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 86400000))
-  };
-  await assertFails(updateDoc(doc(sameEmailWrongUid, "publicListings", "protected-pending"), change));
-  await assertFails(updateDoc(doc(sameUidWrongEmail, "publicListings", "protected-pending"), change));
-  await assertFails(updateDoc(doc(unverified, "publicListings", "protected-pending"), change));
+  });
+  await assertSucceeds(updateDoc(doc(owner, "publicListings", "verified-owner-email"), change(newOwnerUid)));
+  await assertFails(updateDoc(doc(wrongEmail, "publicListings", "wrong-admin-email"), change("not-the-admin")));
+  await assertFails(updateDoc(doc(unverified, "publicListings", "unverified-owner-email"), change("unverified-owner")));
 });
 
 test("public marketplace rules do not expose private SkyNest house records", async () => {
