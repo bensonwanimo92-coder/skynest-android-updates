@@ -207,6 +207,12 @@ test("landlord can issue immutable rent invoices only for an active assigned ten
   await assertFails(setDoc(doc(db, "rentInvoices", "wrong-tenant-invoice"), {
     ...valid, tenantId: "another-tenant"
   }));
+  await assertFails(setDoc(doc(db, "rentInvoices", "forged-rent-invoice"), {
+    ...valid, amountDueKes: 1, rentAtIssue: 1
+  }));
+  await assertFails(setDoc(doc(db, "rentInvoices", "duplicate-period-invoice"), {
+    ...valid
+  }));
 });
 
 test("tenant can read only their own rent invoices and invoices cannot be edited", async () => {
