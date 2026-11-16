@@ -695,7 +695,7 @@ jobs:
               print(f"Patched: {file}")
           PY
 
-      - name: Restrict APK native packaging to ARM64 and resolve Flutter libapp duplicate
+      - name: Package APK for 32-bit and 64-bit ARM devices and resolve Flutter libapp duplicates
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -712,17 +712,18 @@ jobs:
 
           config = '''    packaging {
                   jniLibs {
-                      // Resolve only the duplicate ARM64 Flutter app library.
+                      // Resolve duplicate Flutter app libraries for both supported ARM ABIs.
                       pickFirsts.add("lib/arm64-v8a/libapp.so")
-                      // Keep the distributable APK ARM64-only.
-                      excludes.add("**/armeabi-v7a/**")
+                      pickFirsts.add("lib/armeabi-v7a/libapp.so")
+                      // Keep both 64-bit and 32-bit ARM devices supported; exclude x86.
                       excludes.add("**/x86/**")
                       excludes.add("**/x86_64/**")
                   }
               }
 
           '''
-          if 'pickFirsts.add("lib/arm64-v8a/libapp.so")' not in source:
+          if ('pickFirsts.add("lib/arm64-v8a/libapp.so")' not in source
+              or 'pickFirsts.add("lib/armeabi-v7a/libapp.so")' not in source):
               source = source.replace(marker, marker + "\n" + config, 1)
               path.write_text(source)
 
@@ -733,7 +734,7 @@ jobs:
               raise SystemExit("Invalid literal backslash-n sequence found in generated Kotlin Gradle file.")
           required = (
               "pickFirsts.add(\"lib/arm64-v8a/libapp.so\")",
-              "excludes.add(\"**/armeabi-v7a/**\")",
+              "pickFirsts.add(\"lib/armeabi-v7a/libapp.so\")",
               "excludes.add(\"**/x86/**\")",
               "excludes.add(\"**/x86_64/**\")",
           )
@@ -742,7 +743,7 @@ jobs:
           missing = [item for item in required if item not in check]
           if missing:
               raise SystemExit("Native packaging configuration incomplete: " + ", ".join(missing))
-          print("PASS: valid Kotlin DSL packaging block; ARM64 libapp duplicate resolved; non-ARM64 ABIs excluded.")
+          print("PASS: valid Kotlin DSL packaging block; ARM64 and ARMv7 libapp duplicates resolved; x86 ABIs excluded.")
           PY
 
       - name: Set up Shorebird
@@ -813,10 +814,9 @@ jobs:
           SKYNEST_TURN_CREDENTIAL: ${{ secrets.SKYNEST_TURN_CREDENTIAL }}
           SKYNEST_API_BASE_URL: ${{ vars.SKYNEST_API_BASE_URL }}
         run: |
-          # Set the Android ABI once at the Shorebird release layer.
-          # Forwarding the same --target-platform flag to Flutter duplicates
-          # arm64-v8a/libapp.so in the generated Gradle copy task.
-          shorebird release android --artifact apk --target-platform android-arm64 -- \
+          # Package both 64-bit and 32-bit ARM variants so older/32-bit-only Android phones can install SkyNest.
+          # Set the ABI list once at the Shorebird release layer to avoid duplicate Flutter flags.
+          shorebird release android --artifact apk --target-platform android-arm,android-arm64 -- \
             --build-name=1.1.3 --build-number="$BUILD_NUMBER" \
             --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" \
             --dart-define=SKYNEST_TURN_USERNAME="$SKYNEST_TURN_USERNAME" \
@@ -835,7 +835,7 @@ jobs:
           SKYNEST_TURN_CREDENTIAL: ${{ secrets.SKYNEST_TURN_CREDENTIAL }}
           SKYNEST_API_BASE_URL: ${{ vars.SKYNEST_API_BASE_URL }}
         run: |
-          flutter build apk --release --target-platform android-arm64 \
+          flutter build apk --release --target-platform android-arm,android-arm64 \
             --android-skip-build-dependency-validation --verbose \
             --build-name=1.1.3 --build-number="$BUILD_NUMBER" \
             --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" \
@@ -883,14 +883,14 @@ jobs:
           APK="build/app/outputs/flutter-apk/app-release.apk"
           APK_BYTES="$(stat -c '%s' "$APK")"
           APK_MB="$((APK_BYTES / 1024 / 1024))"
-          echo "Arm64 release APK size: ${APK_MB} MB"
+          echo "Multi-ABI ARM release APK size: ${APK_MB} MB"
           if [ "$APK_BYTES" -gt $((85 * 1024 * 1024)) ]; then
             echo "::warning::APK is above the former 85 MB guideline. Size is reported for visibility, not used as a build blocker."
           fi
           ABIS="$(unzip -Z1 "$APK" | sed -n 's#^lib/\([^/]*\)/.*#\1#p' | sort -u | tr '\n' ' ')"
           echo "Native ABIs in APK: $ABIS"
-          if [ "$ABIS" != "arm64-v8a " ] && [ "$ABIS" != "arm64-v8a" ]; then
-            echo "::error::Expected an arm64-only APK but found: $ABIS"
+          if [[ "$ABIS" != *"arm64-v8a"* || "$ABIS" != *"armeabi-v7a"* ]]; then
+            echo "::error::Expected both arm64-v8a and armeabi-v7a APK libraries but found: $ABIS"
             exit 1
           fi
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
