@@ -214,7 +214,14 @@ service cloud.firestore {
 
     match /paymentConfirmations/{id} {
       allow read: if activeUser() && myRole() == 'caretaker' && resource.data.caretakerId == request.auth.uid;
-      allow update: if activeUser() && myRole() == 'caretaker' && resource.data.caretakerId == request.auth.uid &&
+      allow update: if activeUser() && myRole() == 'caretaker' &&
+        profile(request.auth.uid).caretakerPermission == 'can_collect' &&
+        resource.data.caretakerId == request.auth.uid &&
+        resource.data.landlordId == profile(request.auth.uid).landlordId &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'confirmed_by_caretaker' &&
+        request.resource.data.confirmedBy == request.auth.uid &&
+        request.resource.data.confirmedAt == request.time &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedBy', 'confirmedAt']);
       allow create: if activeUser() && myRole() == 'landlord' && request.resource.data.landlordId == request.auth.uid &&
         request.resource.data.keys().hasOnly(['landlordId', 'caretakerId', 'tenantName', 'houseNo', 'paymentId', 'status', 'createdAt']);
