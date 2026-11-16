@@ -67,6 +67,7 @@ Last pre-integration APK candidate: version 1.1.3+5447, run 43862420394, artifac
 - [ ] Auditable financial and administrative actions.
 
 ## 3. Tenant account
+- [x] Added a tenant-facing **My rent & balance** screen and dashboard entry. It reads only rent invoices and payment records linked to the signed-in tenant UID, shows period statements, verified instalments, outstanding balances and credits, and excludes pending/reversed payments from received totals. Automated Flutter and Firestore validation is pending; live tenant-account verification remains outstanding.
 - [ ] View own profile, assigned house, rent amount and rent period.
 - [ ] View own verified payments, balance, credit and receipts.
 - [ ] Make full, partial and instalment payments through the existing payment architecture.
