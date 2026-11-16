@@ -110,7 +110,7 @@ service cloud.firestore {
           request.resource.data.role == resource.data.role &&
           request.resource.data.status == resource.data.status &&
           request.resource.data.landlordId == resource.data.landlordId &&
-          landlordFor(resource.data.landlordId) &&
+          myRole() == 'landlord' && request.auth.uid == resource.data.landlordId &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['houseId', 'houseNo'])
         )
       );
@@ -434,9 +434,15 @@ service cloud.firestore {
       allow create: if activeUser() && myRole() == 'tenant' && request.resource.data.tenantId == request.auth.uid &&
         request.resource.data.landlordId == profile(request.auth.uid).landlordId;
       allow read: if activeUser() && (
-        resource.data.tenantId == request.auth.uid || landlordFor(resource.data.landlordId)
+        resource.data.tenantId == request.auth.uid ||
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
+        (myRole() == 'caretaker' &&
+          resource.data.landlordId == profile(request.auth.uid).landlordId &&
+          resource.data.houseId is string &&
+          caretakerAssignedToHouse(resource.data.houseId, resource.data.landlordId))
       );
-      allow update: if activeUser() && landlordFor(resource.data.landlordId) &&
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy']);
       allow delete: if false;
     }
