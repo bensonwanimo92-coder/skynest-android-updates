@@ -4,11 +4,13 @@ import 'security/message_encryption.dart';
 import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
 import 'media/media_centre_screen.dart';
+import 'marketplace/marketplace_inventory_screen.dart';
 // ignore: duplicate_import -- retained for the legacy direct-message route.
 import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
 import 'services/sound_service.dart';
 import 'services/voice_service.dart';
+import 'payments/mpesa_service.dart';
 import 'services/notification_service.dart';
 import 'control_centre/notification_centre.dart';
 import 'control_centre/control_centre_screen.dart';
@@ -1372,6 +1374,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ]);
     }
 
+    items.add(_MenuItem('Inventory', Icons.storefront_rounded, const Color(0xFF2563EB), const MarketplaceInventoryScreen()));
     items.add(_MenuItem('Discovery', Icons.explore_rounded, const Color(0xFF06B6D4), const MarketDiscoveryScreen()));
     items.add(_MenuItem('Media Centre', Icons.library_music_rounded, const Color(0xFF22D3EE), const MediaCentreScreen()));
     items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
@@ -2793,8 +2796,9 @@ class TenantPayScreen extends StatefulWidget {
   State<TenantPayScreen> createState() => _TenantPayScreenState();
 }
 class _TenantPayScreenState extends State<TenantPayScreen> {
-  final tenant = TextEditingController(), house = TextEditingController(), amount = TextEditingController(), transactionCode = TextEditingController();
+  final tenant = TextEditingController(), house = TextEditingController(), amount = TextEditingController(), transactionCode = TextEditingController(), phone = TextEditingController();
   String paymentMethod = 'mpesa';
+  String? userRole;
   bool saving = false;
   @override
   void initState() {
@@ -2809,25 +2813,39 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
       if (profile.data()?['role'] == 'tenant' && mounted) {
         tenant.text = profile.data()?['displayName']?.toString() ?? '';
         house.text = profile.data()?['houseNo']?.toString() ?? '';
+        phone.text = profile.data()?['phone']?.toString() ?? '';
+        setState(() => userRole = 'tenant');
       }
     } catch (_) {}
   }
   @override
-  void dispose() { tenant.dispose(); house.dispose(); amount.dispose(); transactionCode.dispose(); super.dispose(); }
+  void dispose() { tenant.dispose(); house.dispose(); amount.dispose(); transactionCode.dispose(); phone.dispose(); super.dispose(); }
   Future<void> savePayment() async {
     final value = double.tryParse(amount.text.trim());
     final code = transactionCode.text.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
     if (tenant.text.trim().isEmpty || value == null || value <= 0) { snack(context, 'Enter tenant name and a valid amount.'); return; }
-    if (paymentMethod == 'mpesa' && (code.length < 8 || code.length > 16 || !RegExp(r'^[A-Z0-9]+').hasMatch(code))) {
-      snack(context, 'Enter a valid M-Pesa transaction code (8–16 letters or numbers).');
-      return;
-    }
     setState(() => saving = true);
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) throw StateError('Please sign in again.');
       final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
       final p = profile.data() ?? {};
+      if (p['role'] == 'tenant' && paymentMethod == 'mpesa') {
+        final phoneNumber = phone.text.trim();
+        if (phoneNumber.isEmpty) throw StateError('Enter the M-Pesa phone number to receive the payment prompt.');
+        final message = await SkyNestMpesaService.requestStkPush(
+          amountKes: value.round(),
+          phone: phoneNumber,
+        );
+        if (mounted) {
+          amount.clear();
+          snack(context, message);
+        }
+        return;
+      }
+      if (paymentMethod == 'mpesa' && (code.length < 8 || code.length > 16 || !RegExp(r'^[A-Z0-9]+').hasMatch(code))) {
+        throw StateError('Enter a valid M-Pesa transaction code (8–16 letters or numbers).');
+      }
       if (p['role'] == 'tenant') {
         final landlordId = p['landlordId']?.toString();
         if (landlordId == null || landlordId.isEmpty) throw StateError('Your tenant account is not linked to a landlord.');
@@ -2898,13 +2916,18 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
       ),
       if (paymentMethod == 'mpesa') ...[
         const SizedBox(height: 12),
-        TextField(controller: transactionCode, textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(labelText: 'M-Pesa transaction code', border: OutlineInputBorder())),
+        TextField(controller: phone, keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(labelText: 'M-Pesa phone number', hintText: '07XXXXXXXX or 2547XXXXXXXX', border: OutlineInputBorder())),
+        if (userRole != 'tenant') ...[
+          const SizedBox(height: 12),
+          TextField(controller: transactionCode, textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(labelText: 'M-Pesa transaction code', border: OutlineInputBorder())),
+        ],
       ],
       const SizedBox(height: 18),
       FilledButton.icon(onPressed: saving ? null : savePayment, icon: const Icon(Icons.save_outlined), label: Text(saving ? 'Saving...' : 'SAVE PAYMENT RECORD')),
       const SizedBox(height: 12),
-      const Text('This records a payment for verification only. It does not send an M-Pesa STK Push or confirm money received. Live Daraja payments require credentials and a secure backend server.'),
+      const Text('Tenant M-Pesa payments request an STK prompt through the secure SkyNest gateway. The rent record is updated only after Safaricom confirms the payment.'),
     ]),
   );
 }
@@ -7260,6 +7283,7 @@ String _modulePreviewDescription(String title) {
     'Caretakers & invitations': 'Create time-limited invitations, manage linked caretakers and control property access.',
     'Complaints': 'Receive, prioritise, respond to and track property or maintenance complaints.',
     'Tenant groups': 'Communicate with tenant groups, share updates and follow group activity.',
+    'Inventory': 'Browse approved SkyNest website adverts in the app, search by category or location, view photos and contact advertisers directly.',
     'Discovery': 'Explore SkyNest Market for property, land, vehicles, jobs, restaurants and services across Kenya.',
     'Notices': 'Publish notices, choose urgency and templates, and track tenant acknowledgements.',
     'Electricity': 'Register meters, allocate usage and keep electricity billing records.',

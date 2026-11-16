@@ -1,0 +1,32 @@
+name: SkyNest M-Pesa App Checks
+on:
+  push:
+    branches:
+      - feature/skynest-mpesa-cloudflare
+    paths:
+      - 'lib/**'
+      - 'pubspec.yaml'
+      - 'test/**'
+      - '.github/workflows/mpesa-app-check.yml'
+  pull_request:
+    branches:
+      - feature/skynest-build-3409
+      - feature/skynest-mpesa-cloudflare
+    paths:
+      - 'lib/**'
+      - 'pubspec.yaml'
+      - 'test/**'
+      - '.github/workflows/mpesa-app-check.yml'
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.0'
+          cache: true
+      - run: flutter pub get
+      - run: dart analyze lib/main.dart lib/payments/mpesa_service.dart lib/payments/rent_ledger.dart
+      - run: flutter test
