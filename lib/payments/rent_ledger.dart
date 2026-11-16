@@ -34,6 +34,8 @@ class RentInvoiceLedger {
     required this.amountDueKes,
     this.dueAt,
     this.promisedPaymentAt,
+    this.tenantName,
+    this.houseNo,
     this.payments = const <RentPaymentRecord>[],
   }) : assert(amountDueKes >= 0);
 
@@ -48,6 +50,8 @@ class RentInvoiceLedger {
   /// Optional date the tenant says they expect to make the next instalment.
   /// This is a reminder hint, not proof that payment has been made.
   final DateTime? promisedPaymentAt;
+  final String? tenantName;
+  final String? houseNo;
 
   final List<RentPaymentRecord> payments;
 
