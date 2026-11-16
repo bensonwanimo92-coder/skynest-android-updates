@@ -11,6 +11,7 @@ import 'settings/sound_settings.dart';
 import 'services/sound_service.dart';
 import 'services/voice_service.dart';
 import 'payments/mpesa_service.dart';
+import 'payments/rent_ledger_screen.dart';
 import 'services/notification_service.dart';
 import 'control_centre/notification_centre.dart';
 import 'control_centre/control_centre_screen.dart';
@@ -2716,7 +2717,19 @@ class PaymentsScreen extends StatelessWidget {
   }
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Payment records')),
+    appBar: AppBar(
+      title: const Text('Payment records'),
+      actions: [
+        IconButton(
+          tooltip: 'Open rent ledger',
+          icon: const Icon(Icons.account_balance_wallet_outlined),
+          onPressed: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const RentLedgerScreen()),
+          ),
+        ),
+      ],
+    ),
     body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance.collection('payments').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser!.uid).snapshots(),
       builder: (context, s) {
