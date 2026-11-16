@@ -1,5 +1,17 @@
 # SkyNest Next Complete — Master Implementation Checklist
 
+## Live progress — 16 November 2026
+
+- [x] Dedicated integration branch established: `integration/skynest-next-complete`.
+- [x] Master checklist committed to this branch.
+- [x] Dashboard horizontal PageView/3D carousel replaced in the working branch with a vertically stacked ListView of photo-background tiles, grey-toned dark overlay, restrained borders and the existing preview interaction.
+- [ ] Dashboard change awaiting CI/build validation and visual review; it is not yet marked tested or verified.
+- [ ] Draft PR #20 opened against `integration/skynest-complete-release-candidate`: https://github.com/bensonwanimo92-coder/skynest-android-updates/pull/20
+- [ ] Role/onboarding integration remains outstanding. Current registration still requires invitation codes for both tenants and caretakers; target behaviour is tenant registration without a mandatory invitation code while caretaker invitation remains mandatory. A secure tenant-to-landlord discovery/approval path must be designed before changing Firestore rules.
+- [ ] Caretaker permission review remains outstanding. Existing UI exposes tenant approvals to caretakers; authorization must be checked against the intended role policy in both app code and Firestore rules.
+- [ ] Existing tenant M-Pesa STK path and manual payment-submission path are present, but full tenant/caretaker/landlord reconciliation, cash handover, persistent invoice history and real callback verification remain unproven.
+- [ ] Do not create a release APK from this checkpoint; it is an incremental dashboard foundation, not the complete approved release.
+
 Working branch: integration/skynest-next-complete
 Baseline: integration/skynest-complete-release-candidate
 Known-good installed reference: build 4415
