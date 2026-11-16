@@ -2,6 +2,9 @@
 
 ## Live progress — 16 November 2026
 
+- [x] Rent-ledger status parsing now uses an explicit allowlist of confirmed receipt states; labels such as `unpaid`, `pending verification`, `failed` and unknown values cannot be counted as received. Added regression tests. Flutter analysis/tests passed on final source commit `ebb7211e8dde5ec0ccd1e4c9d5c1b400462c6071` (run `43879558314`).
+- [x] Payment-record reads are now role-scoped: landlords can query records linked to their landlord UID, and tenants can read only records carrying their own tenant UID. Emulator tests cover own payment, another tenant's payment, legacy records without tenant links, and landlord query scope. Firestore emulator suite passed on final source commit (run `43879558227`). Legacy payment records without a `tenantId` remain landlord-only until safely backfilled.
+
 - [x] Caretaker tenant-approval shortcut removed from the caretaker dashboard; collection confirmation now checks `can_collect` at the Firestore rules layer, not only in app code. Commits: `120bfef888c39c51a067da7d5553f559b1018ba4`, `daadec809aa253e258d0769ba123fdc346b14833`. Not yet emulator-tested.
 
 - [x] Caretaker/non-landlord tenant approval path blocked in the app UI; approval writes now require the active linked landlord in Firestore rules. Source commits: `74d88846049bdbe66c4f9745ff09b9356a24e66a` (app) and `530318c0ea4fd4ec041c47797a51efcee004cf3e` (rules). Not yet emulator-tested or end-to-end verified.
