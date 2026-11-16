@@ -145,7 +145,10 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('M-Pesa receiving account')),
+      appBar: AppBar(
+        title: const Text('M-Pesa receiving account'),
+        actions: [IconButton(tooltip: 'Refresh verification status', onPressed: _loading ? null : () { setState(() => _loading = true); _load(); }, icon: const Icon(Icons.refresh))],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -216,9 +219,9 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
                   ]),
                 ),
                 const Divider(height: 36),
-                Text('Verify ownership', style: Theme.of(context).textTheme.titleMedium),
+                Text('Verify merchant connection', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 6),
-                const Text('A KES 1 STK Push confirms that the saved merchant credentials can receive payments. The prompt goes to the landlord’s own M-Pesa phone.'),
+                const Text('A KES 1 STK Push checks that the saved Daraja credentials can initiate a payment to this merchant account. The prompt goes to the landlord’s own M-Pesa phone. This confirms the API route, not legal ownership of the merchant account.'),
                 const SizedBox(height: 12),
                 TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Landlord verification phone', hintText: '07XXXXXXXX or 2547XXXXXXXX', border: OutlineInputBorder())),
                 const SizedBox(height: 12),
