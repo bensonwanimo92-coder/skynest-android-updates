@@ -41,8 +41,17 @@ class _MpesaRentPaymentScreenState extends State<MpesaRentPaymentScreen> {
       }
       String? houseId = profile['rentHouseId']?.toString();
       if (houseId == null || houseId.isEmpty) houseId = profile['houseId']?.toString();
-      // Caretakers must have an explicit rent-house assignment; never guess
-      // that the first managed property is the house where they personally rent.
+      if ((houseId == null || houseId.isEmpty) && role == 'caretaker') {
+        final rentedHomes = await FirebaseFirestore.instance.collection('houses')
+          .where('landlordId', isEqualTo: profile['landlordId'])
+          .where('assignedTenantId', isEqualTo: uid)
+          .limit(2).get();
+        if (rentedHomes.docs.length == 1) {
+          houseId = rentedHomes.docs.single.id;
+        } else if (rentedHomes.docs.length > 1) {
+          throw StateError('Your landlord must set one rent house on your caretaker profile because more than one home is assigned to you.');
+        }
+      }
       if (houseId == null || houseId.isEmpty) {
         throw StateError(role == 'caretaker'
           ? 'Your landlord must assign the house you rent to your caretaker profile before you can submit rent.'
