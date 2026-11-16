@@ -6,6 +6,7 @@ on:
       - main
       - integration/roles-on-current-main
       - integration/skynest-complete-release-candidate
+      - integration/skynest-next-complete
       - feature/skynest-control-centre
       - feature/skynest-build-3409
       - feature/skynest-mpesa-cloudflare
