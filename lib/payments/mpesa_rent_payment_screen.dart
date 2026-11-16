@@ -41,10 +41,8 @@ class _MpesaRentPaymentScreenState extends State<MpesaRentPaymentScreen> {
       }
       String? houseId = profile['rentHouseId']?.toString();
       if (houseId == null || houseId.isEmpty) houseId = profile['houseId']?.toString();
-      if ((houseId == null || houseId.isEmpty) && role == 'caretaker') {
-        final ids = (profile['propertyIds'] as List?)?.whereType<String>().toList() ?? <String>[];
-        if (ids.isNotEmpty) houseId = ids.first;
-      }
+      // Caretakers must have an explicit rent-house assignment; never guess
+      // that the first managed property is the house where they personally rent.
       if (houseId == null || houseId.isEmpty) {
         throw StateError(role == 'caretaker'
           ? 'Your landlord must assign the house you rent to your caretaker profile before you can submit rent.'
@@ -56,11 +54,10 @@ class _MpesaRentPaymentScreenState extends State<MpesaRentPaymentScreen> {
       if (role == 'tenant' && house['assignedTenantId'] != uid) {
         throw StateError('Your tenant-to-house assignment could not be verified.');
       }
-      if (role == 'caretaker') {
-        final assigned = (house['caretakerIds'] as List?)?.whereType<String>().contains(uid) ?? false;
-        final propertyIds = (profile['propertyIds'] as List?)?.whereType<String>().contains(houseId) ?? false;
-        if (!assigned && !propertyIds) throw StateError('This house is not assigned to your caretaker account.');
+      if (role == 'caretaker' && house['assignedTenantId'] != uid) {
+        throw StateError('Your landlord must link your caretaker profile to the house you personally rent before you can submit rent.');
       }
+
       final recipient = await SkyNestMpesaService.getPaymentRecipient(houseId: houseId);
       if (!mounted) return;
       setState(() {
