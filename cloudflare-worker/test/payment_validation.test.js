@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateSuccessfulCallback, validateTenantHouseLink } from "../src/payment_validation.js";
+import { validateSuccessfulCallback, validateTenantHouseLink, validateMerchantAccountInput } from "../src/payment_validation.js";
 
 const pending = { amountKes: 25000, phone: "254712345678" };
 const metadata = { MpesaReceiptNumber: "QWE1234567", Amount: 25000, PhoneNumber: 254712345678 };
@@ -58,4 +58,57 @@ test("rejects a mismatched unit number", () => {
 test("rejects tenants without an active house assignment", () => {
   assert.throws(() => validateTenantHouseLink({ ...tenantProfile, houseId: "" },
     assignedHouse, "tenant-1"), /complete active house assignment/);
+});
+
+
+test("accepts a valid PayBill merchant configuration", () => {
+  assert.deepEqual(validateMerchantAccountInput({
+    accountType: "paybill", registeredBusinessName: "Example Properties",
+    businessShortCode: "123456", tillNumber: "",
+    consumerKey: "consumer-key-123", consumerSecret: "consumer-secret-123",
+    passkey: "passkey-123456"
+  }), {
+    accountType: "paybill", businessName: "Example Properties",
+    businessShortCode: "123456", tillNumber: "",
+    consumerKey: "consumer-key-123", consumerSecret: "consumer-secret-123",
+    passkey: "passkey-123456"
+  });
+});
+test("accepts a valid Buy Goods Till configuration", () => {
+  const result = validateMerchantAccountInput({
+    accountType: "till", registeredBusinessName: "Example Properties",
+    businessShortCode: "123456", tillNumber: "9876543210",
+    consumerKey: "consumer-key-123", consumerSecret: "consumer-secret-123",
+    passkey: "passkey-123456"
+  });
+  assert.equal(result.tillNumber, "9876543210");
+});
+test("rejects non-digit or incorrectly sized merchant shortcodes", () => {
+  const base = {
+    accountType: "paybill", registeredBusinessName: "Example Properties",
+    businessShortCode: "123456", tillNumber: "",
+    consumerKey: "consumer-key-123", consumerSecret: "consumer-secret-123",
+    passkey: "passkey-123456"
+  };
+  for (const businessShortCode of ["1234", "12345678", "12A456", "12345x"]) {
+    assert.throws(() => validateMerchantAccountInput({ ...base, businessShortCode }), /shortcode/);
+  }
+});
+test("rejects invalid Till numbers and a Till number on PayBill", () => {
+  const base = {
+    accountType: "till", registeredBusinessName: "Example Properties",
+    businessShortCode: "123456", tillNumber: "9876543210",
+    consumerKey: "consumer-key-123", consumerSecret: "consumer-secret-123",
+    passkey: "passkey-123456"
+  };
+  for (const tillNumber of ["1234", "123456789012345678901", "12345X"]) {
+    assert.throws(() => validateMerchantAccountInput({ ...base, tillNumber }), /Till number/);
+  }
+  assert.throws(() => validateMerchantAccountInput({ ...base, accountType: "paybill" }), /not used for PayBill/);
+});
+test("rejects missing merchant credentials", () => {
+  assert.throws(() => validateMerchantAccountInput({
+    accountType: "paybill", registeredBusinessName: "Example Properties",
+    businessShortCode: "123456", consumerKey: "", consumerSecret: "", passkey: ""
+  }), /Consumer Key/);
 });
