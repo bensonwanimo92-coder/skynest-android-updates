@@ -129,6 +129,7 @@ Last pre-integration APK candidate: version 1.1.3+5447, run 43862420394, artifac
 - [ ] Tests for calculations, allocation, reversals, duplicate callbacks and access restrictions.
 
 ## 7. M-Pesa
+- [x] Corrected the landlord PayBill/Till setup validator so valid digit-only business shortcodes and Till numbers are accepted; added pure validation coverage for valid PayBill/Till details, malformed lengths/characters, conflicting account fields and missing credentials. Cloudflare Worker checks passed on commit `7a8b9cc93062642573c18c92f6d62cdf2bc367ae` (run `43900860808`). This verifies input validation only; merchant credential storage, Daraja sandbox verification and live STK remain separate release gates.
 - [ ] Landlord PayBill/Till setup and secure credential handling.
 - [ ] Merchant verification and environment binding.
 - [ ] Authenticated tenant STK request resolved to the correct landlord.
