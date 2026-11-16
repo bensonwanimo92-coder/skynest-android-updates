@@ -1,1 +1,9 @@
-{"name":"skynest-mpesa-worker","private":true,"type":"module","scripts":{"check":"node --check src/index.js"}}
+{
+  "name": "skynest-mpesa-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/index.js && node --check src/payment_validation.js",
+    "test": "node --test"
+  }
+}
