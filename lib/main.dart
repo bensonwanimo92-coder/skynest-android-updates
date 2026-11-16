@@ -7272,20 +7272,41 @@ class CaretakerPaymentsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     return Scaffold(appBar: AppBar(title: const Text('Rent confirmations')),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('paymentConfirmations').where('caretakerId', isEqualTo: uid).snapshots(),
-        builder: (context, snap) {
-          if (snap.hasError) return errorView('Assigned payment records could not load.');
-          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          if (snap.data!.docs.isEmpty) return const EmptyView('No rent confirmations assigned to you. The landlord controls financial totals.');
-          return ListView(children: snap.data!.docs.map((doc) {
-            final d = doc.data();
-            return ListTile(title: Text(d['tenantName']?.toString() ?? 'Tenant'),
-              subtitle: Text('House ' + (d['houseNo'] ?? '').toString() + ' • ' + (d['status'] ?? 'pending').toString()),
-              trailing: TextButton(onPressed: d['status'] == 'pending' ? () => confirm(context, doc.id) : null, child: const Text('CONFIRM')));
-          }).toList());
-        },
-      ),
+      body: uid == null
+        ? const EmptyView('Sign in to view rent confirmations.')
+        : FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
+            builder: (context, profile) {
+              if (profile.hasError) return errorView('Caretaker access details could not load.');
+              if (!profile.hasData) return const Center(child: CircularProgressIndicator());
+              final data = profile.data?.data() ?? <String, dynamic>{};
+              final landlordId = data['landlordId']?.toString();
+              final houseIds = (data['propertyIds'] as List?)?.whereType<String>().toList() ?? <String>[];
+              if (landlordId == null || houseIds.isEmpty) {
+                return const EmptyView('No assigned houses were found for this caretaker account.');
+              }
+              if (houseIds.length > 30) {
+                return const EmptyView('This account has more than 30 assigned houses. The confirmation list needs paginated house filtering; contact support rather than using an incomplete list.');
+              }
+              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance.collection('paymentConfirmations')
+                    .where('caretakerId', isEqualTo: uid)
+                    .where('landlordId', isEqualTo: landlordId)
+                    .where('houseId', whereIn: houseIds).snapshots(),
+                builder: (context, snap) {
+                  if (snap.hasError) return errorView('Assigned payment records could not load.');
+                  if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                  if (snap.data!.docs.isEmpty) return const EmptyView('No rent confirmations assigned to you. The landlord controls financial totals.');
+                  return ListView(children: snap.data!.docs.map((doc) {
+                    final d = doc.data();
+                    return ListTile(title: Text(d['tenantName']?.toString() ?? 'Tenant'),
+                      subtitle: Text('House ' + (d['houseNo'] ?? '').toString() + ' • ' + (d['status'] ?? 'pending').toString()),
+                      trailing: TextButton(onPressed: d['status'] == 'pending' ? () => confirm(context, doc.id) : null, child: const Text('CONFIRM')));
+                  }).toList());
+                },
+              );
+            },
+          ),
     );
   }
 }
