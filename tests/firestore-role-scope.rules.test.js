@@ -51,6 +51,14 @@ async function seed() {
       tenantName: "Other tenant", houseNo: "B1",
       status: "pending", createdAt: new Date()
     });
+    await setDoc(doc(db, "houseRequests", "request-assigned"), {
+      tenantId: "tenant-1", landlordId: "landlord-1",
+      houseId: "house-assigned", houseNo: "A1", status: "pending"
+    });
+    await setDoc(doc(db, "houseRequests", "request-other"), {
+      tenantId: "another-tenant", landlordId: "landlord-1",
+      houseId: "house-other", houseNo: "B1", status: "pending"
+    });
   });
 }
 
@@ -176,5 +184,34 @@ test("tenant payment submissions must match the tenant's assigned house and land
   }));
   await assertFails(setDoc(doc(tenant, "paymentSubmissions", "wrong-landlord"), {
     ...valid, landlordId: "another-landlord"
+  }));
+});
+
+
+test("caretaker house requests are restricted to assigned houses and cannot approve them", async () => {
+  await seed();
+  const db = env.authenticatedContext("caretaker-1").firestore();
+  const assigned = query(
+    collection(db, "houseRequests"),
+    where("landlordId", "==", "landlord-1"),
+    where("houseId", "==", "house-assigned")
+  );
+  const results = await assertSucceeds(getDocs(assigned));
+  assert.equal(results.size, 1);
+  await assertFails(getDoc(doc(db, "houseRequests", "request-other")));
+  await assertFails(updateDoc(doc(db, "houseRequests", "request-assigned"), {
+    status: "approved", reviewedBy: "caretaker-1", reviewedAt: serverTimestamp()
+  }));
+});
+
+test("only landlord can change a tenant's house assignment", async () => {
+  await seed();
+  const caretaker = env.authenticatedContext("caretaker-1").firestore();
+  await assertFails(updateDoc(doc(caretaker, "users", "tenant-1"), {
+    houseId: "house-other", houseNo: "B1"
+  }));
+  const landlord = env.authenticatedContext("landlord-1").firestore();
+  await assertSucceeds(updateDoc(doc(landlord, "users", "tenant-1"), {
+    houseId: "house-other", houseNo: "B1"
   }));
 });
