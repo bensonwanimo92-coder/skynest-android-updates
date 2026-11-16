@@ -233,6 +233,39 @@ test("tenant can read only payment records linked to their own UID", async () =>
   await assertFails(getDoc(doc(tenant, "payments", "payment-without-tenant-link")));
 });
 
+test("tenant dashboard invoice and payment queries are restricted to the signed-in tenant", async () => {
+  await seed();
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "rentInvoices", "tenant-own-invoice-query"), {
+      landlordId: "landlord-1", tenantId: "tenant-1", houseId: "house-assigned",
+      houseNo: "A1", period: "2026-11", amountDueKes: 15000,
+      rentAtIssue: 15000, createdBy: "landlord-1", status: "issued",
+      createdAt: new Date()
+    });
+    await setDoc(doc(db, "rentInvoices", "other-tenant-invoice-query"), {
+      landlordId: "landlord-1", tenantId: "another-tenant", houseId: "house-other",
+      houseNo: "B1", period: "2026-11", amountDueKes: 20000,
+      rentAtIssue: 20000, createdBy: "landlord-1", status: "issued",
+      createdAt: new Date()
+    });
+  });
+  const tenant = env.authenticatedContext("tenant-1").firestore();
+  const ownInvoices = query(
+    collection(tenant, "rentInvoices"),
+    where("tenantId", "==", "tenant-1")
+  );
+  const ownInvoiceResults = await assertSucceeds(getDocs(ownInvoices));
+  assert.equal(ownInvoiceResults.size, 1);
+
+  const ownPayments = query(
+    collection(tenant, "payments"),
+    where("tenantId", "==", "tenant-1")
+  );
+  const ownPaymentResults = await assertSucceeds(getDocs(ownPayments));
+  assert.equal(ownPaymentResults.size, 1);
+});
+
 test("landlord payment queries remain scoped to their own landlord ID", async () => {
   await seed();
   const landlord = env.authenticatedContext("landlord-1").firestore();
