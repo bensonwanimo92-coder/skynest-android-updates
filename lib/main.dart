@@ -1356,7 +1356,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } else if (userRole == 'caretaker') {
       items.addAll([
         _MenuItem('Assigned houses', Icons.home_work_outlined, Colors.orange, const CaretakerHousesScreen()),
-        _MenuItem('Tenant approvals', Icons.how_to_reg_outlined, Colors.green, const TenantApprovalsScreen()),
         _MenuItem('Rent confirmations', Icons.fact_check_outlined, Colors.blue, const CaretakerPaymentsScreen()),
         _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
