@@ -181,18 +181,36 @@ service cloud.firestore {
       allow delete: if activeUser() && resource.data.createdBy == request.auth.uid;
     }
 
+    function caretakerAssignedToHouse(houseId, landlordId) {
+      let housePath = /databases/$(database)/documents/houses/$(houseId);
+      return exists(housePath) &&
+        get(housePath).data.landlordId == landlordId &&
+        get(housePath).data.createdBy == landlordId &&
+        get(housePath).data.caretakerIds is list &&
+        request.auth.uid in get(housePath).data.caretakerIds;
+    }
+
     match /tenants/{recordId} {
       allow create: if activeUser() && (
         (myRole() == 'landlord' && request.resource.data.createdBy == request.auth.uid &&
           request.resource.data.landlordId == request.auth.uid) ||
-        (myRole() == 'caretaker' && request.resource.data.createdBy == profile(request.auth.uid).landlordId &&
-          request.resource.data.landlordId == profile(request.auth.uid).landlordId)
+        (myRole() == 'caretaker' &&
+          request.resource.data.createdBy == request.auth.uid &&
+          request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
+          request.resource.data.houseId is string &&
+          caretakerAssignedToHouse(request.resource.data.houseId, profile(request.auth.uid).landlordId))
       );
       allow read: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
-        (resource.data.landlordId != null && landlordFor(resource.data.landlordId))
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
+        (myRole() == 'caretaker' &&
+          resource.data.landlordId == profile(request.auth.uid).landlordId &&
+          resource.data.houseId is string &&
+          caretakerAssignedToHouse(resource.data.houseId, profile(request.auth.uid).landlordId)) ||
+        (myRole() == 'tenant' && resource.data.tenantId == request.auth.uid)
       );
-      allow update, delete: if signedIn() && resource.data.createdBy == request.auth.uid;
+      allow update, delete: if activeUser() &&
+        myRole() == 'landlord' && resource.data.createdBy == request.auth.uid;
     }
 
     match /payments/{recordId} {
