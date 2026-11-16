@@ -6,6 +6,8 @@ const { getMessaging } = require("firebase-admin/messaging");
 
 initializeApp();
 
+const { rentPeriodAt, buildRentInvoice } = require("./rent_invoice_scheduler");
+
 exports.notifyGroupMessage = onDocumentCreated(
   "groups/{groupId}/messages/{messageId}",
   async (event) => {
@@ -536,4 +538,63 @@ exports.runScheduledAutomations = onSchedule({
       failedDeviceCount: failedDeviceIds.length + terminalFailureCount,
     });
   }
+});
+
+
+// Create the month's immutable rent snapshots automatically on the first day
+// in Nairobi time. Deterministic IDs and transaction.create make retries safe.
+exports.generateMonthlyRentInvoices = onSchedule({
+  schedule: "5 0 1 * *",
+  timeZone: "Africa/Nairobi",
+  region: "africa-south1",
+  maxInstances: 1,
+}, async () => {
+  const db = getFirestore();
+  const period = rentPeriodAt(new Date(), "Africa/Nairobi");
+  const houses = await db.collection("houses")
+    .where("assignedTenantId", "!=", null)
+    .get();
+
+  let created = 0;
+  let skipped = 0;
+  for (const houseDoc of houses.docs) {
+    const house = { ...houseDoc.data(), id: houseDoc.id };
+    const tenantId = String(house.assignedTenantId || "");
+    if (!tenantId) {
+      skipped += 1;
+      continue;
+    }
+
+    const tenantSnapshot = await db.collection("users").doc(tenantId).get();
+    const invoice = buildRentInvoice({
+      tenantId,
+      tenant: tenantSnapshot.exists ? tenantSnapshot.data() : null,
+      house,
+      period,
+    });
+    if (!invoice) {
+      skipped += 1;
+      continue;
+    }
+
+    const invoiceRef = db.collection("rentInvoices").doc(invoice.id);
+    const wasCreated = await db.runTransaction(async (transaction) => {
+      const existing = await transaction.get(invoiceRef);
+      if (existing.exists) return false;
+      transaction.create(invoiceRef, {
+        ...invoice.data,
+        createdAt: FieldValue.serverTimestamp(),
+        generatedBy: "monthly_scheduler",
+      });
+      return true;
+    });
+    if (wasCreated) created += 1;
+    else skipped += 1;
+  }
+
+  console.info("Monthly rent invoice generation completed", {
+    period,
+    created,
+    skipped,
+  });
 });
