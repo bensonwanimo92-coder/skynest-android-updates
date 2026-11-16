@@ -823,14 +823,10 @@ service cloud.firestore {
             get(housePath).data.assignedTenantId == request.auth.uid &&
             houseId == payer.houseId) ||
           (myRole() == 'caretaker' &&
-            (
-              get(housePath).data.caretakerIds.hasAny([request.auth.uid]) ||
-              (payer.keys().hasAny(['propertyIds']) && payer.propertyIds.hasAny([houseId]))
-            ) &&
+            get(housePath).data.assignedTenantId == request.auth.uid &&
             (
               (payer.keys().hasAny(['rentHouseId']) && payer.rentHouseId == houseId) ||
-              (payer.keys().hasAny(['houseId']) && payer.houseId == houseId) ||
-              (payer.keys().hasAny(['propertyIds']) && payer.propertyIds.hasAny([houseId]))
+              (payer.keys().hasAny(['houseId']) && payer.houseId == houseId)
             )
           )
         );
@@ -841,6 +837,8 @@ service cloud.firestore {
         request.resource.data.tenantId == request.auth.uid &&
         request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
         request.resource.data.houseId is string &&
+        request.resource.data.houseNo is string &&
+        request.resource.data.houseNo == get(/databases/$(database)/documents/houses/$(request.resource.data.houseId)).data.houseNo &&
         payerOwnsAssignedHouse(request.resource.data.houseId, profile(request.auth.uid).landlordId) &&
         request.resource.data.amount is number && request.resource.data.amount > 0 &&
         request.resource.data.method in ['MPESA', 'CASH', 'BANK', 'OTHER'] &&
