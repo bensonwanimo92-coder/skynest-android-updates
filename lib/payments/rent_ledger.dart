@@ -4,7 +4,7 @@
 /// transactions never reduce the tenant's outstanding balance.
 enum RentTransactionState { pending, confirmed, reversed }
 
-enum RentInvoiceState { unpaid, partiallyPaid, paid, overpaid }
+enum RentInvoiceState { unpaid, partiallyPaid, paid, overpaid, unknown }
 
 /// Maps persisted payment status labels conservatively. Unknown or pending
 /// states must never reduce rent balances; only explicit receipt states count.
@@ -56,6 +56,7 @@ class RentInvoiceLedger {
     required this.houseId,
     required this.period,
     required this.amountDueKes,
+    this.dueAmountKnown = true,
     this.dueAt,
     this.promisedPaymentAt,
     this.tenantName,
@@ -69,6 +70,7 @@ class RentInvoiceLedger {
   final String houseId;
   final String period;
   final int amountDueKes;
+  final bool dueAmountKnown;
   final DateTime? dueAt;
 
   /// Optional date the tenant says they expect to make the next instalment.
@@ -84,22 +86,26 @@ class RentInvoiceLedger {
       .fold<int>(0, (total, payment) => total + payment.amountKes);
 
   int get balanceKes {
+    if (!dueAmountKnown) return 0;
     final remaining = amountDueKes - totalConfirmedKes;
     return remaining > 0 ? remaining : 0;
   }
 
   int get creditKes {
+    if (!dueAmountKnown) return 0;
     final credit = totalConfirmedKes - amountDueKes;
     return credit > 0 ? credit : 0;
   }
 
   double get paidFraction {
+    if (!dueAmountKnown) return 0;
     if (amountDueKes == 0) return 1;
     final fraction = totalConfirmedKes / amountDueKes;
     return fraction.clamp(0.0, 1.0);
   }
 
   RentInvoiceState get state {
+    if (!dueAmountKnown) return RentInvoiceState.unknown;
     if (creditKes > 0) return RentInvoiceState.overpaid;
     if (balanceKes == 0) return RentInvoiceState.paid;
     if (totalConfirmedKes > 0) return RentInvoiceState.partiallyPaid;
