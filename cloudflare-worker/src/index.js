@@ -1,4 +1,4 @@
-import { validateSuccessfulCallback, validateTenantHouseLink } from "./payment_validation.js";
+import { validateSuccessfulCallback, validateTenantHouseLink, validateMerchantAccountInput } from "./payment_validation.js";
 
 // SkyNest M-Pesa Cloudflare Worker.
 // Sandbox-first per-landlord Daraja STK Push. Do not enable production until Safaricom onboarding and end-to-end tests pass.
@@ -207,21 +207,14 @@ async function saveLandlordPaymentAccount(request, env) {
   }
   let input;
   try { input = await request.json(); } catch { throw new HttpError("Request body must be valid JSON."); }
-  const type = String(input.accountType || "").toLowerCase();
-  const businessName = String(input.registeredBusinessName || "").trim();
-  const shortcode = String(input.businessShortCode || "").trim();
-  const tillNumber = String(input.tillNumber || "").trim();
-  const consumerKey = String(input.consumerKey || "").trim();
-  const consumerSecret = String(input.consumerSecret || "").trim();
-  const passkey = String(input.passkey || "").trim();
-  if (!["paybill", "till"].includes(type)) throw new HttpError("Choose PayBill or Buy Goods Till.");
-  if (!businessName || businessName.length > 120) throw new HttpError("Enter the registered business name.");
-  if (!/^\\d{5,7}$/.test(shortcode)) throw new HttpError("Enter a valid 5–7 digit Daraja business shortcode.");
-  if (type === "till" && !/^\\d{5,20}$/.test(tillNumber)) throw new HttpError("Enter a valid Buy Goods Till number.");
-  if (type === "paybill" && tillNumber) throw new HttpError("A Till number is not used for PayBill.");
-  if (consumerKey.length < 8 || consumerSecret.length < 8 || passkey.length < 8) {
-    throw new HttpError("Enter the Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Passkey.");
+  let merchantInput;
+  try {
+    merchantInput = validateMerchantAccountInput(input);
+  } catch (error) {
+    throw new HttpError(error.message || "Merchant account details are invalid.");
   }
+  const { accountType: type, businessName, businessShortCode: shortcode,
+    tillNumber, consumerKey, consumerSecret, passkey } = merchantInput;
   const envelope = await encryptLandlordConfig(env, {
     accountType: type, businessName, businessShortCode: shortcode,
     tillNumber: type === "till" ? tillNumber : "",
