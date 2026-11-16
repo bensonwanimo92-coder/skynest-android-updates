@@ -3082,8 +3082,11 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
         houseId = matches.docs.single.id;
       }
       final payment = await FirebaseFirestore.instance.collection('payments').add({
-        'tenantName': data['tenantName'] ?? 'Tenant', 'houseNo': data['houseNo'] ?? '',
-        'houseId': houseId, 'amount': data['amount'], 'method': data['method'] ?? 'Manual',
+        'tenantName': data['tenantName'] ?? 'Payer', 'payerRole': data['payerRole'] ?? 'tenant',
+        'houseNo': data['houseNo'] ?? '', 'houseId': houseId,
+        'amount': data['amount'], 'method': data['method'] ?? 'Manual',
+        if (data['method'] == 'MPESA') 'transactionCode': data['transactionCode'] ?? '',
+        if (data['method'] == 'MPESA') 'payerPhone': data['payerPhone'] ?? '',
         'status': 'Received (landlord verified)', 'createdAt': FieldValue.serverTimestamp(),
         'createdBy': uid, 'landlordId': uid, 'tenantId': data['tenantId'],
       });
@@ -3141,11 +3144,14 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
         }
         final paymentRef = FirebaseFirestore.instance.collection('payments').doc();
         batch.set(paymentRef, {
-          'tenantName': data['tenantName'] ?? 'Tenant',
+          'tenantName': data['tenantName'] ?? 'Payer',
+          'payerRole': data['payerRole'] ?? 'tenant',
           'houseNo': data['houseNo'] ?? '',
           'houseId': houseId,
           'amount': data['amount'] ?? 0,
           'method': data['method'] ?? 'Manual',
+          if (data['method'] == 'MPESA') 'transactionCode': data['transactionCode'] ?? '',
+          if (data['method'] == 'MPESA') 'payerPhone': data['payerPhone'] ?? '',
           'status': 'Received (landlord verified)',
           'createdAt': FieldValue.serverTimestamp(),
           'createdBy': ownerId,
