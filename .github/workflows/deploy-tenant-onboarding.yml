@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm_deploy:
-        description: "Confirm deployment of requestTenantAccess to the configured Firebase project"
+        description: "Confirm deployment of both tenant email-onboarding callables to the configured Firebase project"
         required: true
         type: boolean
         default: false
@@ -51,9 +51,9 @@ jobs:
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
 
-      - name: Deploy tenant onboarding callable only
+      - name: Deploy tenant onboarding and role-switch callables
         env:
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
         run: |
           set -euo pipefail
-          firebase deploy --only functions:requestTenantAccess --project "$FIREBASE_PROJECT_ID" --non-interactive
+          firebase deploy --only functions:requestTenantAccess,functions:changeAccountRole --project "$FIREBASE_PROJECT_ID" --non-interactive
