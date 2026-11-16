@@ -2,6 +2,8 @@
 
 ## Live progress — 16 November 2026
 
+- [x] Caretaker tenant-approval shortcut removed from the caretaker dashboard; collection confirmation now checks `can_collect` at the Firestore rules layer, not only in app code. Commits: `120bfef888c39c51a067da7d5553f559b1018ba4`, `daadec809aa253e258d0769ba123fdc346b14833`. Not yet emulator-tested.
+
 - [x] Caretaker/non-landlord tenant approval path blocked in the app UI; approval writes now require the active linked landlord in Firestore rules. Source commits: `74d88846049bdbe66c4f9745ff09b9356a24e66a` (app) and `530318c0ea4fd4ec041c47797a51efcee004cf3e` (rules). Not yet emulator-tested or end-to-end verified.
 
 - [x] Dedicated integration branch established: `integration/skynest-next-complete`.
@@ -10,7 +12,8 @@
 - [ ] Dashboard change awaiting CI/build validation and visual review; it is not yet marked tested or verified.
 - [ ] Draft PR #20 opened against `integration/skynest-complete-release-candidate`: https://github.com/bensonwanimo92-coder/skynest-android-updates/pull/20
 - [ ] Tenant onboarding integration remains outstanding. Current registration still requires invitation codes for both tenants and caretakers. Caretaker invitation must remain mandatory. Tenant signup can only safely remove the invitation requirement once a privacy-preserving landlord/property discovery and approval route is implemented; an unlinked pending tenant must not be able to nominate arbitrary landlord/property IDs or read another account's data.
-- [x] Approval-authority hardening implemented in the working branch: the approvals screen now blocks non-landlords, the approval action checks for an active landlord, and Firestore tenant-approval writes require the linked landlord UID. Automated/emulator tests and full role-flow verification are still pending.
+- [x] Approval-authority hardening implemented in the working branch: the approvals screen blocks non-landlords, the approval action checks for an active landlord, and Firestore tenant-approval writes require the linked landlord UID. Caretaker navigation no longer exposes tenant approvals. Automated/emulator tests and full role-flow verification are still pending.
+- [x] Caretaker collection permission is now enforced in Firestore as well as the UI: only an active caretaker with `can_collect`, assigned as the record's caretaker and linked to that landlord, can transition a pending confirmation to `confirmed_by_caretaker`. App commit `120bfef888c39c51a067da7d5553f559b1018ba4`; rules commit `daadec809aa253e258d0769ba123fdc346b14833`. Emulator and end-to-end tests remain outstanding.
 - [ ] Existing tenant M-Pesa STK path and manual payment-submission path are present, but full tenant/caretaker/landlord reconciliation, cash handover, persistent invoice history and real callback verification remain unproven.
 - [ ] Do not create a release APK from this checkpoint; it is an incremental dashboard foundation, not the complete approved release.
 
