@@ -613,7 +613,9 @@ class _LoginScreenState extends State<LoginScreen> {
           }
           transaction.set(profile, {'displayName': displayName.text.trim(), 'email': email.text.trim(),
             'role': selectedRole, 'status': 'pending', 'landlordId': invite['landlordId'],
-            'propertyIds': invite['propertyIds'] ?? [], 'invitationCode': code,
+            'propertyIds': invite['propertyIds'] ?? [],
+            if (selectedRole == 'caretaker') 'caretakerPermission': invite['permission'] ?? 'view_only',
+            'invitationCode': code,
             'createdAt': FieldValue.serverTimestamp()});
           transaction.update(inviteRef, {'status': 'used', 'usedBy': newUser!.uid,
             'usedAt': FieldValue.serverTimestamp()});
@@ -5130,23 +5132,26 @@ class InvitationsScreen extends StatefulWidget {
 }
 class _InvitationsScreenState extends State<InvitationsScreen> {
   String role = 'tenant';
+  String caretakerPermission = 'view_only';
+  final Set<String> selectedPropertyIds = <String>{};
   bool saving = false;
   String? latestCode;
   Future<void> createInvitation() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
+    if (role == 'caretaker' && selectedPropertyIds.isEmpty) {
+      snack(context, 'Select at least one property for this caretaker.');
+      return;
+    }
     setState(() => saving = true);
     try {
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       final random = math.Random.secure();
       final code = List.generate(8, (_) => chars[random.nextInt(chars.length)]).join();
-      final propertyIds = <String>[];
-      if (role == 'caretaker') {
-        final houses = await FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: uid).get();
-        propertyIds.addAll(houses.docs.map((doc) => doc.id));
-      }
+      final propertyIds = role == 'caretaker' ? selectedPropertyIds.toList() : <String>[];
       await FirebaseFirestore.instance.collection('invitations').doc(code).set({
         'role': role, 'landlordId': uid, 'createdBy': uid, 'propertyIds': propertyIds,
+        'permission': role == 'caretaker' ? caretakerPermission : null,
         'status': 'open', 'createdAt': FieldValue.serverTimestamp(),
         'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(hours: 24))),
       });
@@ -5164,7 +5169,42 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       const SizedBox(height: 18),
       DropdownButtonFormField<String>(value: role, decoration: const InputDecoration(labelText: 'Invite role'),
         items: const [DropdownMenuItem(value: 'tenant', child: Text('Tenant')), DropdownMenuItem(value: 'caretaker', child: Text('Caretaker'))],
-        onChanged: (v) => setState(() => role = v ?? 'tenant')),
+        onChanged: (v) => setState(() { role = v ?? 'tenant'; selectedPropertyIds.clear(); })),
+      if (role == 'caretaker') ...[
+        const SizedBox(height: 14),
+        const Text('Assign properties', style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text('The caretaker will only see the properties selected here.'),
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: FirebaseAuth.instance.currentUser?.uid).snapshots(),
+          builder: (context, houses) {
+            if (houses.hasError) return errorView('Could not load your properties.');
+            if (!houses.hasData) return const LinearProgressIndicator();
+            if (houses.data!.docs.isEmpty) return const EmptyView('Add a property before inviting a caretaker.');
+            return Column(children: houses.data!.docs.map((house) {
+              final data = house.data();
+              final id = house.id;
+              return CheckboxListTile(
+                value: selectedPropertyIds.contains(id),
+                title: Text('House ' + (data['houseNo']?.toString() ?? '')),
+                subtitle: Text(currency.format((data['rent'] as num?)?.toDouble() ?? 0) + ' monthly rent'),
+                onChanged: saving ? null : (checked) => setState(() {
+                  if (checked == true) { selectedPropertyIds.add(id); } else { selectedPropertyIds.remove(id); }
+                }),
+              );
+            }).toList());
+          },
+        ),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String>(
+          value: caretakerPermission,
+          decoration: const InputDecoration(labelText: 'Caretaker permission'),
+          items: const [
+            DropdownMenuItem(value: 'view_only', child: Text('View Only')),
+            DropdownMenuItem(value: 'can_collect', child: Text('Can Collect')),
+          ],
+          onChanged: saving ? null : (value) => setState(() => caretakerPermission = value ?? 'view_only'),
+        ),
+      ],
       const SizedBox(height: 14),
       FilledButton.icon(onPressed: saving ? null : createInvitation, icon: const Icon(Icons.key),
         label: Text(saving ? 'Creating...' : 'GENERATE INVITATION CODE')),
