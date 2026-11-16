@@ -136,3 +136,20 @@ test("caretaker cannot forge the assigned house number or monthly rent", async (
     houseNo: "B1", rentAmount: 15000
   }));
 });
+
+
+test("landlord payment records must point to a house owned by that landlord", async () => {
+  await seed();
+  const landlord = env.authenticatedContext("landlord-1").firestore();
+  const valid = {
+    createdBy: "landlord-1", landlordId: "landlord-1",
+    houseId: "house-assigned", houseNo: "A1", amount: 15000,
+    status: "Pending verification", method: "CASH"
+  };
+  await assertSucceeds(setDoc(doc(landlord, "payments", "valid-payment"), valid));
+  await assertFails(setDoc(doc(landlord, "payments", "wrong-house"), {
+    ...valid, houseId: "house-not-owned"
+  }));
+  const caretaker = env.authenticatedContext("caretaker-1").firestore();
+  await assertFails(setDoc(doc(caretaker, "payments", "caretaker-payment"), valid));
+});
