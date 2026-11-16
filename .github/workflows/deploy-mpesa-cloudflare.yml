@@ -1,0 +1,68 @@
+name: Validate and deploy SkyNest M-Pesa Cloudflare Worker
+
+on:
+  pull_request:
+    branches:
+      - integration/skynest-next-complete
+    paths:
+      - 'cloudflare-worker/**'
+      - 'lib/payments/mpesa_service.dart'
+      - '.github/workflows/deploy-mpesa-cloudflare.yml'
+  workflow_dispatch:
+    inputs:
+      confirm_deploy:
+        description: "Set true only after approving deployment to the sandbox M-Pesa Worker"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate M-Pesa Worker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out selected release branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate Worker source
+        working-directory: cloudflare-worker
+        run: |
+          npm run check
+          npm test
+
+  deploy:
+    name: Deploy approved Worker
+    needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm_deploy == true }}
+    runs-on: ubuntu-latest
+    environment: mpesa-sandbox-deployment-approval
+    steps:
+      - name: Check out validated release branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Deploy the same Worker implementation used by Android
+        working-directory: cloudflare-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          npx --yes wrangler@4 deploy --config wrangler.toml
