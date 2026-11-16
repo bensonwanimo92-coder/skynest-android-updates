@@ -345,6 +345,7 @@ async function verifyLandlordPaymentAccount(request, env) {
     phone,
     accountReference,
     purpose: "account_verification",
+    accountUpdatedAt: accountMeta.updatedAt || "",
     status: "pending",
     method: "MPESA",
     createdAt: { __firestoreTimestamp: new Date() },
@@ -487,6 +488,12 @@ async function settleCallback(env, body, knownPending = null) {
     const { receipt, paidAmount, paidPhone } = validateSuccessfulCallback(pending, metadata);
     if (pending.purpose === "account_verification") {
       if (pending.landlordId !== pending.tenantId) throw new HttpError("Invalid landlord verification request.", 403);
+      const currentAccount = await firestore(env, "landlordPaymentAccounts/" + encodeURIComponent(pending.landlordId));
+      if (currentAccount.status === 404) throw new HttpError("Landlord account was removed during verification.", 409);
+      const currentAccountFields = decodeFields(currentAccount.data.fields);
+      if (String(currentAccountFields.updatedAt || "") !== String(pending.accountUpdatedAt || "")) {
+        throw new HttpError("Landlord account details changed during verification. Run the verification again.", 409);
+      }
       await patchDocument(env, "landlordPaymentAccounts/" + encodeURIComponent(pending.landlordId), {
         status: "verified",
         verifiedAt: { __firestoreTimestamp: new Date() },
