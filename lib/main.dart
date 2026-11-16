@@ -2824,23 +2824,30 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
         await recordActivity(landlordId, 'Tenant submitted rent payment for house ' + house.text.trim());
         if (mounted) { amount.clear(); snack(context, 'Payment details sent to your landlord for verification. No automatic M-Pesa payment was made.'); }
       } else {
+        final matchingHouses = await FirebaseFirestore.instance.collection('houses')
+          .where('createdBy', isEqualTo: uid)
+          .where('houseNo', isEqualTo: house.text.trim()).limit(2).get();
+        if (matchingHouses.docs.length != 1) {
+          throw StateError(matchingHouses.docs.isEmpty
+              ? 'That house number is not in your property records.'
+              : 'More than one house has that number. Resolve the duplicate house numbers first.');
+        }
+        final houseDoc = matchingHouses.docs.single;
         final paymentRef = await FirebaseFirestore.instance.collection('payments').add({
-          'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(), 'amount': value,
-          'method': paymentMethod.toUpperCase(), 'transactionCode': paymentMethod == 'mpesa' ? code : '', 'status': 'Pending verification',
-          'createdAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+          'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(),
+          'houseId': houseDoc.id, 'amount': value,
+          'method': paymentMethod.toUpperCase(), 'transactionCode': paymentMethod == 'mpesa' ? code : '',
+          'status': 'Pending verification', 'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(), 'createdBy': uid,
         });
-        final matchingHouse = await FirebaseFirestore.instance.collection('houses')
-          .where('createdBy', isEqualTo: uid).where('houseNo', isEqualTo: house.text.trim()).limit(1).get();
-        if (matchingHouse.docs.isNotEmpty) {
-          final assigned = (matchingHouse.docs.first.data()['caretakerIds'] as List?)?.whereType<String>().toList() ?? <String>[];
-          if (assigned.isNotEmpty) {
-            await FirebaseFirestore.instance.collection('paymentConfirmations').add({
-              'landlordId': uid, 'caretakerId': assigned.first, 'houseId': matchingHouse.docs.first.id,
-              'paymentId': paymentRef.id, 'tenantName': tenant.text.trim(),
-              'houseNo': house.text.trim(), 'status': 'pending',
-              'createdAt': FieldValue.serverTimestamp(),
-            });
-          }
+        final assigned = (houseDoc.data()['caretakerIds'] as List?)?.whereType<String>().toList() ?? <String>[];
+        if (assigned.isNotEmpty) {
+          await FirebaseFirestore.instance.collection('paymentConfirmations').add({
+            'landlordId': uid, 'caretakerId': assigned.first, 'houseId': houseDoc.id,
+            'paymentId': paymentRef.id, 'tenantName': tenant.text.trim(),
+            'houseNo': house.text.trim(), 'status': 'pending',
+            'createdAt': FieldValue.serverTimestamp(),
+          });
         }
         await recordActivity(uid, 'Created pending rent payment record for house ' + house.text.trim());
         if (mounted) { amount.clear(); snack(context, 'Payment record saved. Confirm actual receipt before marking it received.'); }
