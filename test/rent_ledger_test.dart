@@ -88,4 +88,26 @@ void main() {
     expect(ledger.creditKes, 2000);
     expect(ledger.state, RentInvoiceState.overpaid);
   });
+  test('status parsing never treats unpaid or pending labels as received', () {
+    for (final status in <String>[
+      'unpaid', 'not paid', 'pending', 'pending verification',
+      'awaiting_caretaker', 'failed', 'unknown',
+    ]) {
+      expect(rentTransactionStateFromStatus(status), RentTransactionState.pending,
+          reason: 'Status "$status" must not reduce the balance.');
+    }
+  });
+
+  test('status parsing accepts explicit receipt and reversal states only', () {
+    for (final status in <String>[
+      'paid', 'confirmed', 'received', 'Received (landlord verified)',
+      'successful', 'success', 'completed',
+    ]) {
+      expect(rentTransactionStateFromStatus(status), RentTransactionState.confirmed);
+    }
+    for (final status in <String>['reversed', 'reversal', 'refunded', 'refund']) {
+      expect(rentTransactionStateFromStatus(status), RentTransactionState.reversed);
+    }
+  });
+
 }
