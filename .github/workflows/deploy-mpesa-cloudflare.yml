@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm_deploy:
-        description: "Set true only after approving deployment to the live M-Pesa Worker"
+        description: "Set true only after approving deployment to the sandbox M-Pesa Worker"
         required: true
         default: false
         type: boolean
