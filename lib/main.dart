@@ -2835,9 +2835,10 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
           final assigned = (matchingHouse.docs.first.data()['caretakerIds'] as List?)?.whereType<String>().toList() ?? <String>[];
           if (assigned.isNotEmpty) {
             await FirebaseFirestore.instance.collection('paymentConfirmations').add({
-              'landlordId': uid, 'caretakerId': assigned.first, 'paymentId': paymentRef.id,
-              'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(),
-              'status': 'pending', 'createdAt': FieldValue.serverTimestamp(),
+              'landlordId': uid, 'caretakerId': assigned.first, 'houseId': matchingHouse.docs.first.id,
+              'paymentId': paymentRef.id, 'tenantName': tenant.text.trim(),
+              'houseNo': house.text.trim(), 'status': 'pending',
+              'createdAt': FieldValue.serverTimestamp(),
             });
           }
         }
@@ -2907,9 +2908,10 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
       final assigned = (houses.docs.first.data()['caretakerIds'] as List?)?.whereType<String>().toList() ?? <String>[];
       if (assigned.isEmpty) throw StateError('No caretaker is assigned to this house.');
       await FirebaseFirestore.instance.collection('paymentConfirmations').add({
-        'landlordId': uid, 'caretakerId': assigned.first, 'paymentId': id,
-        'tenantName': data['tenantName'] ?? 'Tenant', 'houseNo': data['houseNo'] ?? '',
-        'status': 'pending', 'createdAt': FieldValue.serverTimestamp(),
+        'landlordId': uid, 'caretakerId': assigned.first, 'houseId': houses.docs.first.id,
+        'paymentId': id, 'tenantName': data['tenantName'] ?? 'Tenant',
+        'houseNo': data['houseNo'] ?? '', 'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
       });
       await FirebaseFirestore.instance.collection('paymentSubmissions').doc(id).update({'status': 'awaiting_caretaker'});
       if (context.mounted) snack(context, 'A payment confirmation task was sent to the caretaker.');
