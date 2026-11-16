@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { before, beforeEach, after, test } from "node:test";
 import assert from "node:assert/strict";
 import { initializeTestEnvironment, assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
-import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 
 const projectId = "demo-skynest-role-scope";
 let env;
@@ -452,4 +452,51 @@ test("cash handover must match the caretaker's recorded collection and landlord 
   }));
   const tenant = env.authenticatedContext("tenant-1").firestore();
   await assertFails(getDoc(doc(tenant, "cashHandovers", "cash-handover-1")));
+});
+
+
+test("landlord acknowledgement atomically creates exactly one verified cash rent ledger entry", async () => {
+  await seed();
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "cashCollections", "cash-ledger-1"), {
+      landlordId: "landlord-1", caretakerId: "caretaker-1",
+      tenantId: "tenant-1", tenantName: "Tenant One",
+      houseId: "house-assigned", houseNo: "A1", amountKes: 5000,
+      method: "CASH", status: "collected_pending_handover",
+      collectedAt: new Date(), createdAt: new Date()
+    });
+    await setDoc(doc(db, "cashHandovers", "cash-ledger-1"), {
+      collectionId: "cash-ledger-1", landlordId: "landlord-1",
+      caretakerId: "caretaker-1", tenantId: "tenant-1",
+      tenantName: "Tenant One", houseId: "house-assigned",
+      houseNo: "A1", amountKes: 5000, status: "submitted",
+      submittedAt: new Date()
+    });
+  });
+
+  const landlord = env.authenticatedContext("landlord-1").firestore();
+  const handoverRef = doc(landlord, "cashHandovers", "cash-ledger-1");
+  const paymentRef = doc(landlord, "payments", "cash_cash-ledger-1");
+  const payment = {
+    createdBy: "landlord-1", landlordId: "landlord-1",
+    tenantId: "tenant-1", tenantName: "Tenant One",
+    houseId: "house-assigned", houseNo: "A1",
+    amount: 5000, method: "CASH", status: "Paid",
+    transactionCode: "CASH-cash-ledger-1",
+    cashHandoverId: "cash-ledger-1", createdAt: serverTimestamp()
+  };
+
+  await assertFails(setDoc(paymentRef, payment));
+  await assertSucceeds(runTransaction(landlord, async (transaction) => {
+    transaction.update(handoverRef, {
+      status: "acknowledged", acknowledgedBy: "landlord-1",
+      acknowledgedAt: serverTimestamp()
+    });
+    transaction.set(paymentRef, payment);
+  }));
+  await assertSucceeds(getDoc(paymentRef));
+  const tenant = env.authenticatedContext("tenant-1").firestore();
+  await assertSucceeds(getDoc(doc(tenant, "payments", "cash_cash-ledger-1")));
+  await assertFails(updateDoc(paymentRef, { amount: 1 }));
 });
