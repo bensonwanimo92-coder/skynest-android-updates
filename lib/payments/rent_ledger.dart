@@ -6,6 +6,30 @@ enum RentTransactionState { pending, confirmed, reversed }
 
 enum RentInvoiceState { unpaid, partiallyPaid, paid, overpaid }
 
+/// Maps persisted payment status labels conservatively. Unknown or pending
+/// states must never reduce rent balances; only explicit receipt states count.
+RentTransactionState rentTransactionStateFromStatus(Object? rawStatus) {
+  final status = rawStatus?.toString().trim().toLowerCase() ?? '';
+  const confirmedStatuses = <String>{
+    'paid',
+    'confirmed',
+    'received',
+    'received (landlord verified)',
+    'successful',
+    'success',
+    'completed',
+  };
+  const reversedStatuses = <String>{
+    'reversed',
+    'reversal',
+    'refunded',
+    'refund',
+  };
+  if (confirmedStatuses.contains(status)) return RentTransactionState.confirmed;
+  if (reversedStatuses.contains(status)) return RentTransactionState.reversed;
+  return RentTransactionState.pending;
+}
+
 class RentPaymentRecord {
   const RentPaymentRecord({
     required this.transactionId,
