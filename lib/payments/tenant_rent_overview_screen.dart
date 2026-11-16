@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import 'rent_ledger.dart';
 import 'mpesa_service.dart';
+import 'mpesa_rent_payment_screen.dart';
 
 class TenantRentOverviewScreen extends StatelessWidget {
   const TenantRentOverviewScreen({super.key});
@@ -120,7 +121,7 @@ class TenantRentOverviewScreen extends StatelessWidget {
                     if (balance > 0) ...[
                       const SizedBox(height: 14),
                       FilledButton.icon(
-                        onPressed: () => _startMpesaPayment(context, balance),
+                        onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MpesaRentPaymentScreen())),
                         icon: const Icon(Icons.phone_android_rounded),
                         label: const Text('Pay rent with M-Pesa'),
                       ),
