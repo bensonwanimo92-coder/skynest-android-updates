@@ -3258,9 +3258,9 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
                   subtitle: Text('Queue #$queueIndex • House ' + (d['houseNo'] ?? '').toString() + ' • ' +
                     currency.format((d['amount'] as num?)?.toDouble() ?? 0) + ' • ' + status +
                     (d['method'] == 'MPESA'
-                      ? '\\nM-Pesa receipt: ' + (d['transactionCode'] ?? 'Not supplied').toString() +
+                      ? ' • M-Pesa receipt: ' + (d['transactionCode'] ?? 'Not supplied').toString() +
                         ' • Phone: ' + (d['payerPhone'] ?? 'Not supplied').toString()
-                      : '') + '\\n' + ageLabel),
+                      : '') + ' • ' + ageLabel),
                   isThreeLine: true,
                   trailing: PopupMenuButton<String>(
                     onSelected: (value) async {
