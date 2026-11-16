@@ -1664,20 +1664,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
               )),
               const SizedBox(height: 10),
-              _DashboardOverviewCard(userRole: userRole),
+              DashboardOverviewCard(userRole: userRole),
               const SizedBox(height: 22),
               if (userRole == 'landlord') ...[
                 const Text('Recent activity', style: TextStyle(
                   color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
                 )),
                 const SizedBox(height: 8),
-                _DashboardRecentActivity(),
+                DashboardRecentActivity(),
                 const SizedBox(height: 22),
                 const Text('Quick actions', style: TextStyle(
                   color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
                 )),
                 const SizedBox(height: 10),
-                _DashboardQuickActions(
+                DashboardQuickActions(
                   onAddHouse: () => _open(context, items.firstWhere((e) => e.title == 'Houses')),
                   onCollectPayment: () => _open(context, items.firstWhere((e) => e.title == 'Payments')),
                   onPostNotice: () => _open(context, items.firstWhere((e) => e.title == 'Notices')),
