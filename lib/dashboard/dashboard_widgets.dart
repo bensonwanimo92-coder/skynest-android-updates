@@ -100,8 +100,12 @@ class _OverviewMetric extends StatelessWidget {
 }
 
 class DashboardRecentActivity extends StatelessWidget {
+  const DashboardRecentActivity({required this.userRole});
+  final String userRole;
+
   @override
   Widget build(BuildContext context) {
+    if (userRole != 'landlord') return const _ActivityEmpty(message: 'Updates for your assigned properties will appear here.');
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return const _ActivityEmpty();
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
