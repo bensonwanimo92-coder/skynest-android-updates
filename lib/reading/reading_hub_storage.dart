@@ -40,6 +40,18 @@ class ReadingHubStorage {
     return files;
   }
 
+  bool _hasPdfHeader(Uint8List bytes) {
+    // SkyNest creates these PDFs locally. Generated PDF files begin with the
+    // five-byte "%PDF-" signature; reject empty or unrelated data before it
+    // can be shown as a downloadable booklet.
+    const header = <int>[0x25, 0x50, 0x44, 0x46, 0x2D];
+    if (bytes.length < 8) return false;
+    for (var index = 0; index < header.length; index++) {
+      if (bytes[index] != header[index]) return false;
+    }
+    return true;
+  }
+
   Future<File> savePdf(String name, Uint8List bytes) async {
     final safeName = name
         .toLowerCase()
@@ -48,12 +60,28 @@ class ReadingHubStorage {
     if (safeName.isEmpty) {
       throw ArgumentError.value(name, 'name', 'A valid PDF file name is required.');
     }
+    if (!_hasPdfHeader(bytes)) {
+      throw FormatException('Only valid PDF content can be saved to the offline shelf.');
+    }
 
     final root = await directory();
     final file = File(
       '${root.path}${Platform.pathSeparator}$safeName.pdf',
     );
-    await file.writeAsBytes(bytes, flush: true);
-    return file;
+    // Write beside the destination, flush the complete contents, then rename
+    // into place. A process interruption cannot leave a truncated .pdf entry
+    // in the offline shelf.
+    final temporary = File(
+      '${root.path}${Platform.pathSeparator}.$safeName.${DateTime.now().microsecondsSinceEpoch}.part',
+    );
+    try {
+      await temporary.writeAsBytes(bytes, flush: true);
+      return await temporary.rename(file.path);
+    } catch (_) {
+      if (await temporary.exists()) {
+        await temporary.delete();
+      }
+      rethrow;
+    }
   }
 }

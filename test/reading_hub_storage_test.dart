@@ -45,6 +45,57 @@ void main() {
     expect(await saved.exists(), isTrue);
   });
 
+  test('rejects non-PDF content without creating an offline entry', () async {
+    final root = await Directory.systemTemp.createTemp('skynest-reading-invalid-');
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    final storage = ReadingHubStorage(directoryProvider: () async => root);
+
+    await expectLater(
+      storage.savePdf('not a booklet', Uint8List.fromList('not a PDF'.codeUnits)),
+      throwsFormatException,
+    );
+
+    expect(await storage.listPdfs(), isEmpty);
+  });
+
+  test('invalid replacement leaves the previously saved PDF intact', () async {
+    final root = await Directory.systemTemp.createTemp('skynest-reading-replace-');
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    final storage = ReadingHubStorage(directoryProvider: () async => root);
+    final original = Uint8List.fromList('%PDF-1.4\noriginal booklet\n'.codeUnits);
+    final saved = await storage.savePdf('welcome guide', original);
+
+    await expectLater(
+      storage.savePdf('welcome guide', Uint8List.fromList('broken data'.codeUnits)),
+      throwsFormatException,
+    );
+
+    expect(await saved.readAsBytes(), original);
+    expect((await storage.listPdfs()).length, 1);
+  });
+
+  test('replacement writes a complete PDF and leaves no temporary files', () async {
+    final root = await Directory.systemTemp.createTemp('skynest-reading-atomic-');
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    final storage = ReadingHubStorage(directoryProvider: () async => root);
+    final replacement = Uint8List.fromList('%PDF-1.7\nupdated booklet\n'.codeUnits);
+
+    final saved = await storage.savePdf('history notes', replacement);
+
+    expect(await saved.readAsBytes(), replacement);
+    expect(
+      root.listSync().whereType<File>().where((file) => file.path.endsWith('.part')),
+      isEmpty,
+    );
+    expect((await storage.listPdfs()).length, 1);
+  });
+
   test('storage rejects an empty file name', () async {
     final root = await Directory.systemTemp.createTemp('skynest-reading-name-');
     addTearDown(() async {
