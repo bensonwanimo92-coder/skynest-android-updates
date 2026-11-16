@@ -1,3 +1,5 @@
+import { validateSuccessfulCallback } from "./payment_validation.js";
+
 // SkyNest M-Pesa Cloudflare Worker.
 // Sandbox-first single-merchant Daraja STK Push. Do not enable production until Safaricom onboarding and end-to-end tests pass.
 
@@ -300,16 +302,7 @@ async function settleCallback(env, body, knownPending = null) {
   const metadata = {};
   for (const item of callback.CallbackMetadata?.Item || []) metadata[item.Name] = item.Value;
   if (successful) {
-    const receipt = String(metadata.MpesaReceiptNumber || "").trim().toUpperCase();
-    if (!/^[A-Z0-9]{8,16}$/.test(receipt)) throw new HttpError("Successful callback did not contain a valid M-Pesa receipt.", 502);
-    const paidAmount = Number(metadata.Amount);
-    if (!Number.isSafeInteger(paidAmount) || paidAmount !== Number(pending.amountKes)) {
-      throw new HttpError("M-Pesa callback amount does not match the pending rent request. Manual review required.", 409);
-    }
-    const paidPhone = normalizePhone(metadata.PhoneNumber);
-    if (paidPhone !== normalizePhone(pending.phone)) {
-      throw new HttpError("M-Pesa callback payer does not match the pending rent request. Manual review required.", 409);
-    }
+    const { receipt, paidAmount, paidPhone } = validateSuccessfulCallback(pending, metadata);
     const payment = {
       tenantId: pending.tenantId,
       tenantName: pending.tenantName || "Tenant",
