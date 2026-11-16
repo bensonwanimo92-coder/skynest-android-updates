@@ -24,3 +24,23 @@ export function validateSuccessfulCallback(pending, metadata) {
   }
   return { receipt, paidAmount, paidPhone };
 }
+
+// Verify that an authenticated tenant is still assigned to the exact house
+// recorded in their profile before creating an STK request.
+export function validateTenantHouseLink(profile, house, uid) {
+  const landlordId = String(profile?.landlordId || "");
+  const houseId = String(profile?.houseId || "");
+  const houseNo = String(profile?.houseNo || "");
+  if (!uid || String(profile?.role || "").toLowerCase() !== "tenant" ||
+      String(profile?.status || "").toLowerCase() !== "active" ||
+      !landlordId || !houseId || !houseNo) {
+    throw new Error("The tenant account does not have a complete active house assignment.");
+  }
+  if (String(house?.createdBy || "") !== landlordId ||
+      String(house?.landlordId || "") !== landlordId ||
+      String(house?.assignedTenantId || "") !== uid ||
+      String(house?.houseNo || "") !== houseNo) {
+    throw new Error("The tenant's assigned house could not be verified. Contact the landlord.");
+  }
+  return { landlordId, houseId, houseNo };
+}
