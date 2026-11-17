@@ -2642,7 +2642,7 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
       final profile = await FirebaseFirestore.instance.collection('users')
         .doc(FirebaseAuth.instance.currentUser!.uid).get();
       final houseNo = profile.data()?['houseNo']?.toString() ?? 'RENT';
-      final sanitizedReference = houseNo.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
+      final sanitizedReference = houseNo.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '').substring(0, houseNo.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '').length.clamp(0, 12));
       final response = await FirebaseFunctions.instance.httpsCallable('requestTenantMpesaStk').call({
         'amount': value,
         'phoneNumber': phone.text.trim(),
