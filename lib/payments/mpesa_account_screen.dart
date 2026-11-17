@@ -141,7 +141,7 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
                     validator: (value) {
                       final number = value?.trim() ?? '';
                       if (number.isEmpty) return 'Enter the ${_type == 'paybill' ? 'PayBill' : 'Till'} number.';
-                      if (!RegExp(r'^\\d{5,20}$').hasMatch(number)) return 'Enter a valid 5–20 digit account number.';
+                      if (!RegExp(r'^[0-9]{5,20}$').hasMatch(number)) return 'Enter a valid 5–20 digit account number.';
                       return null;
                     },
                     decoration: InputDecoration(
