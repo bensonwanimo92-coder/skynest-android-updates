@@ -1,17 +1,17 @@
 # SkyNest M-Pesa Cloudflare Worker
 
-Production-capable Safaricom Daraja STK Push gateway for SkyNest. Each landlord configures their own Safaricom-approved PayBill or Buy Goods Till account. Daraja credentials are encrypted server-side with AES-GCM and are never returned to the Android app.
+SkyNest uses one centrally managed Safaricom Daraja integration. Landlords enter only their PayBill number or Buy Goods Till number; they never provide Consumer Keys, Consumer Secrets or Passkeys.
 
 ## Merchant routing
 
 - A tenant's landlord is resolved from the authenticated tenant profile; the client cannot choose or override the destination.
-- Each landlord has a separate encrypted Daraja configuration in `landlordPaymentAccounts/{landlordUid}`.
+- Each landlord has a receiving-account record in `landlordPaymentAccounts/{landlordUid}`. Only the receiving-account identifiers are stored.
 - Only a merchant account verified for the active environment can receive tenant STK requests.
 - A KES 1 merchant verification prompt goes to the landlord's phone and is never recorded as rent.
 - A successful rent callback is checked against the pending checkout, amount, payer phone and unique receipt before the ledger is updated.
 - Duplicate callbacks are idempotent. Failed or cancelled prompts do not create paid rent entries.
 
-A landlord must have a Safaricom-approved Daraja production app and eligible PayBill or Buy Goods integration. A personal M-Pesa number is not an STK merchant shortcode. Do not assume any Till can be used without the matching approved Daraja configuration.
+Do not enable central merchant routing until Safaricom confirms the SkyNest aggregator/sub-merchant arrangement, shortcode mapping, settlement behavior and callback model in writing. A Till uses its approved head-office shortcode in `BusinessShortCode` and the Till in `PartyB`; arbitrary Till numbers cannot be assumed to belong to SkyNest's head office.
 
 ## Cloudflare Worker secrets and variables
 
@@ -26,7 +26,7 @@ Configure under Cloudflare > Workers & Pages > skynestmpesaapi > Settings > Vari
 - `STK_CALLBACK_TOKEN` — secret; random value of at least 32 characters.
 - `STK_CALLBACK_URL` — HTTPS URL ending in `/hooks/stk/result/YOUR_RANDOM_TOKEN`; token must match `STK_CALLBACK_TOKEN`.
 
-Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Passkey are entered by each landlord in the app and encrypted by the Worker. Never commit secrets or send them in chat.
+All Daraja credentials are central SkyNest Cloudflare secrets. Landlords enter only PayBill or Till details. Never commit secrets or send them in chat. Standard STK Push does not let an API client redirect funds to arbitrary merchant shortcodes merely by changing `PartyB`; direct settlement needs Safaricom-approved merchant routing.
 
 ## API routes
 
@@ -41,4 +41,4 @@ Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Passkey are entered by e
 
 The Android app calls `https://mpesaapi.bensonwanimo92.workers.dev` by default. The Wrangler Worker name is `mpesaapi` so deployment updates that existing endpoint rather than creating a second Worker. The GitHub Actions deployment workflow is manual and deploys this Worker without simulator, emulator, or test jobs. Configure the Cloudflare API token and account ID as GitHub Actions secrets before running it.
 
-Production mode is selected in `wrangler.toml`. Do not send a real payment until the Worker secrets, callback URL, each landlord's approved live Daraja credentials and the live callback routing are correctly configured.
+Production mode is selected in `wrangler.toml`. Do not send a real payment until SkyNest central production credentials, callback URL and Safaricom-approved merchant routing are configured. The code deliberately rejects payment and verification requests while merchant routing is disabled.
