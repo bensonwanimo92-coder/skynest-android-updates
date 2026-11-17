@@ -24,3 +24,68 @@ export function validateSuccessfulCallback(pending, metadata) {
   }
   return { receipt, paidAmount, paidPhone };
 }
+
+// Verify that an authenticated tenant is still assigned to the exact house
+// recorded in their profile before creating an STK request.
+export function validateTenantHouseLink(profile, house, uid) {
+  const landlordId = String(profile?.landlordId || "");
+  const houseId = String(profile?.houseId || "");
+  const houseNo = String(profile?.houseNo || "");
+  if (!uid || String(profile?.role || "").toLowerCase() !== "tenant" ||
+      String(profile?.status || "").toLowerCase() !== "active" ||
+      !landlordId || !houseId || !houseNo) {
+    throw new Error("The tenant account does not have a complete active house assignment.");
+  }
+  if (String(house?.createdBy || "") !== landlordId ||
+      String(house?.landlordId || "") !== landlordId ||
+      String(house?.assignedTenantId || "") !== uid ||
+      String(house?.houseNo || "") !== houseNo) {
+    throw new Error("The tenant's assigned house could not be verified. Contact the landlord.");
+  }
+  return { landlordId, houseId, houseNo };
+}
+
+
+// Validate the public recipient details entered by a landlord.
+// Daraja credentials are platform-managed and are never requested in the app.
+export function validateMerchantAccountInput(input) {
+  const accountType = String(input?.accountType || "").toLowerCase();
+  const businessName = String(input?.registeredBusinessName || "").trim();
+  const accountNumber = String(input?.accountNumber || "").trim();
+  if (!["paybill", "till"].includes(accountType)) {
+    throw new Error("Choose PayBill or Buy Goods Till.");
+  }
+  if (!businessName || businessName.length > 120) {
+    throw new Error("Enter the registered business name.");
+  }
+  if (!/^\d{5,20}$/.test(accountNumber)) {
+    throw new Error("Enter a valid 5–20 digit PayBill or Till number.");
+  }
+  return { accountType, businessName, accountNumber };
+}
+
+// Check an active tenant or caretaker's linked house before payment.
+export function validatePayerHouseLink(profile, house, uid) {
+  const role = String(profile?.role || "").toLowerCase();
+  const landlordId = String(profile?.landlordId || "");
+  const houseId = String(profile?.houseId || "");
+  const houseNo = String(profile?.houseNo || "");
+  if (!uid || !["tenant", "caretaker"].includes(role) ||
+      String(profile?.status || "").toLowerCase() !== "active" ||
+      !landlordId || !houseId) {
+    throw new Error("Your active account must be linked to a landlord and assigned house.");
+  }
+  if (String(house?.createdBy || "") !== landlordId ||
+      String(house?.landlordId || "") !== landlordId) {
+    throw new Error("The assigned house does not belong to your linked landlord.");
+  }
+  if (role === "tenant" &&
+      (String(house?.assignedTenantId || "") !== uid ||
+       String(house?.houseNo || "") !== houseNo)) {
+    throw new Error("Your tenant house assignment could not be verified.");
+  }
+  if (role === "caretaker" && String(house?.assignedTenantId || "") !== uid) {
+    throw new Error("The selected house is not recorded as your rented home. Ask the landlord to link your rent-house assignment.");
+  }
+  return { landlordId, houseId, houseNo: houseNo || String(house?.houseNo || "") };
+}

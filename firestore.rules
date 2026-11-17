@@ -87,7 +87,7 @@ service cloud.firestore {
           request.resource.data.status in ['active', 'rejected'] &&
           request.resource.data.role == resource.data.role &&
           request.resource.data.landlordId == resource.data.landlordId &&
-          landlordFor(resource.data.landlordId)
+          myRole() == 'landlord' && request.auth.uid == resource.data.landlordId
         ) ||
         (
           resource.data.role == 'caretaker' &&
@@ -110,7 +110,7 @@ service cloud.firestore {
           request.resource.data.role == resource.data.role &&
           request.resource.data.status == resource.data.status &&
           request.resource.data.landlordId == resource.data.landlordId &&
-          landlordFor(resource.data.landlordId) &&
+          myRole() == 'landlord' && request.auth.uid == resource.data.landlordId &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['houseId', 'houseNo'])
         )
       );
@@ -170,36 +170,147 @@ service cloud.firestore {
         request.resource.data.landlordId == request.auth.uid;
       allow read: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
-        (myRole() == 'caretaker' && request.auth.uid in resource.data.caretakerIds) ||
-        (myRole() == 'tenant' && resource.data.landlordId == profile(request.auth.uid).landlordId && resource.data.isOccupied == false)
+        (myRole() == 'caretaker' && (request.auth.uid in resource.data.caretakerIds || (resource.data.assignedTenantId == request.auth.uid && resource.data.landlordId == profile(request.auth.uid).landlordId))) ||
+        (myRole() == 'tenant' && resource.data.landlordId == profile(request.auth.uid).landlordId && (resource.data.isOccupied == false || resource.data.assignedTenantId == request.auth.uid))
       );
       allow update: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
         (myRole() == 'caretaker' && request.auth.uid in resource.data.caretakerIds &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isOccupied', 'status', 'assignedTenantId']))
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isOccupied', 'status']))
       );
       allow delete: if activeUser() && resource.data.createdBy == request.auth.uid;
+    }
+
+    function houseHasCaretaker(houseId, landlordId, caretakerId) {
+      let housePath = /databases/$(database)/documents/houses/$(houseId);
+      return exists(housePath) &&
+        get(housePath).data.landlordId == landlordId &&
+        get(housePath).data.createdBy == landlordId &&
+        get(housePath).data.caretakerIds is list &&
+        caretakerId in get(housePath).data.caretakerIds;
+    }
+
+    function caretakerAssignedToHouse(houseId, landlordId) {
+      return houseHasCaretaker(houseId, landlordId, request.auth.uid);
+    }
+
+    function caretakerTenantRecordMatchesHouse(houseId, landlordId) {
+      let housePath = /databases/$(database)/documents/houses/$(houseId);
+      return caretakerAssignedToHouse(houseId, landlordId) &&
+        request.resource.data.houseNo == get(housePath).data.houseNo &&
+        request.resource.data.rentAmount == get(housePath).data.rent;
     }
 
     match /tenants/{recordId} {
       allow create: if activeUser() && (
         (myRole() == 'landlord' && request.resource.data.createdBy == request.auth.uid &&
           request.resource.data.landlordId == request.auth.uid) ||
-        (myRole() == 'caretaker' && request.resource.data.createdBy == profile(request.auth.uid).landlordId &&
-          request.resource.data.landlordId == profile(request.auth.uid).landlordId)
+        (myRole() == 'caretaker' &&
+          request.resource.data.createdBy == request.auth.uid &&
+          request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
+          request.resource.data.houseId is string &&
+          caretakerTenantRecordMatchesHouse(request.resource.data.houseId, profile(request.auth.uid).landlordId))
       );
       allow read: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
-        (resource.data.landlordId != null && landlordFor(resource.data.landlordId))
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
+        (myRole() == 'caretaker' &&
+          resource.data.landlordId == profile(request.auth.uid).landlordId &&
+          resource.data.houseId is string &&
+          caretakerAssignedToHouse(resource.data.houseId, profile(request.auth.uid).landlordId)) ||
+        (myRole() == 'tenant' && resource.data.tenantId == request.auth.uid)
       );
-      allow update, delete: if signedIn() && resource.data.createdBy == request.auth.uid;
+      allow update, delete: if activeUser() &&
+        myRole() == 'landlord' && resource.data.createdBy == request.auth.uid;
+    }
+
+    function landlordOwnsPaymentHouse(houseId, landlordId, houseNo) {
+      let housePath = /databases/$(database)/documents/houses/$(houseId);
+      return exists(housePath) &&
+        get(housePath).data.createdBy == landlordId &&
+        get(housePath).data.landlordId == landlordId &&
+        get(housePath).data.houseNo == houseNo;
+    }
+
+    function landlordInvoiceMatchesTenant(tenantId, landlordId, houseId, houseNo, amountDueKes) {
+      let tenantPath = /databases/$(database)/documents/users/$(tenantId);
+      let housePath = /databases/$(database)/documents/houses/$(houseId);
+      return exists(tenantPath) && exists(housePath) &&
+        get(tenantPath).data.role == 'tenant' &&
+        get(tenantPath).data.status == 'active' &&
+        get(tenantPath).data.landlordId == landlordId &&
+        get(tenantPath).data.houseId == houseId &&
+        get(tenantPath).data.houseNo == houseNo &&
+        get(housePath).data.createdBy == landlordId &&
+        get(housePath).data.landlordId == landlordId &&
+        get(housePath).data.houseNo == houseNo &&
+        get(housePath).data.rent == amountDueKes &&
+        get(housePath).data.assignedTenantId == tenantId;
+    }
+
+    match /rentInvoices/{invoiceId} {
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.landlordId == request.auth.uid &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.tenantId is string &&
+        request.resource.data.houseId is string &&
+        invoiceId == request.resource.data.tenantId + '_' + request.resource.data.houseId + '_' + request.resource.data.period &&
+        request.resource.data.houseNo is string &&
+        request.resource.data.period.matches('^[0-9]{4}-(0[1-9]|1[0-2])$') &&
+        request.resource.data.amountDueKes is number && request.resource.data.amountDueKes > 0 &&
+        request.resource.data.rentAtIssue == request.resource.data.amountDueKes &&
+        request.resource.data.status == 'issued' &&
+        request.resource.data.createdAt == request.time &&
+        landlordInvoiceMatchesTenant(request.resource.data.tenantId, request.auth.uid,
+          request.resource.data.houseId, request.resource.data.houseNo,
+          request.resource.data.amountDueKes);
+      allow read: if activeUser() && (
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
+        (myRole() == 'tenant' && resource.data.tenantId == request.auth.uid)
+      );
+      allow update, delete: if false;
     }
 
     match /payments/{recordId} {
-      allow create: if activeUser() && myRole() == 'landlord' && request.resource.data.createdBy == request.auth.uid;
-      allow read: if activeUser() && resource.data.createdBy == request.auth.uid;
-      allow update: if activeUser() && resource.data.createdBy == request.auth.uid;
-      allow delete: if activeUser() && resource.data.createdBy == request.auth.uid;
+      function cashHandoverMatchesPayment() {
+        let handoverId = request.resource.data.cashHandoverId;
+        let handoverPath = /databases/$(database)/documents/cashHandovers/$(handoverId);
+        return handoverId is string &&
+          recordId == 'cash_' + handoverId &&
+          existsAfter(handoverPath) &&
+          getAfter(handoverPath).data.status == 'acknowledged' &&
+          getAfter(handoverPath).data.landlordId == request.auth.uid &&
+          getAfter(handoverPath).data.acknowledgedBy == request.auth.uid &&
+          getAfter(handoverPath).data.tenantId == request.resource.data.tenantId &&
+          getAfter(handoverPath).data.tenantName == request.resource.data.tenantName &&
+          getAfter(handoverPath).data.houseId == request.resource.data.houseId &&
+          getAfter(handoverPath).data.houseNo == request.resource.data.houseNo &&
+          getAfter(handoverPath).data.amountKes == request.resource.data.amount &&
+          request.resource.data.method == 'CASH' &&
+          request.resource.data.status == 'Paid' &&
+          request.resource.data.transactionCode == 'CASH-' + handoverId &&
+          request.resource.data.createdAt == request.time;
+      }
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.landlordId == request.auth.uid &&
+        request.resource.data.houseId is string &&
+        request.resource.data.houseNo is string &&
+        landlordOwnsPaymentHouse(request.resource.data.houseId, request.auth.uid, request.resource.data.houseNo) &&
+        (!request.resource.data.keys().hasAny(['cashHandoverId']) || cashHandoverMatchesPayment());
+      allow read: if activeUser() && (
+        resource.data.createdBy == request.auth.uid ||
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
+        (myRole() == 'tenant' && resource.data.tenantId == request.auth.uid)
+      );
+      // Cash-handover ledger entries are immutable after creation; corrections
+      // must use an explicit audited reversal, not edit/delete the original receipt.
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.createdBy == request.auth.uid &&
+        !resource.data.keys().hasAny(['cashHandoverId']);
+      allow delete: if activeUser() && myRole() == 'landlord' &&
+        resource.data.createdBy == request.auth.uid &&
+        !resource.data.keys().hasAny(['cashHandoverId']);
     }
 
     function validMpesaClaim(code) {
@@ -212,12 +323,128 @@ service cloud.firestore {
     }
 
 
+
+    function caretakerCanRecordCash(data) {
+      let caretaker = profile(request.auth.uid);
+      let tenantPath = /databases/$(database)/documents/users/$(data.tenantId);
+      let housePath = /databases/$(database)/documents/houses/$(data.houseId);
+      return activeUser() && myRole() == 'caretaker' &&
+        caretaker.caretakerPermission == 'can_collect' &&
+        caretaker.status == 'active' &&
+        data.caretakerId == request.auth.uid &&
+        data.landlordId == caretaker.landlordId &&
+        data.tenantId is string && exists(tenantPath) &&
+        get(tenantPath).data.role == 'tenant' &&
+        get(tenantPath).data.status == 'active' &&
+        get(tenantPath).data.landlordId == data.landlordId &&
+        get(tenantPath).data.houseId == data.houseId &&
+        get(tenantPath).data.houseNo == data.houseNo &&
+        exists(housePath) &&
+        get(housePath).data.landlordId == data.landlordId &&
+        get(housePath).data.createdBy == data.landlordId &&
+        get(housePath).data.houseNo == data.houseNo &&
+        get(housePath).data.assignedTenantId == data.tenantId &&
+        houseHasCaretaker(data.houseId, data.landlordId, request.auth.uid);
+    }
+
+    match /cashCollections/{collectionId} {
+      allow create: if request.resource.data.keys().hasOnly([
+          'landlordId', 'caretakerId', 'tenantId', 'tenantName',
+          'houseId', 'houseNo', 'amountKes', 'method', 'status',
+          'collectedAt', 'createdAt'
+        ]) &&
+        caretakerCanRecordCash(request.resource.data) &&
+        request.resource.data.tenantName is string &&
+        request.resource.data.houseId is string &&
+        request.resource.data.houseNo is string &&
+        request.resource.data.amountKes is number &&
+        request.resource.data.amountKes > 0 &&
+        request.resource.data.method == 'CASH' &&
+        request.resource.data.status == 'collected_pending_handover' &&
+        request.resource.data.collectedAt == request.time &&
+        request.resource.data.createdAt == request.time;
+      allow read: if activeUser() && (
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
+        (myRole() == 'caretaker' &&
+          resource.data.landlordId == profile(request.auth.uid).landlordId &&
+          resource.data.caretakerId == request.auth.uid &&
+          resource.data.houseId is string &&
+          caretakerAssignedToHouse(resource.data.houseId, resource.data.landlordId))
+      );
+      allow update, delete: if false;
+    }
+
+    match /cashHandovers/{handoverId} {
+      function matchingCollection() {
+        let collectionPath = /databases/$(database)/documents/cashCollections/$(handoverId);
+        return exists(collectionPath) &&
+          get(collectionPath).data.caretakerId == request.auth.uid &&
+          get(collectionPath).data.landlordId == request.resource.data.landlordId &&
+          get(collectionPath).data.tenantId == request.resource.data.tenantId &&
+          get(collectionPath).data.tenantName == request.resource.data.tenantName &&
+          get(collectionPath).data.houseId == request.resource.data.houseId &&
+          get(collectionPath).data.houseNo == request.resource.data.houseNo &&
+          get(collectionPath).data.amountKes == request.resource.data.amountKes &&
+          get(collectionPath).data.status == 'collected_pending_handover';
+      }
+      allow create: if activeUser() && myRole() == 'caretaker' &&
+        profile(request.auth.uid).caretakerPermission == 'can_collect' &&
+        request.resource.data.keys().hasOnly([
+          'collectionId', 'landlordId', 'caretakerId', 'tenantId',
+          'tenantName', 'houseId', 'houseNo', 'amountKes',
+          'status', 'submittedAt'
+        ]) &&
+        handoverId == request.resource.data.collectionId &&
+        request.resource.data.caretakerId == request.auth.uid &&
+        request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
+        request.resource.data.status == 'submitted' &&
+        request.resource.data.submittedAt == request.time &&
+        request.resource.data.houseId is string &&
+        caretakerAssignedToHouse(request.resource.data.houseId, request.resource.data.landlordId) &&
+        matchingCollection();
+      allow read: if activeUser() && (
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
+        (myRole() == 'caretaker' &&
+          resource.data.caretakerId == request.auth.uid &&
+          resource.data.landlordId == profile(request.auth.uid).landlordId &&
+          resource.data.houseId is string &&
+          caretakerAssignedToHouse(resource.data.houseId, resource.data.landlordId))
+      );
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid &&
+        resource.data.status == 'submitted' &&
+        request.resource.data.status == 'acknowledged' &&
+        request.resource.data.acknowledgedBy == request.auth.uid &&
+        request.resource.data.acknowledgedAt == request.time &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'acknowledgedBy', 'acknowledgedAt'
+        ]);
+      allow delete: if false;
+    }
+
     match /paymentConfirmations/{id} {
-      allow read: if activeUser() && myRole() == 'caretaker' && resource.data.caretakerId == request.auth.uid;
-      allow update: if activeUser() && myRole() == 'caretaker' && resource.data.caretakerId == request.auth.uid &&
+      allow read: if activeUser() && myRole() == 'caretaker' &&
+        resource.data.caretakerId == request.auth.uid &&
+        resource.data.landlordId == profile(request.auth.uid).landlordId &&
+        resource.data.houseId is string &&
+        caretakerAssignedToHouse(resource.data.houseId, resource.data.landlordId);
+      allow update: if activeUser() && myRole() == 'caretaker' &&
+        profile(request.auth.uid).caretakerPermission == 'can_collect' &&
+        resource.data.caretakerId == request.auth.uid &&
+        resource.data.landlordId == profile(request.auth.uid).landlordId &&
+        resource.data.houseId is string &&
+        caretakerAssignedToHouse(resource.data.houseId, resource.data.landlordId) &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'confirmed_by_caretaker' &&
+        request.resource.data.confirmedBy == request.auth.uid &&
+        request.resource.data.confirmedAt == request.time &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedBy', 'confirmedAt']);
-      allow create: if activeUser() && myRole() == 'landlord' && request.resource.data.landlordId == request.auth.uid &&
-        request.resource.data.keys().hasOnly(['landlordId', 'caretakerId', 'tenantName', 'houseNo', 'paymentId', 'status', 'createdAt']);
+      allow create: if activeUser() && myRole() == 'landlord' &&
+        request.resource.data.landlordId == request.auth.uid &&
+        request.resource.data.houseId is string &&
+        houseHasCaretaker(request.resource.data.houseId, request.auth.uid, request.resource.data.caretakerId) &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.keys().hasOnly(['landlordId', 'caretakerId', 'houseId', 'tenantName', 'houseNo', 'paymentId', 'status', 'createdAt']);
       allow delete: if false;
     }
 
@@ -375,9 +602,15 @@ service cloud.firestore {
       allow create: if activeUser() && myRole() == 'tenant' && request.resource.data.tenantId == request.auth.uid &&
         request.resource.data.landlordId == profile(request.auth.uid).landlordId;
       allow read: if activeUser() && (
-        resource.data.tenantId == request.auth.uid || landlordFor(resource.data.landlordId)
+        resource.data.tenantId == request.auth.uid ||
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid) ||
+        (myRole() == 'caretaker' &&
+          resource.data.landlordId == profile(request.auth.uid).landlordId &&
+          resource.data.houseId is string &&
+          caretakerAssignedToHouse(resource.data.houseId, resource.data.landlordId))
       );
-      allow update: if activeUser() && landlordFor(resource.data.landlordId) &&
+      allow update: if activeUser() && myRole() == 'landlord' &&
+        resource.data.landlordId == request.auth.uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy']);
       allow delete: if false;
     }
@@ -579,12 +812,39 @@ service cloud.firestore {
         request.resource.data.createdBy == request.auth.uid;
     }
     // Tenant-submitted payments: tenant owns creation; linked landlord reviews.
+    function payerOwnsAssignedHouse(houseId, landlordId) {
+      let housePath = /databases/$(database)/documents/houses/$(houseId);
+      let payer = profile(request.auth.uid);
+      return exists(housePath) &&
+        get(housePath).data.createdBy == landlordId &&
+        get(housePath).data.landlordId == landlordId &&
+        (
+          (myRole() == 'tenant' &&
+            get(housePath).data.assignedTenantId == request.auth.uid &&
+            (houseId == payer.houseId || houseId == payer.rentHouseId)) ||
+          (myRole() == 'caretaker' &&
+            get(housePath).data.assignedTenantId == request.auth.uid)
+        );
+    }
+
     match /paymentSubmissions/{id} {
-      allow create: if activeUser() && myRole() == 'tenant' &&
+      allow create: if activeUser() && myRole() in ['tenant', 'caretaker'] &&
         request.resource.data.tenantId == request.auth.uid &&
         request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
+        request.resource.data.houseId is string &&
+        request.resource.data.houseNo is string &&
+        request.resource.data.houseNo == get(/databases/$(database)/documents/houses/$(request.resource.data.houseId)).data.houseNo &&
+        payerOwnsAssignedHouse(request.resource.data.houseId, profile(request.auth.uid).landlordId) &&
         request.resource.data.amount is number && request.resource.data.amount > 0 &&
         request.resource.data.method in ['MPESA', 'CASH', 'BANK', 'OTHER'] &&
+        (request.resource.data.method != 'MPESA' ||
+          (
+            request.resource.data.payerPhone is string &&
+            request.resource.data.payerPhone.size() >= 10 &&
+            request.resource.data.payerPhone.size() <= 16 &&
+            request.resource.data.transactionCode is string &&
+            request.resource.data.transactionCode.matches('^[A-Z0-9]{8,16}$')
+          )) &&
         request.resource.data.status == 'pending';
       allow read: if activeUser() && (
         resource.data.tenantId == request.auth.uid ||
@@ -599,9 +859,8 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // M-Pesa transaction-code reservation must be atomically paired with its submission.
     match /mpesaTransactionCodes/{code} {
-      allow create: if activeUser() && myRole() == 'tenant' &&
+      allow create: if activeUser() && myRole() in ['tenant', 'caretaker'] &&
         code.matches('^[A-Z0-9]{8,16}$') &&
         request.resource.data.keys().hasOnly(['tenantId', 'landlordId', 'submissionId', 'createdAt']) &&
         request.resource.data.tenantId == request.auth.uid &&

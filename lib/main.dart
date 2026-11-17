@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dashboard/dashboard_widgets.dart';
 import 'calls/skynest_call_screen.dart';
 import 'security/message_encryption.dart';
 import 'security/biometric_security.dart';
@@ -12,7 +13,10 @@ import 'services/sound_service.dart';
 import 'services/voice_service.dart';
 import 'payments/mpesa_service.dart';
 import 'payments/rent_ledger_screen.dart';
+import 'payments/tenant_rent_overview_screen.dart';
+import 'payments/cash_handover_screens.dart';
 import 'payments/mpesa_account_screen.dart';
+import 'payments/mpesa_rent_payment_screen.dart';
 import 'services/notification_service.dart';
 import 'control_centre/notification_centre.dart';
 import 'control_centre/control_centre_screen.dart';
@@ -505,12 +509,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final confirmPassword = TextEditingController();
   final displayName = TextEditingController();
   final invitationCode = TextEditingController();
+  final landlordEmail = TextEditingController();
   String selectedRole = 'landlord';
   bool busy = false, obscure = true, creating = false;
 
   @override
   void dispose() {
-    email.dispose(); password.dispose(); confirmPassword.dispose(); displayName.dispose(); invitationCode.dispose();
+    email.dispose(); password.dispose(); confirmPassword.dispose(); displayName.dispose(); invitationCode.dispose(); landlordEmail.dispose();
     super.dispose();
   }
   void message(String text) {
@@ -587,8 +592,11 @@ class _LoginScreenState extends State<LoginScreen> {
     if (password.text.length < 6) { message('Use a password with at least 6 characters.'); return; }
     if (password.text != confirmPassword.text) { message('The passwords do not match.'); return; }
     if (!['landlord', 'caretaker', 'tenant'].contains(selectedRole)) { message('Choose an account type.'); return; }
-    if (selectedRole != 'landlord' && invitationCode.text.trim().length < 6) {
+    if (selectedRole == 'caretaker' && invitationCode.text.trim().length < 6) {
       message('Enter the invitation code provided by your landlord.'); return;
+    }
+    if (selectedRole == 'tenant' && !validEmail(landlordEmail.text)) {
+      message('Enter your landlord’s registered email address.'); return;
     }
     setState(() => busy = true);
     User? newUser;
@@ -601,7 +609,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (selectedRole == 'landlord') {
         await profile.set({'displayName': displayName.text.trim(), 'email': email.text.trim(),
           'role': 'landlord', 'status': 'active', 'createdAt': FieldValue.serverTimestamp()});
-      } else {
+      } else if (selectedRole == 'caretaker') {
         final code = invitationCode.text.trim().toUpperCase();
         final inviteRef = FirebaseFirestore.instance.collection('invitations').doc(code);
         await FirebaseFirestore.instance.runTransaction((transaction) async {
@@ -609,19 +617,39 @@ class _LoginScreenState extends State<LoginScreen> {
           if (!inviteSnapshot.exists) throw StateError('Invitation code not found.');
           final invite = inviteSnapshot.data()!;
           final expiry = invite['expiresAt'];
-          if (invite['status'] != 'open' || invite['role'] != selectedRole ||
+          if (invite['status'] != 'open' || invite['role'] != 'caretaker' ||
               invite['landlordId'] == null || expiry is! Timestamp || !expiry.toDate().isAfter(DateTime.now())) {
             throw StateError('This invitation is invalid, expired, already used, or for a different role.');
           }
           transaction.set(profile, {'displayName': displayName.text.trim(), 'email': email.text.trim(),
-            'role': selectedRole, 'status': 'pending', 'landlordId': invite['landlordId'],
+            'role': 'caretaker', 'status': 'pending', 'landlordId': invite['landlordId'],
             'propertyIds': invite['propertyIds'] ?? [],
-            if (selectedRole == 'caretaker') 'caretakerPermission': invite['permission'] ?? 'view_only',
-            'invitationCode': code,
-            'createdAt': FieldValue.serverTimestamp()});
+            'caretakerPermission': invite['permission'] ?? 'view_only',
+            'invitationCode': code, 'createdAt': FieldValue.serverTimestamp()});
           transaction.update(inviteRef, {'status': 'used', 'usedBy': newUser!.uid,
             'usedAt': FieldValue.serverTimestamp()});
         });
+      } else {
+        final client = HttpClient();
+        try {
+          final token = await newUser.getIdToken();
+          if (token == null || token.isEmpty) throw StateError('Could not refresh your secure sign-in token.');
+          final request = await client.postUrl(Uri.parse(
+            'https://us-central1-hello-chuka.cloudfunctions.net/requestTenantAccess'));
+          request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + token);
+          request.headers.contentType = ContentType.json;
+          request.write(jsonEncode({'data': {'landlordEmail': landlordEmail.text.trim().toLowerCase()}}));
+          final response = await request.close().timeout(const Duration(seconds: 35));
+          final responseText = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 20));
+          Map<String, dynamic> decoded;
+          try { decoded = jsonDecode(responseText) as Map<String, dynamic>; }
+          catch (_) { throw StateError('The tenant registration service returned an unreadable response.'); }
+          if (response.statusCode < 200 || response.statusCode >= 300 || decoded['error'] != null) {
+            final error = decoded['error'];
+            final details = error is Map ? error['message']?.toString() : null;
+            throw StateError(details ?? 'Tenant registration could not be linked to that landlord.');
+          }
+        } finally { client.close(force: true); }
       }
       if (!mounted) return;
       if (selectedRole == 'landlord') {
@@ -629,14 +657,35 @@ class _LoginScreenState extends State<LoginScreen> {
         message('Landlord account created successfully.');
       } else {
         Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const PendingApprovalScreen()));
-        message('Account created. Your landlord must approve your access.');
+        message(selectedRole == 'tenant'
+          ? 'Tenant request sent. Your landlord must approve your access.'
+          : 'Caretaker account created. Your landlord must approve your access.');
       }
     } on FirebaseAuthException catch (e) {
       message(authMessage(e));
     } catch (e) {
-      // Do not leave an unusable Firebase Auth account behind if invitation validation fails.
-      try { await newUser?.delete(); } catch (_) {}
-      message(e is StateError ? e.message.toString() : 'Account creation could not be completed. Check your connection and try again.');
+      // If the tenant callable completed but its response was interrupted, preserve
+      // the linked account and take the user to the pending-approval screen.
+      var tenantRequestSaved = false;
+      if (selectedRole == 'tenant' && newUser != null) {
+        try {
+          final saved = await FirebaseFirestore.instance.collection('users').doc(newUser.uid).get();
+          final data = saved.data() ?? <String, dynamic>{};
+          tenantRequestSaved = saved.exists && data['role'] == 'tenant' &&
+            data['status'] == 'pending' && data['registrationMethod'] == 'landlord_email';
+        } catch (_) {}
+      }
+      if (tenantRequestSaved) {
+        if (mounted) {
+          Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const PendingApprovalScreen()));
+          message('Tenant request received. Your landlord must approve your access.');
+        }
+      } else {
+        // Preserve the Firebase Auth account if Firestore verification or a
+        // network response fails; the callable may already have linked it.
+        message('Your sign-in account was created, but the tenant request could not be confirmed. Please sign in again and retry, or contact your landlord. Details: ' +
+          (e is StateError ? e.message.toString() : 'temporary connection or permission error.'));
+      }
     } finally { if (mounted) setState(() => busy = false); }
   }
 
@@ -740,10 +789,18 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
             onChanged: (value) => setDialogState(() => selectedRole = value ?? 'landlord'),
           ),
-          if (selectedRole != 'landlord') ...[
+          if (selectedRole == 'caretaker') ...[
             const SizedBox(height: 12),
             TextField(controller: invitationCode, textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(labelText: 'Landlord invitation code', prefixIcon: Icon(Icons.key_outlined))),
+              decoration: const InputDecoration(labelText: 'Caretaker invitation code', prefixIcon: Icon(Icons.key_outlined))),
+          ],
+          if (selectedRole == 'tenant') ...[
+            const SizedBox(height: 12),
+            TextField(controller: landlordEmail, keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(labelText: 'Landlord email address', prefixIcon: Icon(Icons.alternate_email))),
+            const Padding(padding: EdgeInsets.only(top: 6), child: Text(
+              'No invitation code is needed. Your landlord will review and approve your request.',
+              style: TextStyle(fontSize: 12, color: Colors.black54))),
           ],
           const SizedBox(height: 12),
           TextField(controller: email, keyboardType: TextInputType.emailAddress,
@@ -771,230 +828,281 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    const ink = Color(0xFF0B111B);
+    const panel = Color(0xE91A2432);
+    const line = Color(0xFF354457);
+    const cyan = Color(0xFF65D6E8);
+    const muted = Color(0xFF9EADBE);
+    final fieldBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(15),
+      borderSide: const BorderSide(color: line),
+    );
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FC),
-      body: Container(
+      backgroundColor: ink,
+      body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFEAF2FF), Color(0xFFF8FAFD), Color(0xFFFFFFFF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF111D2C), ink, Color(0xFF151B27)],
           ),
         ),
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) => SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
               child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - 40),
+                constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 440),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(28),
-                            image: widget.enableRemoteImages
-                                ? const DecorationImage(
-                                    image: NetworkImage('https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1200&q=90'),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [const Color(0xFF090D16).withOpacity(0.96), const Color(0xFF17243A).withOpacity(0.91)],
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFD4AF37).withOpacity(0.16),
-                                blurRadius: 24,
-                                offset: const Offset(0, 12),
-                              ),
-                            ],
+                    constraints: const BoxConstraints(maxWidth: 460),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(25, 28, 25, 24),
+                      decoration: BoxDecoration(
+                        color: panel,
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(color: line.withOpacity(0.8)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.28),
+                            blurRadius: 34,
+                            offset: const Offset(0, 18),
                           ),
-                          child: Column(
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const SkyNestLogo(size: 82),
-                              const SizedBox(height: 14),
-                              const Text(
-                                'SkyNest',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 34,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 0.4,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'PROPERTY MANAGEMENT',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.88),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 2.1,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Manage properties. Connect people.\nMake renting simpler.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.94),
-                                  height: 1.4,
-                                  fontSize: 14,
-                                ),
+                              const SkyNestLogo(size: 58),
+                              const SizedBox(width: 13),
+                              const Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'SkyNest',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 29,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                  SizedBox(height: 3),
+                                  Text(
+                                    'PROPERTY MANAGEMENT',
+                                    style: TextStyle(
+                                      color: cyan,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 1.8,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: 28),
-                        const Text(
-                          'Welcome back',
-                          textAlign: TextAlign.left,
-                          style: TextStyle(fontSize: 25, fontWeight: FontWeight.w800, color: Color(0xFF172B4D)),
-                        ),
-                        const SizedBox(height: 5),
-                        const Text(
-                          'Sign in to continue to your SkyNest account.',
-                          style: TextStyle(fontSize: 14, color: Color(0xFF65758B)),
-                        ),
-                        const SizedBox(height: 22),
-                        TextField(
-                          controller: email,
-                          keyboardType: TextInputType.emailAddress,
-                          textInputAction: TextInputAction.next,
-                          autofillHints: const [AutofillHints.username, AutofillHints.email],
-                          decoration: InputDecoration(
-                            labelText: 'Email address',
-                            hintText: 'name@example.com',
-                            prefixIcon: const Icon(Icons.email_outlined),
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(15),
-                              borderSide: const BorderSide(color: Color(0xFFD8E1EE)),
+                          const SizedBox(height: 30),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: cyan.withOpacity(0.09),
+                              borderRadius: BorderRadius.circular(30),
+                              border: Border.all(color: cyan.withOpacity(0.22)),
                             ),
-                          ),
-                        ),
-                        const SizedBox(height: 15),
-                        TextField(
-                          controller: password,
-                          obscureText: obscure,
-                          textInputAction: TextInputAction.done,
-                          autofillHints: const [AutofillHints.password],
-                          onSubmitted: (_) { if (!busy) signIn(); },
-                          decoration: InputDecoration(
-                            labelText: 'Password',
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(15),
-                              borderSide: const BorderSide(color: Color(0xFFD8E1EE)),
-                            ),
-                            suffixIcon: IconButton(
-                              tooltip: obscure ? 'Show password' : 'Hide password',
-                              onPressed: () => setState(() => obscure = !obscure),
-                              icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                            ),
-                          ),
-                        ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed: busy ? null : resetPassword,
-                            child: const Text('Forgot password?'),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        SizedBox(
-                          height: 54,
-                          child: FilledButton(
-                            onPressed: busy ? null : signIn,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF101827),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                            ),
-                            child: busy
-                                ? const SizedBox(height: 21, width: 21, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                : const Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.login_rounded),
-                                      SizedBox(width: 10),
-                                      Text('SIGN IN', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.8, color: Color(0xFFF5D76E))),
-                                    ],
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.shield_outlined, size: 15, color: cyan),
+                                SizedBox(width: 7),
+                                Text(
+                                  'SECURE ACCOUNT ACCESS',
+                                  style: TextStyle(
+                                    color: cyan,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.2,
                                   ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 52,
-                          child: OutlinedButton(
-                            onPressed: busy ? null : showCreateAccount,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF174D83),
-                              side: const BorderSide(color: Color(0xFF174D83), width: 1.3),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                                ),
+                              ],
                             ),
-                            child: const Text('CREATE ACCOUNT', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5)),
                           ),
-                        ),
-                        if (firebaseError != null) ...[
-                          const SizedBox(height: 14),
-                          Card(
-                            color: colors.errorContainer,
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Text('Firebase setup is required before login or registration works.\n${firebaseError ?? ''}'),
+                          const SizedBox(height: 23),
+                          const Text(
+                            'Welcome back',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 27,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.4,
+                            ),
+                          ),
+                          const SizedBox(height: 7),
+                          const Text(
+                            'Sign in to manage your properties and stay connected.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: muted, fontSize: 13, height: 1.45),
+                          ),
+                          const SizedBox(height: 27),
+                          const Text(
+                            'EMAIL ADDRESS',
+                            style: TextStyle(
+                              color: muted,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: email,
+                            style: const TextStyle(color: Colors.white, fontSize: 14),
+                            cursorColor: cyan,
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                            autofillHints: const [AutofillHints.username, AutofillHints.email],
+                            decoration: InputDecoration(
+                              hintText: 'name@example.com',
+                              hintStyle: const TextStyle(color: Color(0xFF718096)),
+                              prefixIcon: const Icon(Icons.email_outlined, color: muted, size: 20),
+                              filled: true,
+                              fillColor: const Color(0xFF111A27),
+                              border: fieldBorder,
+                              enabledBorder: fieldBorder,
+                              focusedBorder: fieldBorder.copyWith(
+                                borderSide: const BorderSide(color: cyan, width: 1.4),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          const Text(
+                            'PASSWORD',
+                            style: TextStyle(
+                              color: muted,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: password,
+                            style: const TextStyle(color: Colors.white, fontSize: 14),
+                            cursorColor: cyan,
+                            obscureText: obscure,
+                            textInputAction: TextInputAction.done,
+                            autofillHints: const [AutofillHints.password],
+                            onSubmitted: (_) { if (!busy) signIn(); },
+                            decoration: InputDecoration(
+                              hintText: 'Enter your password',
+                              hintStyle: const TextStyle(color: Color(0xFF718096)),
+                              prefixIcon: const Icon(Icons.lock_outline, color: muted, size: 20),
+                              filled: true,
+                              fillColor: const Color(0xFF111A27),
+                              border: fieldBorder,
+                              enabledBorder: fieldBorder,
+                              focusedBorder: fieldBorder.copyWith(
+                                borderSide: const BorderSide(color: cyan, width: 1.4),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
+                              suffixIcon: IconButton(
+                                tooltip: obscure ? 'Show password' : 'Hide password',
+                                onPressed: () => setState(() => obscure = !obscure),
+                                color: muted,
+                                icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                              ),
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: busy ? null : resetPassword,
+                              style: TextButton.styleFrom(foregroundColor: cyan),
+                              child: const Text('Forgot password?'),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: 54,
+                            child: FilledButton(
+                              onPressed: busy ? null : signIn,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: cyan,
+                                foregroundColor: const Color(0xFF07131D),
+                                disabledBackgroundColor: cyan.withOpacity(0.35),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                              ),
+                              child: busy
+                                  ? const SizedBox(
+                                      height: 21, width: 21,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: ink),
+                                    )
+                                  : const Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.login_rounded, size: 19),
+                                        SizedBox(width: 10),
+                                        Text('SIGN IN', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(height: 13),
+                          SizedBox(
+                            height: 52,
+                            child: OutlinedButton(
+                              onPressed: busy ? null : showCreateAccount,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: const BorderSide(color: line),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                              ),
+                              child: const Text(
+                                'CREATE ACCOUNT',
+                                style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.8),
+                              ),
+                            ),
+                          ),
+                          if (firebaseError != null) ...[
+                            const SizedBox(height: 15),
+                            Card(
+                              color: colors.errorContainer,
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Text(
+                                  'Firebase setup is required before login or registration works.\n${firebaseError ?? ''}',
+                                ),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 25),
+                          const Divider(color: line, height: 1),
+                          const SizedBox(height: 17),
+                          const Text(
+                            'Your property, our priority.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: muted, fontSize: 12, fontStyle: FontStyle.italic),
+                          ),
+                          const SizedBox(height: 9),
+                          const Text(
+                            'Developed by Benson',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xFF71869C),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.8,
                             ),
                           ),
                         ],
-                        const SizedBox(height: 24),
-                        const Row(
-                          children: [
-                            Expanded(child: Divider(color: Color(0xFFD6DFEA))),
-                            Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 12),
-                              child: Text('SKYNEST', style: TextStyle(color: Color(0xFF8190A5), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2)),
-                            ),
-                            Expanded(child: Divider(color: Color(0xFFD6DFEA))),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'Your property, our priority.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Color(0xFF65758B), fontSize: 13, fontStyle: FontStyle.italic),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Secure access • Simple property management',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Color(0xFF8A97A9), fontSize: 11),
-                        ),
-                        const SizedBox(height: 18),
-                        const Text(
-                          'Developed by Benson',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFF174D83),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.7,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -1082,9 +1190,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String searchQuery = '';
   List<String> _dashboardOrder = [];
   Set<String> _hiddenDashboardTiles = {};
-  final PageController _dashboardPageController = PageController(viewportFraction: 0.78);
-  int _activeDashboardIndex = 0;
-
+  
   @override
   void initState() {
     super.initState();
@@ -1214,7 +1320,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     banner?.dispose();
-    _dashboardPageController.dispose();
     super.dispose();
   }
 
@@ -1321,6 +1426,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Payments', Icons.payments_outlined, Colors.blue, const PaymentsScreen()),
         _MenuItem('M-Pesa receiving account', Icons.account_balance_wallet_outlined, Colors.green, const MpesaAccountScreen()),
         _MenuItem('Tenant payment submissions', Icons.fact_check_outlined, Colors.teal, const PaymentSubmissionsScreen()),
+        _MenuItem('Caretaker cash handovers', Icons.account_balance_wallet_outlined, Colors.green, const LandlordCashHandoverScreen()),
         _MenuItem('Caretakers & invitations', Icons.badge_outlined, Colors.teal, const InvitationsScreen()),
         _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
@@ -1356,8 +1462,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } else if (userRole == 'caretaker') {
       items.addAll([
         _MenuItem('Assigned houses', Icons.home_work_outlined, Colors.orange, const CaretakerHousesScreen()),
-        _MenuItem('Tenant approvals', Icons.how_to_reg_outlined, Colors.green, const TenantApprovalsScreen()),
         _MenuItem('Rent confirmations', Icons.fact_check_outlined, Colors.blue, const CaretakerPaymentsScreen()),
+        _MenuItem('Pay rent with M-Pesa', Icons.phone_android, Colors.green, const MpesaRentPaymentScreen()),
+        _MenuItem('Cash collections & handovers', Icons.payments_outlined, Colors.green, const CaretakerCashCollectionScreen()),
         _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('House requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
@@ -1373,7 +1480,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('House change requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
-        _MenuItem('Pay rent', Icons.phone_android, Colors.green, const TenantPayScreen()),
+        _MenuItem('My rent & balance', Icons.account_balance_wallet_outlined, Colors.teal, const TenantRentOverviewScreen()),
+        _MenuItem('Pay rent with M-Pesa', Icons.phone_android, Colors.green, const MpesaRentPaymentScreen()),
         _MenuItem('Reading & media hub', Icons.auto_stories_rounded, Colors.teal, const ReadingHubScreen()),
         _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
       ]);
@@ -1415,7 +1523,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             : 'Your home updates and helpful tools, all in one place.';
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF3F4F8),
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF3F4F8),
+        foregroundColor: const Color(0xFF252733),
+        elevation: 0,
+        scrolledUnderElevation: 0,
         title: AnimatedSwitcher(
           duration: const Duration(milliseconds: 320),
           transitionBuilder: (child, animation) => FadeTransition(
@@ -1502,393 +1615,137 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          _AnimatedPhotoBackdrop(
-            screen: 'Dashboard',
-            themeName: themeManager.selectedName,
-            enabled: themeManager.slideshowEnabled,
-          ),
-          ColoredBox(
-            color: Theme.of(context).colorScheme.surface.withOpacity(0.88),
-          ),
-          Column(
+      body: Container(
+        color: const Color(0xFFF3F4F8),
+        child: SafeArea(
+          top: false,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Theme.of(context).colorScheme.primary,
-                        Color.lerp(
-                          Theme.of(context).colorScheme.primary,
-                          Theme.of(context).colorScheme.tertiary,
-                          0.52,
-                        )!,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Theme.of(context).colorScheme.primary.withOpacity(0.20),
-                        blurRadius: 18,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
+              Text(
+                '$greeting, $firstName',
+                style: const TextStyle(
+                  color: Color(0xFF252733),
+                  fontSize: 29,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.8,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(dailyMessage, style: const TextStyle(
+                color: Color(0xFF535765), fontSize: 14, height: 1.35,
+              )),
+              const SizedBox(height: 5),
+              Text(DateFormat('EEEE, d MMMM').format(now),
+                style: const TextStyle(color: Color(0xFF535765), fontSize: 13)),
+              const SizedBox(height: 20),
+              TextField(
+                onChanged: (value) => setState(() => searchQuery = value),
+                style: const TextStyle(color: Color(0xFF252733)),
+                decoration: InputDecoration(
+                  hintText: 'Search houses, tenants, payments...',
+                  hintStyle: const TextStyle(color: Color(0xFF777B86)),
+                  prefixIcon: const Icon(Icons.search, color: Color(0xFF777B86)),
+                  suffixIcon: searchQuery.isEmpty ? null : IconButton(
+                    tooltip: 'Clear search',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => setState(() => searchQuery = ''),
                   ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '$greeting, $firstName',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.35,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              dailyMessage,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.88),
-                                fontSize: 12.5,
-                                height: 1.35,
-                              ),
-                            ),
-                            const SizedBox(height: 11),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.calendar_today_rounded,
-                                  size: 13,
-                                  color: Colors.white.withOpacity(0.88),
-                                ),
-                                const SizedBox(width: 7),
-                                Text(
-                                  DateFormat('EEEE, d MMMM').format(now),
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.92),
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.16),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white.withOpacity(0.22)),
-                        ),
-                        child: const Icon(
-                          Icons.auto_awesome_rounded,
-                          color: Colors.white,
-                          size: 25,
-                        ),
-                      ),
-                    ],
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 17),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(32),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(32),
+                    borderSide: const BorderSide(color: Color(0xFFE3E5EB), width: 1),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(32),
+                    borderSide: const BorderSide(color: Color(0xFF3987D8), width: 1.4),
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-                child: TextField(
-                  onChanged: (value) => setState(() => searchQuery = value),
-                  decoration: InputDecoration(
-                    hintText: 'Search modules...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: searchQuery.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: 'Clear search',
-                            icon: const Icon(Icons.close),
-                            onPressed: () => setState(() => searchQuery = ''),
-                          ),
-                    filled: true,
-                    fillColor: Theme.of(context).colorScheme.surface,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
+              const SizedBox(height: 22),
+              const Text('Overview', style: TextStyle(
+                color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
+              )),
+              const SizedBox(height: 10),
+              DashboardOverviewCard(userRole: userRole),
+              const SizedBox(height: 22),
+              if (userRole == 'landlord') ...[
+                const Text('Recent activity', style: TextStyle(
+                  color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
+                )),
+                const SizedBox(height: 8),
+                DashboardRecentActivity(userRole: userRole),
+                const SizedBox(height: 22),
+                const Text('Quick actions', style: TextStyle(
+                  color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
+                )),
+                const SizedBox(height: 10),
+                DashboardQuickActions(
+                  onAddHouse: () => _open(context, items.firstWhere((e) => e.title == 'Houses')),
+                  onCollectPayment: () => _open(context, items.firstWhere((e) => e.title == 'Payments')),
+                  onPostNotice: () => _open(context, items.firstWhere((e) => e.title == 'Notices')),
                 ),
-              ),
-              Expanded(
+                const SizedBox(height: 22),
+              ] else ...[
+                const Text('Your recent activity', style: TextStyle(
+                  color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
+                )),
+                const SizedBox(height: 10),
+                DashboardRecentActivity(userRole: userRole),
+                const SizedBox(height: 22),
+              ],
+              const Text('Modules', style: TextStyle(
+                color: Color(0xFF252733), fontSize: 19, fontWeight: FontWeight.w700,
+              )),
+              const SizedBox(height: 10),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(19),
+                  boxShadow: const [BoxShadow(
+                    color: Color(0x12000000), blurRadius: 14, offset: Offset(0, 5),
+                  )],
+                ),
                 child: filteredItems.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(28),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.search_off_rounded,
-                                  size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                              const SizedBox(height: 10),
-                              const Text('No modules found'),
-                              const SizedBox(height: 4),
-                              Text('Try another search term.',
-                                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                            ],
-                          ),
-                        ),
+                    ? const Padding(
+                        padding: EdgeInsets.all(22),
+                        child: Text('No modules found.', style: TextStyle(color: Color(0xFF555966))),
                       )
-                    : PageView.builder(
-                        controller: _dashboardPageController,
-                        padEnds: true,
-                        onPageChanged: (index) => setState(() => _activeDashboardIndex = index),
-                        itemCount: filteredItems.length,
-                        itemBuilder: (context, index) {
-                          final item = filteredItems[index];
-                          final scheme = Theme.of(context).colorScheme;
-                          final cardOffset = (index - _activeDashboardIndex).toDouble();
-                          final cardDepth = cardOffset.abs().clamp(0.0, 1.0);
-                          var hovered = false;
-                          return StatefulBuilder(
-                            builder: (context, setTileState) => MouseRegion(
-                              onEnter: (_) => setTileState(() => hovered = true),
-                              onExit: (_) => setTileState(() => hovered = false),
-                              child: AnimatedScale(
-                                scale: hovered ? 1.035 : (index == _activeDashboardIndex ? 1.0 : 0.86),
-                                duration: const Duration(milliseconds: 190),
-                                curve: Curves.easeOutCubic,
-                                child: Transform(
-                                  alignment: Alignment.center,
-                                  transform: Matrix4.identity()
-                                    ..setEntry(3, 2, 0.0012)
-                                    ..translate(math.sin(cardOffset * 0.85) * 42.0, cardDepth * 12.0)
-                                    ..rotateY(-cardOffset * 0.28),
-                                  child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 190),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(25),
-                                    border: Border.all(
-                                      color: item.color.withOpacity(hovered ? 0.95 : 0.52),
-                                      width: hovered ? 1.8 : 1.15,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: item.color.withOpacity(hovered ? 0.30 : 0.16),
-                                        blurRadius: hovered ? 24 : 15,
-                                        spreadRadius: hovered ? 1 : 0,
-                                        offset: const Offset(0, 8),
-                                      ),
-                                      const BoxShadow(
-                                        color: Color(0x33020A18),
-                                        blurRadius: 16,
-                                        offset: Offset(0, 7),
-                                      ),
-                                    ],
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(24),
-                                    child: Material(
-                                      color: const Color(0xFF09172B),
-                                      child: InkWell(
-                                        onLongPress: () => _openControlCentre(context, items),
-                                        onTap: () async {
-                                          await SkyNestFeedback.playTap();
-                                          if (!context.mounted) return;
-                                          await _previewModule(context, item);
-                                        },
-                                        child: Stack(
-                                          fit: StackFit.expand,
-                                          children: [
-                                            Image.network(
-                                              _menuImageFor(item.title),
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) => DecoratedBox(
-                                                decoration: BoxDecoration(
-                                                  gradient: LinearGradient(
-                                                    begin: Alignment.topLeft,
-                                                    end: Alignment.bottomRight,
-                                                    colors: [
-                                                      Color.lerp(item.color, const Color(0xFF07152F), 0.35)!,
-                                                      const Color(0xFF07152F),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            DecoratedBox(
-                                              decoration: BoxDecoration(
-                                                gradient: LinearGradient(
-                                                  begin: Alignment.topCenter,
-                                                  end: Alignment.bottomCenter,
-                                                  colors: [
-                                                    const Color(0x99071327),
-                                                    const Color(0x44071327),
-                                                    const Color(0xF2071022),
-                                                  ],
-                                                  stops: const [0, 0.36, 1],
-                                                ),
-                                              ),
-                                            ),
-                                            Positioned(
-                                              top: 0,
-                                              left: 0,
-                                              right: 0,
-                                              height: 3,
-                                              child: DecoratedBox(
-                                                decoration: BoxDecoration(
-                                                  gradient: LinearGradient(
-                                                    colors: [
-                                                      item.color.withOpacity(0.15),
-                                                      item.color,
-                                                      scheme.tertiary,
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            Positioned(
-                                              top: 13,
-                                              right: 13,
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0x7708172B),
-                                                  borderRadius: BorderRadius.circular(30),
-                                                  border: Border.all(color: Colors.white.withOpacity(0.22)),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Icon(Icons.auto_awesome, size: 11, color: item.color.withOpacity(0.95)),
-                                                    const SizedBox(width: 5),
-                                                    const Text(
-                                                      'SKYNEST',
-                                                      style: TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 8,
-                                                        letterSpacing: 1.15,
-                                                        fontWeight: FontWeight.w800,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                            Positioned(
-                                              right: -18,
-                                              top: 45,
-                                              child: Icon(item.icon, size: 112, color: Colors.white.withOpacity(0.075)),
-                                            ),
-                                            Padding(
-                                              padding: const EdgeInsets.fromLTRB(15, 17, 15, 15),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Container(
-                                                    width: 56,
-                                                    height: 56,
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.white.withOpacity(0.13),
-                                                      borderRadius: BorderRadius.circular(18),
-                                                      border: Border.all(color: Colors.white.withOpacity(0.36)),
-                                                      boxShadow: [
-                                                        BoxShadow(
-                                                          color: item.color.withOpacity(0.22),
-                                                          blurRadius: 15,
-                                                          spreadRadius: 1,
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    child: Icon(item.icon, size: 29, color: Colors.white),
-                                                  ),
-                                                  const Spacer(),
-                                                  Text(
-                                                    item.title,
-                                                    maxLines: 2,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 16,
-                                                      fontWeight: FontWeight.w800,
-                                                      height: 1.14,
-                                                      letterSpacing: -0.25,
-                                                      shadows: [
-                                                        Shadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 9),
-                                                  Row(
-                                                    children: [
-                                                      Text(
-                                                        'Explore module',
-                                                        style: TextStyle(
-                                                          color: Colors.white.withOpacity(0.78),
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                      const Spacer(),
-                                                      Container(
-                                                        width: 29,
-                                                        height: 29,
-                                                        decoration: BoxDecoration(
-                                                          color: item.color.withOpacity(0.22),
-                                                          shape: BoxShape.circle,
-                                                          border: Border.all(color: item.color.withOpacity(0.8)),
-                                                        ),
-                                                        child: const Icon(
-                                                          Icons.arrow_forward_rounded,
-                                                          size: 16,
-                                                          color: Colors.white,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  ),
-                                ),
+                    : Column(
+                        children: [
+                          for (var i = 0; i < filteredItems.length; i++) ...[
+                            ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 17, vertical: 2),
+                              leading: CircleAvatar(
+                                radius: 20,
+                                backgroundColor: filteredItems[i].color.withOpacity(0.13),
+                                child: Icon(filteredItems[i].icon, color: filteredItems[i].color, size: 22),
                               ),
+                              title: Text(filteredItems[i].title, style: const TextStyle(
+                                color: Color(0xFF252733), fontSize: 16, fontWeight: FontWeight.w600,
+                              )),
+                              trailing: const Icon(Icons.chevron_right, color: Color(0xFF9A9DA6)),
+                              onTap: () async {
+                                await SkyNestFeedback.playTap();
+                                if (!context.mounted) return;
+                                await _previewModule(context, filteredItems[i]);
+                              },
                             ),
-                          );
-                        },
+                            if (i != filteredItems.length - 1)
+                              const Divider(height: 1, indent: 72, color: Color(0xFFE6E7EB)),
+                          ],
+                        ],
                       ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8, top: 2),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.swipe_rounded, size: 15, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 7),
-                    Text('Swipe to spin · Hold a card to arrange',
-                      style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                  ],
-                ),
               ),
             ],
           ),
-        ],
+        ),
       ),
       bottomNavigationBar: loaded && banner != null
           ? SizedBox(
@@ -2020,7 +1877,7 @@ class AccountRoleScreen extends StatefulWidget {
 }
 
 class _AccountRoleScreenState extends State<AccountRoleScreen> {
-  final invitationCode = TextEditingController();
+  final landlordEmail = TextEditingController();
   String role = '';
   String status = '';
   bool loading = true;
@@ -2035,7 +1892,7 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
 
   @override
   void dispose() {
-    invitationCode.dispose();
+    landlordEmail.dispose();
     super.dispose();
   }
 
@@ -2168,7 +2025,7 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + token);
       request.headers.contentType = ContentType.json;
       final data = <String, dynamic>{'targetRole': targetRole};
-      if (targetRole == 'tenant') data['invitationCode'] = invitationCode.text.trim().toUpperCase();
+      if (targetRole == 'tenant') data['landlordEmail'] = landlordEmail.text.trim().toLowerCase();
       request.write(jsonEncode({'data': data}));
       final response = await request.close().timeout(const Duration(seconds: 35));
       final responseText = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 20));
@@ -2195,8 +2052,10 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
 
   Future<void> _changeRole(String targetRole) async {
     if (saving) return;
-    if (targetRole == 'tenant' && invitationCode.text.trim().length < 6) {
-      snack(context, 'Enter the Tenant invitation code supplied by your new landlord.');
+    final requestedLandlordEmail = landlordEmail.text.trim();
+    if (targetRole == 'tenant' &&
+        (!requestedLandlordEmail.contains('@') || !requestedLandlordEmail.contains('.'))) {
+      snack(context, 'Enter your new landlord’s registered email address.');
       return;
     }
     final targetName = targetRole == 'tenant' ? 'Tenant' : 'Landlord';
@@ -2205,7 +2064,7 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
       builder: (dialogContext) => AlertDialog(
         title: Text('Switch to ' + targetName + '?'),
         content: Text(targetRole == 'tenant'
-          ? 'Your account will keep the same email and password. You must use a valid Tenant invitation code, and the new landlord must approve your account. Existing properties or active linked tenants/caretakers must be transferred or cleared first. Existing history will not be deleted.'
+          ? 'Your account will keep the same email and password. Enter the new landlord’s registered email address; they must approve your tenant access. Existing properties or active linked tenants/caretakers must be transferred or cleared first. Existing history will not be deleted.'
           : 'Your account will become a Landlord account. You cannot switch while you have an assigned house or a pending house request. Your existing account and sign-in details will be kept.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('CANCEL')),
@@ -2303,14 +2162,15 @@ class _AccountRoleScreenState extends State<AccountRoleScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('Switch to Tenant', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  const Text('If you created your account as a Landlord by mistake, you can use the same account to join another property as a Tenant. Ask that landlord for a Tenant invitation code.'),
+                  const Text('If you created your account as a Landlord by mistake, you can use the same account to join another property as a Tenant. Enter the new landlord’s registered email address; they will review your request.'),
                   const SizedBox(height: 14),
                   TextField(
-                    controller: invitationCode,
-                    textCapitalization: TextCapitalization.characters,
+                    controller: landlordEmail,
+                    textCapitalization: TextCapitalization.none,
+                    keyboardType: TextInputType.emailAddress,
                     decoration: const InputDecoration(
-                      labelText: 'Tenant invitation code',
-                      prefixIcon: Icon(Icons.key_outlined),
+                      labelText: 'New landlord email address',
+                      prefixIcon: Icon(Icons.alternate_email),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -2578,11 +2438,23 @@ class _TenantsScreenState extends State<TenantsScreen> {
         FilledButton(onPressed: () async {
           if (!key.currentState!.validate()) return;
           try {
+            final uid = FirebaseAuth.instance.currentUser?.uid;
+            if (uid == null) throw StateError('Sign in before adding a tenant.');
+            final matchingHouses = await FirebaseFirestore.instance.collection('houses')
+                .where('createdBy', isEqualTo: uid)
+                .where('houseNo', isEqualTo: house.text.trim())
+                .limit(2).get();
+            if (matchingHouses.docs.length != 1) {
+              throw StateError(matchingHouses.docs.isEmpty
+                  ? 'That house number is not in your property records. Add the house first.'
+                  : 'More than one house has that number. Resolve the duplicate house numbers first.');
+            }
+            final houseDoc = matchingHouses.docs.single;
             await FirebaseFirestore.instance.collection('tenants').add({
               'name': name.text.trim(), 'phone': phone.text.trim(), 'houseNo': house.text.trim(),
-              'rentAmount': double.parse(rent.text), 'createdAt': FieldValue.serverTimestamp(),
-              'createdBy': FirebaseAuth.instance.currentUser?.uid, 'landlordId': FirebaseAuth.instance.currentUser?.uid,
-              'status': 'active',
+              'houseId': houseDoc.id, 'rentAmount': double.parse(rent.text),
+              'createdAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+              'landlordId': uid, 'status': 'active',
             });
             if (d.mounted) Navigator.pop(d);
           } catch (e) { snack(context, 'Could not save tenant: ' + e.toString()); }
@@ -2885,22 +2757,30 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
         await recordActivity(landlordId, 'Tenant submitted rent payment for house ' + house.text.trim());
         if (mounted) { amount.clear(); snack(context, 'Payment details sent to your landlord for verification. No automatic M-Pesa payment was made.'); }
       } else {
+        final matchingHouses = await FirebaseFirestore.instance.collection('houses')
+          .where('createdBy', isEqualTo: uid)
+          .where('houseNo', isEqualTo: house.text.trim()).limit(2).get();
+        if (matchingHouses.docs.length != 1) {
+          throw StateError(matchingHouses.docs.isEmpty
+              ? 'That house number is not in your property records.'
+              : 'More than one house has that number. Resolve the duplicate house numbers first.');
+        }
+        final houseDoc = matchingHouses.docs.single;
         final paymentRef = await FirebaseFirestore.instance.collection('payments').add({
-          'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(), 'amount': value,
-          'method': paymentMethod.toUpperCase(), 'transactionCode': paymentMethod == 'mpesa' ? code : '', 'status': 'Pending verification',
-          'createdAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp(), 'createdBy': uid,
+          'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(),
+          'houseId': houseDoc.id, 'amount': value,
+          'method': paymentMethod.toUpperCase(), 'transactionCode': paymentMethod == 'mpesa' ? code : '',
+          'status': 'Pending verification', 'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(), 'createdBy': uid, 'landlordId': uid,
         });
-        final matchingHouse = await FirebaseFirestore.instance.collection('houses')
-          .where('createdBy', isEqualTo: uid).where('houseNo', isEqualTo: house.text.trim()).limit(1).get();
-        if (matchingHouse.docs.isNotEmpty) {
-          final assigned = (matchingHouse.docs.first.data()['caretakerIds'] as List?)?.whereType<String>().toList() ?? <String>[];
-          if (assigned.isNotEmpty) {
-            await FirebaseFirestore.instance.collection('paymentConfirmations').add({
-              'landlordId': uid, 'caretakerId': assigned.first, 'paymentId': paymentRef.id,
-              'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(),
-              'status': 'pending', 'createdAt': FieldValue.serverTimestamp(),
-            });
-          }
+        final assigned = (houseDoc.data()['caretakerIds'] as List?)?.whereType<String>().toList() ?? <String>[];
+        if (assigned.isNotEmpty) {
+          await FirebaseFirestore.instance.collection('paymentConfirmations').add({
+            'landlordId': uid, 'caretakerId': assigned.first, 'houseId': houseDoc.id,
+            'paymentId': paymentRef.id, 'tenantName': tenant.text.trim(),
+            'houseNo': house.text.trim(), 'status': 'pending',
+            'createdAt': FieldValue.serverTimestamp(),
+          });
         }
         await recordActivity(uid, 'Created pending rent payment record for house ' + house.text.trim());
         if (mounted) { amount.clear(); snack(context, 'Payment record saved. Confirm actual receipt before marking it received.'); }
@@ -2968,9 +2848,10 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
       final assigned = (houses.docs.first.data()['caretakerIds'] as List?)?.whereType<String>().toList() ?? <String>[];
       if (assigned.isEmpty) throw StateError('No caretaker is assigned to this house.');
       await FirebaseFirestore.instance.collection('paymentConfirmations').add({
-        'landlordId': uid, 'caretakerId': assigned.first, 'paymentId': id,
-        'tenantName': data['tenantName'] ?? 'Tenant', 'houseNo': data['houseNo'] ?? '',
-        'status': 'pending', 'createdAt': FieldValue.serverTimestamp(),
+        'landlordId': uid, 'caretakerId': assigned.first, 'houseId': houses.docs.first.id,
+        'paymentId': id, 'tenantName': data['tenantName'] ?? 'Tenant',
+        'houseNo': data['houseNo'] ?? '', 'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
       });
       await FirebaseFirestore.instance.collection('paymentSubmissions').doc(id).update({'status': 'awaiting_caretaker'});
       if (context.mounted) snack(context, 'A payment confirmation task was sent to the caretaker.');
@@ -3014,9 +2895,20 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     try {
+      var houseId = data['houseId']?.toString();
+      if (houseId == null || houseId.isEmpty) {
+        final matches = await FirebaseFirestore.instance.collection('houses')
+            .where('createdBy', isEqualTo: uid)
+            .where('houseNo', isEqualTo: (data['houseNo'] ?? '').toString())
+            .limit(2).get();
+        if (matches.docs.length != 1) {
+          throw StateError('The payment must be linked to one exact house before it can enter the ledger.');
+        }
+        houseId = matches.docs.single.id;
+      }
       final payment = await FirebaseFirestore.instance.collection('payments').add({
         'tenantName': data['tenantName'] ?? 'Tenant', 'houseNo': data['houseNo'] ?? '',
-        'amount': data['amount'], 'method': data['method'] ?? 'Manual',
+        'houseId': houseId, 'amount': data['amount'], 'method': data['method'] ?? 'Manual',
         'status': 'Received (landlord verified)', 'createdAt': FieldValue.serverTimestamp(),
         'createdBy': uid, 'landlordId': uid, 'tenantId': data['tenantId'],
       });
@@ -3043,6 +2935,8 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
     );
     if (confirmed != true || !mounted) return;
     try {
+      final ownerId = FirebaseAuth.instance.currentUser?.uid;
+      if (ownerId == null) throw StateError('Sign in again before verifying payments.');
       final collection = FirebaseFirestore.instance.collection('paymentSubmissions');
       final snapshots = await Future.wait(ids.map((id) => collection.doc(id).get()));
       final batch = FirebaseFirestore.instance.batch();
@@ -3050,16 +2944,37 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
       for (final snapshot in snapshots) {
         final data = snapshot.data();
         if (!snapshot.exists || data == null || data['status'] != 'pending') continue;
+        if (data['landlordId'] != ownerId) {
+          throw StateError('A selected submission does not belong to this landlord.');
+        }
+        var houseId = data['houseId']?.toString() ?? '';
+        if (houseId.isEmpty) {
+          final matches = await FirebaseFirestore.instance.collection('houses')
+              .where('createdBy', isEqualTo: ownerId)
+              .where('houseNo', isEqualTo: (data['houseNo'] ?? '').toString())
+              .limit(2).get();
+          if (matches.docs.length != 1) {
+            throw StateError('Every selected payment must match exactly one landlord-owned house.');
+          }
+          houseId = matches.docs.single.id;
+        }
+        final house = await FirebaseFirestore.instance.collection('houses').doc(houseId).get();
+        if (!house.exists || house.data()?['createdBy'] != ownerId ||
+            house.data()?['landlordId'] != ownerId ||
+            house.data()?['houseNo'] != data['houseNo']) {
+          throw StateError('A selected payment has an invalid house assignment. No payments were recorded.');
+        }
         final paymentRef = FirebaseFirestore.instance.collection('payments').doc();
         batch.set(paymentRef, {
           'tenantName': data['tenantName'] ?? 'Tenant',
           'houseNo': data['houseNo'] ?? '',
+          'houseId': houseId,
           'amount': data['amount'] ?? 0,
           'method': data['method'] ?? 'Manual',
           'status': 'Received (landlord verified)',
           'createdAt': FieldValue.serverTimestamp(),
-          'createdBy': FirebaseAuth.instance.currentUser?.uid,
-          'landlordId': FirebaseAuth.instance.currentUser?.uid,
+          'createdBy': ownerId,
+          'landlordId': ownerId,
           'tenantId': data['tenantId'],
         });
         batch.update(snapshot.reference, {
@@ -3071,8 +2986,7 @@ class _PaymentSubmissionsScreenState extends State<PaymentSubmissionsScreen> {
       }
       if (count == 0) throw StateError('No selected submissions are still pending.');
       await batch.commit();
-      final ownerId = FirebaseAuth.instance.currentUser?.uid;
-      if (ownerId != null) await recordActivity(ownerId, 'Bulk verified $count tenant rent payment submission(s)');
+      await recordActivity(ownerId, 'Bulk verified $count tenant rent payment submission(s)');
       if (mounted) {
         setState(() => selectedSubmissionIds.clear());
         snack(context, '$count payment submission(s) verified and added to the ledger.');
@@ -6568,7 +6482,7 @@ class HouseRequestsScreen extends StatelessWidget {
         }
         await FirebaseFirestore.instance.collection('tenants').add({
           'name': data['tenantName'] ?? 'Tenant', 'houseNo': data['houseNo'] ?? '',
-          'tenantId': tenantId, 'landlordId': data['landlordId'],
+          'houseId': data['houseId'], 'tenantId': tenantId, 'landlordId': data['landlordId'],
           'createdBy': data['landlordId'], 'createdAt': FieldValue.serverTimestamp(),
         });
       }
@@ -6587,9 +6501,20 @@ class HouseRequestsScreen extends StatelessWidget {
           if (!profile.hasData) return const Center(child: CircularProgressIndicator());
           final p = profile.data?.data() ?? {};
           final role = p['role']?.toString() ?? 'tenant';
+          final houseIds = (p['propertyIds'] as List?)?.whereType<String>().toList() ?? <String>[];
+          if (role == 'caretaker' && houseIds.isEmpty) {
+            return const EmptyView('No assigned properties are available for house requests.');
+          }
+          if (role == 'caretaker' && houseIds.length > 30) {
+            return const EmptyView('Your account has more than 30 assigned houses. Ask the landlord to review house requests until paginated filtering is available.');
+          }
+          final requests = FirebaseFirestore.instance.collection('houseRequests');
           final stream = role == 'tenant'
-            ? FirebaseFirestore.instance.collection('houseRequests').where('tenantId', isEqualTo: uid).snapshots()
-            : FirebaseFirestore.instance.collection('houseRequests').where('landlordId', isEqualTo: role == 'landlord' ? uid : p['landlordId']).snapshots();
+            ? requests.where('tenantId', isEqualTo: uid).snapshots()
+            : role == 'caretaker'
+              ? requests.where('landlordId', isEqualTo: p['landlordId'])
+                  .where('houseId', whereIn: houseIds).snapshots()
+              : requests.where('landlordId', isEqualTo: uid).snapshots();
           return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(stream: stream, builder: (context, snap) {
             if (snap.hasError) return errorView('Requests could not load.');
             if (!snap.hasData) return const Center(child: CircularProgressIndicator());
@@ -6598,10 +6523,10 @@ class HouseRequestsScreen extends StatelessWidget {
               final d = doc.data();
               return Card(child: ListTile(title: Text('House ' + (d['houseNo'] ?? '').toString()),
                 subtitle: Text((d['tenantName'] ?? 'Tenant').toString() + ' • ' + (d['status'] ?? 'pending').toString()),
-                trailing: role == 'tenant' ? null : Wrap(children: [
+                trailing: role == 'landlord' ? Wrap(children: [
                   IconButton(tooltip: 'Approve', onPressed: d['status'] == 'pending' ? () => decide(context, doc.id, 'approved', d) : null, icon: const Icon(Icons.check_circle, color: Colors.green)),
                   IconButton(tooltip: 'Decline', onPressed: d['status'] == 'pending' ? () => decide(context, doc.id, 'declined', d) : null, icon: const Icon(Icons.cancel_outlined, color: Colors.red)),
-                ])));
+                ]) : null));
             }).toList());
           });
         },
@@ -7225,6 +7150,11 @@ class TenantApprovalsScreen extends StatelessWidget {
   Future<void> approve(BuildContext context, String id, String status) async {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) throw StateError('Sign in again before approving an account.');
+      final manager = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (manager.data()?['role'] != 'landlord' || manager.data()?['status'] != 'active') {
+        throw StateError('Only the active landlord can approve tenant or caretaker accounts.');
+      }
       final userRef = FirebaseFirestore.instance.collection('users').doc(id);
       final user = await userRef.get();
       final data = user.data() ?? {};
@@ -7239,12 +7169,12 @@ class TenantApprovalsScreen extends StatelessWidget {
           });
         }
       }
-      final profile = uid == null ? null : await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      final landlordId = profile?.data()?['role'] == 'landlord' ? uid : profile?.data()?['landlordId'];
+      final profile = manager;
+      final landlordId = profile.data()?['role'] == 'landlord' ? uid : profile.data()?['landlordId'];
       if (landlordId != null) {
         await FirebaseFirestore.instance.collection('activityLogs').add({
-          'landlordId': landlordId, 'actorId': uid, 'actorName': profile?.data()?['displayName'] ?? 'Manager',
-          'actorRole': profile?.data()?['role'] ?? 'unknown',
+          'landlordId': landlordId, 'actorId': uid, 'actorName': profile.data()?['displayName'] ?? 'Manager',
+          'actorRole': profile.data()?['role'] ?? 'unknown',
           'action': 'Account ' + status + ': ' + (data['displayName'] ?? data['email'] ?? id).toString(),
           'isSuspicious': status == 'rejected',
           'createdAt': FieldValue.serverTimestamp(),
@@ -7262,7 +7192,14 @@ class TenantApprovalsScreen extends StatelessWidget {
         builder: (context, profile) {
           if (!profile.hasData) return const Center(child: CircularProgressIndicator());
           final p = profile.data?.data() ?? {};
-          final landlordId = p['role'] == 'landlord' ? uid : p['landlordId'];
+          if (p['role'] != 'landlord' || p['status'] != 'active') {
+            return const Center(child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('Only the active landlord can review tenant and caretaker approvals.',
+                textAlign: TextAlign.center),
+            ));
+          }
+          final landlordId = uid;
           return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance.collection('users').where('landlordId', isEqualTo: landlordId).snapshots(),
             builder: (context, snap) {
@@ -7319,20 +7256,41 @@ class CaretakerPaymentsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     return Scaffold(appBar: AppBar(title: const Text('Rent confirmations')),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('paymentConfirmations').where('caretakerId', isEqualTo: uid).snapshots(),
-        builder: (context, snap) {
-          if (snap.hasError) return errorView('Assigned payment records could not load.');
-          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          if (snap.data!.docs.isEmpty) return const EmptyView('No rent confirmations assigned to you. The landlord controls financial totals.');
-          return ListView(children: snap.data!.docs.map((doc) {
-            final d = doc.data();
-            return ListTile(title: Text(d['tenantName']?.toString() ?? 'Tenant'),
-              subtitle: Text('House ' + (d['houseNo'] ?? '').toString() + ' • ' + (d['status'] ?? 'pending').toString()),
-              trailing: TextButton(onPressed: d['status'] == 'pending' ? () => confirm(context, doc.id) : null, child: const Text('CONFIRM')));
-          }).toList());
-        },
-      ),
+      body: uid == null
+        ? const EmptyView('Sign in to view rent confirmations.')
+        : FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
+            builder: (context, profile) {
+              if (profile.hasError) return errorView('Caretaker access details could not load.');
+              if (!profile.hasData) return const Center(child: CircularProgressIndicator());
+              final data = profile.data?.data() ?? <String, dynamic>{};
+              final landlordId = data['landlordId']?.toString();
+              final houseIds = (data['propertyIds'] as List?)?.whereType<String>().toList() ?? <String>[];
+              if (landlordId == null || houseIds.isEmpty) {
+                return const EmptyView('No assigned houses were found for this caretaker account.');
+              }
+              if (houseIds.length > 30) {
+                return const EmptyView('This account has more than 30 assigned houses. The confirmation list needs paginated house filtering; contact support rather than using an incomplete list.');
+              }
+              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance.collection('paymentConfirmations')
+                    .where('caretakerId', isEqualTo: uid)
+                    .where('landlordId', isEqualTo: landlordId)
+                    .where('houseId', whereIn: houseIds).snapshots(),
+                builder: (context, snap) {
+                  if (snap.hasError) return errorView('Assigned payment records could not load.');
+                  if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                  if (snap.data!.docs.isEmpty) return const EmptyView('No rent confirmations assigned to you. The landlord controls financial totals.');
+                  return ListView(children: snap.data!.docs.map((doc) {
+                    final d = doc.data();
+                    return ListTile(title: Text(d['tenantName']?.toString() ?? 'Tenant'),
+                      subtitle: Text('House ' + (d['houseNo'] ?? '').toString() + ' • ' + (d['status'] ?? 'pending').toString()),
+                      trailing: TextButton(onPressed: d['status'] == 'pending' ? () => confirm(context, doc.id) : null, child: const Text('CONFIRM')));
+                  }).toList());
+                },
+              );
+            },
+          ),
     );
   }
 }
@@ -7345,6 +7303,8 @@ String _modulePreviewDescription(String title) {
     'Tenants': 'Manage tenant profiles, balances, contract dates, family details and contact actions.',
     'Payments': 'Track rent received, pending balances, payment methods and receipt dates.',
     'Tenant payment submissions': 'Review tenant-submitted payments, check queue times, and verify or reject submissions.',
+    'Caretaker cash handovers': 'Review cash collected by caretakers and acknowledge the physical handover to the landlord.',
+    'Cash collections & handovers': 'Record cash received from assigned tenants, submit handovers, and track landlord acknowledgement.',
     'Caretakers & invitations': 'Create time-limited invitations, manage linked caretakers and control property access.',
     'Complaints': 'Receive, prioritise, respond to and track property or maintenance complaints.',
     'Tenant groups': 'Communicate with tenant groups, share updates and follow group activity.',

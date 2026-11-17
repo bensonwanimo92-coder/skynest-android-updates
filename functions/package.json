@@ -1,10 +1,15 @@
 {
   "name": "skynest-functions",
   "private": true,
-  "engines": { "node": "20" },
+  "engines": {
+    "node": "20"
+  },
   "main": "index.js",
   "dependencies": {
     "firebase-admin": "^13.0.2",
     "firebase-functions": "^6.3.2"
+  },
+  "scripts": {
+    "test:rent-invoices": "node --test rent_invoice_scheduler.test.js"
   }
 }

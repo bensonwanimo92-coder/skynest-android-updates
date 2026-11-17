@@ -1,0 +1,215 @@
+# SkyNest Next Complete — Master Implementation Checklist
+
+## Latest verified update — 16 November 2026
+
+Working branch: `integration/skynest-next-complete`  
+Latest integration commit: `23eb6d11c7c5d210a7c73b23af8a8768219b800a`
+
+### Work implemented and current automated checks
+
+- [x] Grey-toned dashboard foundation with vertically stacked photo-background tiles, restrained dark overlay/borders and tile preview interaction. Physical-device visual acceptance is still pending.
+- [x] Premium dark login redesign; sign-in, registration, password reset and biometric gate were retained. Physical-device flow verification is still pending.
+- [x] Tenant email onboarding and landlord-to-tenant role switching through server-side landlord resolution and landlord approval; caretaker invitation remains mandatory. Production callable deployment/live verification is pending.
+- [x] Tenant **My rent & balance** screen, tenant-scoped invoice/payment reads, and full/partial M-Pesa STK request path. Real Daraja sandbox/callback and production verification remain pending.
+- [x] Monthly rent invoice scheduler, immutable rent-at-issue snapshots, deterministic invoice IDs and duplicate-safe writes. Unit tests passed; Firebase deployment/live scheduled execution and legacy historical backfill remain pending.
+- [x] Caretaker role/house restrictions, assigned-house collection and handover queries, cash reconciliation totals and unsubmitted-handover visibility.
+- [x] Landlord cash acknowledgement atomically posts one deterministic, immutable CASH payment to the linked tenant's rent ledger. Automated rules coverage passed; physical cash handover still needs real-world verification.
+- [x] Tenant/landlord/caretaker Firestore role-scope and house-assignment protections, including wrong-house/wrong-unit/wrong-landlord denials.
+- [x] M-Pesa PayBill/Till input validation and tenant/house/landlord eligibility checks before an STK request.
+- [x] Website advertiser/moderation code and Android Inventory share the Firestore `publicListings` integration path. End-to-end approved-advert publication and display still needs verification.
+- [x] Latest integration-head automated workflows all passed on commit `23eb6d11c7c5d210a7c73b23af8a8768219b800a`: Android release-candidate analysis/tests (run `43906222403`), M-Pesa Worker checks (run `43906222474`), and Marketplace Firestore rules (run `43906222336`).
+
+### Not yet delivered / not to be counted as completed
+
+- [ ] Direct-to-landlord central M-Pesa provider arrangement: Safaricom/provider written approval and the actual provider integration are outstanding. Current Worker still uses per-landlord Daraja credentials.
+- [ ] Live Firebase/Cloudflare deployments and real payment callback verification.
+- [ ] Full cash handover and rent-ledger reconciliation verification on real accounts.
+- [ ] Website advert approval-to-Android Inventory end-to-end verification.
+- [ ] Physical-device dashboard/login review and in-place upgrade verification.
+- [ ] Discovery tile / SkyNest Market expansion.
+- [ ] Tenant Groups with inside-group chat.
+- [ ] Sound Engine, app sounds, voice notes and notification sounds.
+- [ ] Final signed, upgrade-compatible APK. No final APK has been produced from this complete scope.
+
+
+## Live progress — 16 November 2026
+
+- [x] Connected the tenant **My rent & balance** screen to the existing authenticated M-Pesa STK service: tenants can request full or partial payments up to their outstanding balance, enter a Kenyan phone number, and the backend still resolves the linked landlord's verified merchant account. Source commit `9f4c9acecfa75a045be5a88421caec322fa618a3`; automated Flutter analysis/tests are pending, and sandbox callback/production verification remain outstanding.
+- [x] Tenant email onboarding now covers both new tenant registration and landlord-to-tenant role switching: tenant supplies the landlord's registered email, the server resolves one active landlord, creates a pending linked request, and the landlord retains approval authority. Caretaker registration still requires a valid single-use invitation. Release-candidate checks including Flutter analysis/tests and Cloud Functions syntax passed on commit `5d9a51a0ad189bcc62ee87fd49c7e7f5cb02d12a` (run `43881970973`); the later integrated ledger checks also passed.
+- [x] Rent ledger now persists a fixed monthly invoice snapshot the first time the landlord opens the ledger for an active tenant with a verified assigned house. The snapshot stores rent-at-issue and is immutable; tenants can read only invoices linked to their UID. Firestore emulator tests passed on run `43882836632`; Flutter analysis/tests and Cloud Functions syntax passed on run `43882824523`. Legacy historical periods without saved rent snapshots are explicitly labelled **DUE UNKNOWN** rather than being falsely treated as overpayments or reconstructed using today's rent. Automatic month-start generation is now implemented as `generateMonthlyRentInvoices` in `functions/index.js`, scheduled daily at 00:05 in `Africa/Nairobi` so a transient outage can be recovered on the next run; deterministic invoice IDs and transaction-based create-only writes prevent duplicate monthly invoices. The scheduler scans assigned houses without relying on a `!= null` query. Unit tests cover timezone boundaries, eligibility and immutable rent snapshots, and are now included in release-candidate CI. Firebase deployment and live scheduled execution remain pending. A controlled historical backfill remains outstanding.
+- [x] Added a manual-approval GitHub Actions workflow for deploying both `requestTenantAccess` and `changeAccountRole` callables: `.github/workflows/deploy-tenant-onboarding.yml`. This workflow has not been dispatched; production callable deployment remains pending and requires the configured Firebase project credentials.
+- [x] Tenant onboarding implementation added on the integration branch: registration now requests the landlord's email rather than an invitation code; a Firebase callable performs server-side active-landlord resolution and creates a pending, landlord-linked tenant profile. Caretaker invitation validation remains mandatory. Commits: `63d9e34f0bfc585b98ea976f294558367a58b8cc`, `c94f41dac1a7f8641f0fcf3945a21d72bd73dd0c`, `d02325ef021acc0d9241b82e068360c7846e4589`, `a958656a0719b4694d2f3cf6789844cdb6b263d4`. Added Node syntax validation to release-candidate checks (`3cb7df32a44767071a8e07c657a027c0d0b54a0e`). Deployment and live callable verification are still required.
+- [x] Rent-ledger status parsing now uses an explicit allowlist of confirmed receipt states; labels such as `unpaid`, `pending verification`, `failed` and unknown values cannot be counted as received. Added regression tests. Flutter analysis/tests passed on final source commit `ebb7211e8dde5ec0ccd1e4c9d5c1b400462c6071` (run `43879558314`).
+- [x] Payment-record reads are now role-scoped: landlords can query records linked to their landlord UID, and tenants can read only records carrying their own tenant UID. Emulator tests cover own payment, another tenant's payment, legacy records without tenant links, and landlord query scope. Firestore emulator suite passed on final source commit (run `43879558227`). Legacy payment records without a `tenantId` remain landlord-only until safely backfilled.
+
+- [x] Caretaker tenant-approval shortcut removed from the caretaker dashboard; collection confirmation now checks `can_collect` at the Firestore rules layer, not only in app code. Commits: `120bfef888c39c51a067da7d5553f559b1018ba4`, `daadec809aa253e258d0769ba123fdc346b14833`. Not yet emulator-tested.
+
+- [x] Caretaker/non-landlord tenant approval path blocked in the app UI; approval writes now require the active linked landlord in Firestore rules. Source commits: `74d88846049bdbe66c4f9745ff09b9356a24e66a` (app) and `530318c0ea4fd4ec041c47797a51efcee004cf3e` (rules). Not yet emulator-tested or end-to-end verified.
+
+- [x] Tenant house visibility now allows an active tenant to read the exact occupied house assigned to their UID, while denying access to another tenant's occupied house. Firestore rules commit `77ab8b1684a20946ca8b3e114eaa8611195fe9c0`; emulator test added in `ca8b6e3fb059b664bf70af6cbfc353ca4beaa9ef`. Latest integration-head emulator workflow passed on run `43878012088` (commit `ee9106bd24`).
+- [x] Dedicated integration branch established: `integration/skynest-next-complete`.
+- [x] Master checklist committed to this branch.
+- [x] Dashboard horizontal PageView/3D carousel replaced in the working branch with a vertically stacked ListView of photo-background tiles, grey-toned dark overlay, restrained borders and the existing preview interaction.
+- [x] Dashboard source CI passed on integration commit `ee9106bd24` (release candidate checks run `43878000809`). APK packaging from this branch, physical installation, and visual review remain pending; it is not yet marked verified.
+- [x] Draft PR #20 opened against `integration/skynest-complete-release-candidate`: https://github.com/bensonwanimo92-coder/skynest-android-updates/pull/20. Keep it unmerged until the complete release scope and gates pass.
+- [x] Tenant signup no longer requires an invitation code: the tenant enters the landlord's registered email, and the authenticated `requestTenantAccess` callable resolves exactly one active landlord server-side, creates a pending tenant profile linked to that landlord, and leaves approval to the landlord. The tenant cannot submit arbitrary landlord/property IDs. Caretaker signup still requires a valid, single-use caretaker invitation. Client handling is retry-safe if the callable response is interrupted. Flutter/Node syntax checks are being run; Firebase Functions deployment and live registration/approval verification remain pending. The self-service landlord-to-tenant role-switch path now uses the same landlord-email lookup and approval flow; caretaker invitation remains mandatory.
+- [x] Approval-authority hardening implemented in the working branch: the approvals screen blocks non-landlords, the approval action checks for an active landlord, and Firestore tenant-approval writes require the linked landlord UID. Caretaker navigation no longer exposes tenant approvals. Firestore emulator tests passed on run 43877400028; Android UI and full role-flow verification remain pending.
+- [x] Closed a caretaker privilege gap: caretaker house updates are now limited to occupancy/status fields and cannot set, replace or clear `assignedTenantId`; landlord assignment remains permitted. Regression coverage passed in Firestore emulator run 43877400028.
+- [x] Firestore tenant-record creation and reads now scope caretaker access to houses whose `landlordId`/`createdBy` match the caretaker's landlord and whose `caretakerIds` includes that caretaker; tenant reads are limited to their own linked record. Caretaker-created records must identify the caretaker as `createdBy` and include a validated `houseId`. Rules commit `544d8ad7a932a3e36b55be30a991313e0d2bb6a5`. The expanded role-scope emulator suite passed on the current integration head (run 43876075510); app-flow integration and legacy-record compatibility remain outstanding. Caretaker-created tenant records must also match the assigned house's actual house number and configured rent, preventing a caretaker from inventing a unit or changing its rent amount.
+- [x] Added dedicated Firestore role-scope tests for assigned-house caretaker tenant creation, denial for unassigned houses/spoofed landlords, and continued landlord access. Test file: `tests/firestore-role-scope.rules.test.js`; command: `npm run test:role-scope-rules`. The updated integration-head Firestore emulator workflow passed on run 43877400028, executing marketplace rules, role-scope rules and Storage rules. The Android Dart analysis/Flutter test workflow also passed (run 43877399724), and M-Pesa Worker syntax/unit tests passed (run 43877399715). These are automated checks, not physical-device verification, production deployment or full live payment-flow confirmation.
+- [x] Landlord-created tenant records now resolve the entered house number against the landlord's own house records and persist the unique `houseId`; duplicate or unknown house numbers are rejected. Approved house requests now also persist their `houseId` in the tenant record. App commits `d3672a023f79991cbf45059ba677d2bc50874743` and `7f98d642f348ca5d26be05405186844e4e3f575b`. App tests/build and legacy-record migration review remain pending.
+- [x] Caretaker payment-confirmation tasks now carry `houseId`; Firestore create/read/confirm rules verify that the caretaker is currently assigned to that exact house under the linked landlord. The app's two task-creation paths now attach the house document ID. Rules/app commits `38ac84087ae5bce9bbb57676ca442f442e6e5ddb` and `768dfe91b2394569395880dbe7a5eaf6885a1377`. The updated integration-head Firestore emulator workflow passed on run 43877400028; caretaker query compatibility and end-to-end payment flow remain pending. The caretaker confirmation screen now filters by caretaker UID, landlord ID and invited `propertyIds` to satisfy the same rules; it currently reports a clear limitation above 30 assigned houses pending paginated multi-query support. Manual landlord rent records and landlord-verified tenant submissions now resolve and persist a unique landlord-owned `houseId`; Firestore payment creation requires the authenticated landlord, matching landlord ID, and matching house document/house number. Emulator test added for valid, spoofed-house and caretaker payment creation. Tenant rent-submission rules now also require the authenticated tenant's own `houseId`, `houseNo`, landlord link and matching `assignedTenantId` on the house document; emulator coverage added for wrong-house, wrong-unit and wrong-landlord attempts. The current integration-head emulator suite passed on run 43876075510, including wrong-house, wrong-unit and wrong-landlord denials; live tenant payment submission remains unverified.
+- [x] Cloudflare M-Pesa STK requests now verify the tenant profile's active status, exact house ID/number, landlord ownership and `assignedTenantId` against the live house document before sending a Daraja prompt. Added unit tests for valid, unassigned, wrong-landlord, mismatched-unit and missing-assignment cases. Worker syntax and unit-test CI passed on the latest integration head (run 43877399715). Cloudflare deployment, live Daraja sandbox STK request, callback delivery and end-to-end app verification remain pending.
+
+- [x] Caretaker collection permission is now enforced in Firestore as well as the UI: only an active caretaker with `can_collect`, assigned as the record's caretaker and linked to that landlord, can transition a pending confirmation to `confirmed_by_caretaker`. App commit `120bfef888c39c51a067da7d5553f559b1018ba4`; rules commit `daadec809aa253e258d0769ba123fdc346b14833`. The current emulator suite passed on run 43876075510; complete caretaker-to-landlord cash handover and live end-to-end collection remain outstanding.
+- [ ] Existing tenant M-Pesa STK path and manual payment-submission path are present. Persistent monthly invoice snapshots now exist for eligible current periods, but automated month-start generation, historical invoice backfill, full tenant/caretaker/landlord reconciliation, caretaker cash handover and real callback verification remain unproven.
+- [ ] Do not create a release APK from this checkpoint; it is an incremental dashboard foundation, not the complete approved release.
+
+Working branch: integration/skynest-next-complete
+Baseline: integration/skynest-complete-release-candidate
+Known-good installed reference: build 4415
+Last pre-integration APK candidate: version 1.1.3+5447, run 43862420394, artifact ID 14223558387, built from baseline branch `integration/skynest-complete-release-candidate` (not the current next-complete branch). CI verified package `com.hello22_.chuka`, the original signing certificate, ARM64 and ARMv7 ABIs, minSdk 24 and targetSdk 35. Physical installation was not confirmed; do not treat this as the completed next-release APK.
+
+## Delivery rules
+- This branch is the sole working integration target for the next complete Android release.
+- Do not publish or compile a user-facing APK until the approved scope is integrated and release checks pass.
+- Do not add or run Android emulators/simulators or virtual-device tests unless the user explicitly authorizes them first; use approved real-device verification instead.
+- Release-build workflow is manual-only; do not publish a release from `main` before the integrated release candidate is approved.
+- Do not mark an item complete because a screen or model exists; require integration and relevant tests.
+- Preserve existing Firebase data, authentication, package ID, signing identity and working user flows.
+- Do not blindly merge divergent feature branches; port and reconcile changes selectively.
+- Do not reintroduce superseded dashboard layouts or old concepts.
+- Preserve the collected 100 tile redesign ideas as unimplemented unless separately authorized.
+
+## 1. Dashboard and visual design
+- [x] Classic, refined, premium visual foundation implemented; final visual acceptance remains pending.
+- [x] Grey-toned visual direction implemented in the working dashboard; physical-device review remains pending.
+- [x] Main dashboard tiles flow vertically down the screen; no circular layout.
+- [ ] Group related functions logically and combine related tiles where appropriate.
+- [ ] Clear typography, restrained depth, borders, shadows and readable contrast.
+- [ ] Responsive layouts and accessibility checks.
+- [x] Premium login redesign implemented in `lib/main.dart` on commit `d15170d280dd3fe91dcc2cae083d42136e92d3d4`: dark secure-access layout, styled email/password fields, sign-in/create-account actions and password reset retained; the app-level biometric lock gate remains in place. Release-candidate Flutter analysis/tests passed on run `43905775884`. Physical-device visual review and real sign-in/registration/reset/biometric flow verification remain pending.
+- [x] Tile preview interaction exists in the working dashboard; real-device acceptance remains pending.
+
+## 2. Landlord account
+- [ ] Property, house and House Catalogue management.
+- [ ] Tenant management and correct house assignment.
+- [ ] Caretaker invitations, assigned houses, permission management and revocation.
+- [ ] Rent collection, verification, ledger, statements and reports.
+- [ ] Notices, complaints, plans and reminders.
+- [ ] M-Pesa merchant account configuration and reconciliation.
+- [ ] Control Centre, notification management and backups.
+- [ ] Auditable financial and administrative actions.
+
+## 3. Tenant account
+- [x] Added a tenant-facing **My rent & balance** screen and dashboard entry. It reads only rent invoices and payment records linked to the signed-in tenant UID, shows period statements, verified instalments, outstanding balances and credits, and excludes pending/reversed payments from received totals. Added Firestore emulator coverage for the exact tenant-scoped invoice/payment queries used by the screen; latest release-candidate checks passed on `9840eeac8091ace19374bacfaf4bbcb88ec35bb5`, and the new query-isolation emulator test is running on the current head. Live tenant-account verification remains outstanding.
+- [ ] View own profile, assigned house, rent amount and rent period.
+- [ ] View own verified payments, balance, credit and receipts.
+- [ ] Make full, partial and instalment payments through the existing payment architecture.
+- [ ] Initiate landlord-routed M-Pesa STK Push; never choose or override the receiving landlord.
+- [ ] View pending, successful, failed and reversed transaction states.
+- [ ] Submit promised payment dates and receive relevant reminders.
+- [x] Tenant registration/onboarding does not require an invitation code; it uses the landlord's registered email and landlord approval. Caretaker invitation remains mandatory.
+- [ ] Tenant cannot modify landlord records or payment verification.
+
+## 4. Caretaker account and permissions
+- [ ] Landlord-created invitation; 24-hour expiry and acceptance.
+- [ ] Caretaker remains linked to the correct landlord.
+- [ ] Landlord assigns specific houses.
+- [ ] Permission levels: Can Collect and View Only.
+- [x] Caretaker house-request reads are restricted to their assigned house IDs; only landlords can approve/decline requests or change a tenant's house assignment. The caretaker screen now shows assigned-house requests without approval controls. Firestore emulator tests passed on run 43877400028; production index deployment and full end-to-end role-flow verification remain pending.
+- [ ] Authorized tenant addition within assigned properties.
+- [x] Corrected caretaker cash-collection and handover history streams to include the selected assigned `houseId`, matching the Firestore rule query constraints; history is now shown per selected house rather than issuing an over-broad multi-house query. Automated release-candidate and rules tests are running for commit `d9603bad267740286700e3c01492fc2881e449d8`.
+- [x] Cash collection records now use the assigned tenant's profile name rather than free-text caretaker input, preventing avoidable tenant-name mismatches in handover reconciliation; missing tenant profiles are handled without crashing the screen. Latest Flutter and Firestore CI validation is pending.
+- [ ] Record permitted collections with tenant, house, amount, date, method and collector.
+- [ ] Caretaker cannot change landlord financial totals, verify own collections or access unassigned properties.
+- [ ] Landlord can revoke access.
+- [ ] Audit log for important caretaker actions.
+- [ ] Caretaker onboarding continues to require an invitation code.
+
+## 5. Three-account money flow and reconciliation
+- [ ] Tenant digital rent payment goes to the landlord's configured merchant account.
+- [ ] Tenant cash/physical payment can be recorded by an authorized caretaker.
+- [ ] Caretaker collection record identifies tenant, house, amount, date, method and collector.
+- [x] Added landlord cash reconciliation totals for all own-property caretaker collections: total collected, acknowledged handovers, awaiting physical handover, awaiting landlord acknowledgement, and outstanding cash to reconcile. Added Firestore query coverage for landlord-scoped collection and handover lists; latest validation is pending.
+- [x] Landlord cash reconciliation now also lists each caretaker collection that has not yet been submitted for physical handover, including amount, house, tenant, caretaker and collection timestamp; this closes the visibility gap where only aggregate totals were shown. New source commit `8bd6a5577b8b1bcc44e45c34b0d3bd25102e01d5`; CI validation and full real-world handover verification are pending.
+- [x] Landlord acknowledgement now atomically creates one deterministic `payments/cash_<handoverId>` verified CASH ledger entry, so confirmed caretaker cash reduces the linked tenant's rent balance. Firestore rules require the same transaction to leave the matching handover acknowledged by that landlord, match tenant/house/amount, and keep the posted cash ledger entry immutable; regression coverage added. CI and end-to-end validation pending.
+- [ ] Landlord can verify and reconcile caretaker-recorded collections.
+- [x] Caretaker cash handover and landlord acknowledgement flow implemented; physical handover verification remains pending.
+- [ ] Track collected, handed-over and outstanding-to-handover amounts without treating caretaker as owner of funds.
+- [ ] Every transaction has a unique reference and duplicate protection.
+- [ ] Pending, confirmed, failed and reversed states handled correctly.
+- [ ] Partial payments, instalments, overpayments, credits and reversals reconcile correctly.
+- [ ] Landlord sees consolidated property finances.
+- [ ] Caretaker sees only assigned-house information.
+- [ ] Tenant sees only their own financial information.
+- [ ] Every financial adjustment has an auditable actor, timestamp and reason.
+
+## 6. Complete rent ledger
+- [x] Automatic monthly invoice generation implemented in Firebase Functions (`generateMonthlyRentInvoices`), with Nairobi timezone, daily catch-up, assigned-tenant/house/landlord consistency checks, immutable rent-at-issue snapshots and idempotent create-only writes. Unit tests are included in CI and passed on commit `ef223208e4f1157951823655d3801735d9e9d11e` (release-candidate run `43897865090`). Firebase deployment and live execution remain pending.
+- [x] Firestore invoice-creation integrity tightened: landlord-created invoices must use the deterministic tenant/house/month document ID and exactly match the house's current rent at issue time. Regression tests reject forged amounts and duplicate-period IDs; role-scope Firestore emulator suite passed on run `43897865093`.
+- [ ] Controlled historical invoice backfill for legacy periods.
+- [x] Persisted monthly rent invoice/period records implemented with immutable rent-at-issue snapshots; deployment/live verification and historical backfill remain pending.
+- [ ] Historical rent rate preserved per period; do not reconstruct old invoices from today's rent.
+- [ ] Full, partial and instalment payment allocation.
+- [ ] Outstanding balances, tenant credits and overpayments.
+- [ ] Promised payment dates and reminder status.
+- [ ] Receipts and transaction history.
+- [ ] Cash versus digital payment distinction.
+- [ ] Reconciliation and exportable statements/reports.
+- [x] Role-scoped tenant/landlord payment and invoice access rules implemented and covered by automated emulator tests; live verification remains pending.
+- [ ] Tests for calculations, allocation, reversals, duplicate callbacks and access restrictions.
+
+## 7. M-Pesa
+- [x] Corrected the landlord PayBill/Till setup validator so valid digit-only business shortcodes and Till numbers are accepted; added pure validation coverage for valid PayBill/Till details, malformed lengths/characters, conflicting account fields and missing credentials. Cloudflare Worker checks passed on commit `7a8b9cc93062642573c18c92f6d62cdf2bc367ae` (run `43900860808`). This verifies input validation only; merchant credential storage, Daraja sandbox verification and live STK remain separate release gates.
+- [ ] Landlord PayBill/Till setup and secure credential handling.
+- [ ] Merchant verification and environment binding.
+- [x] Authenticated tenant STK path checks tenant status, exact assigned house and linked landlord, then resolves the landlord's configured merchant account; live Daraja sandbox verification remains pending.
+- [ ] Callback validation, unique receipt and duplicate protection.
+- [ ] Payment status reflected accurately in tenant, caretaker (where permitted) and landlord views.
+- [ ] Sandbox end-to-end tests before production.
+- [ ] Deploy API/Worker and secrets only through authorized secure configuration; never commit or request secrets in chat.
+
+## 8. Other approved modules
+- [ ] Plans and Reminders.
+- [ ] Activity Log.
+- [ ] Property Reports.
+- [ ] Complaints and Notices.
+- [ ] Tenant Groups.
+- [ ] Control Centre, notification management, automations and backups.
+- [ ] Messaging, attachments and voice messages.
+- [ ] Calls and media features.
+- [x] Website advertiser publishing and Android Inventory use the shared Firestore `publicListings` collection; end-to-end approved-ad verification remains pending.
+- [x] Website advertiser submission supports categories and rich media; full approval-to-Android display verification remains pending.
+- [x] Website moderation/approval/expiry and tier-prioritisation implementation exists; end-to-end verification remains pending.
+- [ ] Media Centre and Reading Hub/offline downloads where part of the current approved branch scope.
+
+## 9. Release gate
+- [ ] Audit all feature branches and PRs; record source, conflicts and selected changes.
+- [ ] Reconcile Dart dependencies, Android build configuration, Firestore rules and indexes.
+- [x] Latest integration-head Android release-candidate analysis/tests passed (run `43906222403`).
+- [x] Latest integration-head Marketplace Firestore rules tests passed (run `43906222336`); additional live/deployment checks remain pending.
+- [x] Latest integration-head M-Pesa Worker syntax/unit checks passed (run `43906222474`); real Daraja sandbox and callback tests remain pending.
+- [ ] Verify landlord, tenant and caretaker flows independently and together.
+- [ ] Verify responsive dashboard and visual acceptance.
+- [ ] Verify Android package ID, signing certificate, ABI coverage and version code.
+- [ ] Verify in-place upgrade from known-good build 4415 without uninstalling or wiping user data.
+- [ ] Only then produce and publish one complete APK; clearly report any remaining unverified external deployment or real-device test.
+
+## Status convention
+- Not started: no verified work.
+- Implemented: source code exists.
+- Integrated: connected to the working app and backend.
+- Tested: relevant automated tests pass.
+- Verified: end-to-end behaviour confirmed on the required environment/device.
+
+An item is not complete until the required integration, tests and verification are recorded.
+
+
+## 10. M-Pesa architecture decision — direct landlord settlement
+- [x] User selected central SkyNest-managed payment integration with rent settling directly to each landlord's own PayBill/Till; SkyNest must not hold rent and landlords must not enter Daraja Consumer Key/Secret/Passkey in the app. Decision recorded in `docs/MPESA_DIRECT_LANDLORD_SETTLEMENT.md`.
+- [x] Reviewed current Worker: it is still per-landlord Daraja credentials, encrypted server-side; it is not yet the selected architecture.
+- [ ] Obtain a Safaricom-approved provider/platform arrangement that explicitly supports merchant onboarding and direct settlement to each landlord's own account. A central Daraja app credential by itself is not evidence of arbitrary third-party shortcode routing.
+- [ ] Select provider only after written confirmation that funds do not enter a SkyNest-controlled wallet or pooled balance.
+- [ ] Implement provider adapter, landlord onboarding/verification, authenticated callbacks, reconciliation and duplicate protection against the selected provider's actual API contract.
+- [ ] Verify PayBill and Till sandbox flows and obtain production approval before enabling tenant payments.

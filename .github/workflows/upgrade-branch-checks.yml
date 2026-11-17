@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - feature/skynest-release-candidate-compact
+      - integration/skynest-next-complete
   pull_request:
     branches:
       - integration/roles-on-current-main
+      - integration/skynest-complete-release-candidate
 
 permissions:
   contents: read
@@ -36,3 +38,7 @@ jobs:
 
       - name: Run Flutter tests
         run: flutter test --no-pub
+      - name: Run rent invoice scheduler unit tests
+        run: node --test functions/rent_invoice_scheduler.test.js
+      - name: Validate Firebase Cloud Functions syntax
+        run: node --check functions/index.js

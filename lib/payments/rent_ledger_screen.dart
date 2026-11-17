@@ -31,6 +31,7 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
       db.collection('payments').where('landlordId', isEqualTo: uid).get(),
       db.collection('houses').where('createdBy', isEqualTo: uid).get(),
       db.collection('users').where('landlordId', isEqualTo: uid).get(),
+      db.collection('rentInvoices').where('landlordId', isEqualTo: uid).get(),
     ]);
 
     final paymentDocs = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
@@ -70,25 +71,77 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
         'houseNo': houseNo,
         'period': period,
         'dueKes': dueKes,
+        'dueKnown': true,
         'payments': <RentPaymentRecord>[],
       });
     }
+
+    final persistedInvoices = <String, Map<String, dynamic>>{};
+    for (final doc in results[4].docs) {
+      final data = doc.data();
+      persistedInvoices[doc.id] = <String, dynamic>{...data, '_id': doc.id};
+      final tenantId = data['tenantId']?.toString() ?? '';
+      final houseId = data['houseId']?.toString() ?? '';
+      final period = data['period']?.toString() ?? '';
+      if (tenantId.isEmpty || houseId.isEmpty || period.isEmpty) continue;
+      ensureInvoice(
+        tenantId: tenantId,
+        tenantName: data['tenantName']?.toString() ?? 'Tenant',
+        houseId: houseId,
+        houseNo: data['houseNo']?.toString() ?? '',
+        period: period,
+        dueKes: (data['amountDueKes'] as num?)?.round() ?? 0,
+      );
+    }
+
 
     for (final tenantDoc in results[3].docs) {
       final tenant = tenantDoc.data();
       if (tenant['role'] != 'tenant' || tenant['status'] != 'active') continue;
       final houseId = tenant['houseId']?.toString() ?? '';
       final house = houses[houseId];
-      if (house == null) continue;
+      if (house == null || house['landlordId'] != uid || house['assignedTenantId'] != tenantDoc.id ||
+          tenant['houseNo']?.toString() != house['houseNo']?.toString()) continue;
       final rent = (house['rent'] as num?)?.round() ?? 0;
       if (rent <= 0) continue;
+      final tenantName = tenant['displayName']?.toString() ?? 'Tenant';
+      final houseNo = tenant['houseNo']?.toString() ?? house['houseNo']?.toString() ?? '';
+      final invoiceId = '${tenantDoc.id}_${houseId}_${currentPeriod}';
+      var savedInvoice = persistedInvoices[invoiceId];
+      if (savedInvoice == null) {
+        final invoiceRef = db.collection('rentInvoices').doc(invoiceId);
+        await db.runTransaction((transaction) async {
+          final existing = await transaction.get(invoiceRef);
+          if (existing.exists) {
+            savedInvoice = <String, dynamic>{...existing.data()!, '_id': invoiceId};
+          } else {
+            final newInvoice = <String, dynamic>{
+              'landlordId': uid,
+              'createdBy': uid,
+              'tenantId': tenantDoc.id,
+              'tenantName': tenantName,
+              'houseId': houseId,
+              'houseNo': houseNo,
+              'period': currentPeriod,
+              'amountDueKes': rent,
+              'rentAtIssue': rent,
+              'status': 'issued',
+              'createdAt': FieldValue.serverTimestamp(),
+            };
+            transaction.set(invoiceRef, newInvoice);
+            savedInvoice = <String, dynamic>{...newInvoice, '_id': invoiceId};
+          }
+        });
+        if (savedInvoice != null) persistedInvoices[invoiceId] = savedInvoice!;
+      }
+      final issuedRent = (savedInvoice?['amountDueKes'] as num?)?.round() ?? rent;
       ensureInvoice(
         tenantId: tenantDoc.id,
-        tenantName: tenant['displayName']?.toString() ?? 'Tenant',
+        tenantName: savedInvoice?['tenantName']?.toString() ?? tenantName,
         houseId: houseId,
-        houseNo: tenant['houseNo']?.toString() ?? house['houseNo']?.toString() ?? '',
+        houseNo: savedInvoice?['houseNo']?.toString() ?? houseNo,
         period: currentPeriod,
-        dueKes: rent,
+        dueKes: issuedRent,
       );
     }
 
@@ -100,10 +153,12 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
           : 'Undated';
       final houseNo = data['houseNo']?.toString() ?? '';
       final houseId = data['houseId']?.toString() ?? houseByNumber[houseNo]?['_id']?.toString() ?? '';
-      final house = houses[houseId] ?? houseByNumber[houseNo];
-      final dueKes = (house?['rent'] as num?)?.round() ?? 0;
       final tenantId = data['tenantId']?.toString() ?? data['tenantName']?.toString() ?? 'unknown';
-      final tenantName = data['tenantName']?.toString() ?? 'Tenant';
+      final invoiceId = '${tenantId}_${houseId}_${period}';
+      final persisted = persistedInvoices[invoiceId];
+      final dueKes = (persisted?['amountDueKes'] as num?)?.round()
+          ?? (data['rentAtIssue'] as num?)?.round() ?? 0;
+      final tenantName = persisted?['tenantName']?.toString() ?? data['tenantName']?.toString() ?? 'Tenant';
       ensureInvoice(
         tenantId: tenantId,
         tenantName: tenantName,
@@ -112,12 +167,10 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
         period: period,
         dueKes: dueKes,
       );
-      final status = (data['status']?.toString() ?? 'pending').toLowerCase();
-      final state = status.contains('revers')
-          ? RentTransactionState.reversed
-          : (status.contains('paid') || status.contains('received'))
-              ? RentTransactionState.confirmed
-              : RentTransactionState.pending;
+      if (persisted == null && data['rentAtIssue'] is! num) {
+        grouped['$tenantId|$houseId|$period']!['dueKnown'] = false;
+      }
+      final state = rentTransactionStateFromStatus(data['status']);
       final amount = (data['amount'] as num?)?.round() ?? 0;
       if (amount <= 0) continue;
       grouped['$tenantId|$houseId|$period']!['payments'].add(RentPaymentRecord(
@@ -142,6 +195,7 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
         tenantName: data['tenantName'] as String?,
         houseNo: data['houseNo'] as String?,
         amountDueKes: data['dueKes'] as int,
+        dueAmountKnown: data['dueKnown'] as bool? ?? true,
         payments: List<RentPaymentRecord>.from(data['payments'] as List<RentPaymentRecord>),
       );
     }).toList()
@@ -155,6 +209,7 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
       case RentInvoiceState.partiallyPaid: return Colors.orange;
       case RentInvoiceState.overpaid: return Colors.blue;
       case RentInvoiceState.unpaid: return Colors.red;
+      case RentInvoiceState.unknown: return Colors.grey;
     }
   }
 
@@ -164,6 +219,7 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
       case RentInvoiceState.partiallyPaid: return 'PARTIAL';
       case RentInvoiceState.overpaid: return 'CREDIT';
       case RentInvoiceState.unpaid: return 'UNPAID';
+      case RentInvoiceState.unknown: return 'DUE UNKNOWN';
     }
   }
 
@@ -192,9 +248,11 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
           padding: EdgeInsets.all(24),
           child: Text('No tenant rent invoices or payment history are available yet.', textAlign: TextAlign.center),
         ));
-        final due = invoices.fold<int>(0, (sum, item) => sum + item.amountDueKes);
+        final due = invoices.where((item) => item.dueAmountKnown)
+            .fold<int>(0, (sum, item) => sum + item.amountDueKes);
         final received = invoices.fold<int>(0, (sum, item) => sum + item.totalConfirmedKes);
-        final outstanding = invoices.fold<int>(0, (sum, item) => sum + item.balanceKes);
+        final outstanding = invoices.where((item) => item.dueAmountKnown)
+            .fold<int>(0, (sum, item) => sum + item.balanceKes);
         final credit = invoices.fold<int>(0, (sum, item) => sum + item.creditKes);
         return RefreshIndicator(
           onRefresh: () async => setState(() => _ledgerFuture = _loadLedger()),
@@ -234,9 +292,12 @@ class _RentLedgerScreenState extends State<RentLedgerScreen> {
                     trailing: Text(_stateLabel(invoice.state), style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 11)),
                     childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     children: [
-                      _summaryRow('Rent due', invoice.amountDueKes, Colors.blue),
+                      if (invoice.dueAmountKnown) ...[
+                        _summaryRow('Rent due', invoice.amountDueKes, Colors.blue),
+                        _summaryRow('Balance', invoice.balanceKes, invoice.balanceKes > 0 ? Colors.red : Colors.green),
+                      ] else
+                        const Align(alignment: Alignment.centerLeft, child: Text('Original rent due for this period was not saved. Balance cannot be reliably reconstructed.')),
                       _summaryRow('Verified paid', paid, Colors.green),
-                      _summaryRow('Balance', invoice.balanceKes, invoice.balanceKes > 0 ? Colors.red : Colors.green),
                       if (invoice.creditKes > 0) _summaryRow('Credit', invoice.creditKes, Colors.teal),
                       const SizedBox(height: 8),
                       LinearProgressIndicator(value: invoice.paidFraction, minHeight: 7),
