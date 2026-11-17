@@ -251,8 +251,9 @@ async function getLandlordPaymentAccount(request, env) {
     registeredBusinessName: data.registeredBusinessName || "",
     maskedAccount: data.maskedAccount || "",
     status: data.status || "pending_verification",
-    environment: data.environment || "sandbox",
+    environment: data.environment || "production",
     credentialsStored: false,
+    routingEnabled: String(env.MPESA_MERCHANT_ROUTING_ENABLED || "").toLowerCase() === "true",
   });
 }
 
