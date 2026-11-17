@@ -15,7 +15,7 @@ A landlord must have a Safaricom-approved Daraja production app and eligible Pay
 
 ## Cloudflare Worker secrets and variables
 
-Worker name: `skynestmpesaapi`
+Worker name: `mpesaapi`
 
 Configure under Cloudflare > Workers & Pages > skynestmpesaapi > Settings > Variables and Secrets:
 
@@ -39,6 +39,6 @@ Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Passkey are entered by e
 
 ## Deployment
 
-The Android app calls `https://mpesaapi.bensonwanimo92.workers.dev` by default. The GitHub Actions deployment workflow is manual and deploys this Worker without simulator, emulator, or test jobs. Configure the Cloudflare API token and account ID as GitHub Actions secrets before running it.
+The Android app calls `https://mpesaapi.bensonwanimo92.workers.dev` by default. The Wrangler Worker name is `mpesaapi` so deployment updates that existing endpoint rather than creating a second Worker. The GitHub Actions deployment workflow is manual and deploys this Worker without simulator, emulator, or test jobs. Configure the Cloudflare API token and account ID as GitHub Actions secrets before running it.
 
 Production mode is selected in `wrangler.toml`. Do not send a real payment until the Worker secrets, callback URL, each landlord's approved live Daraja credentials and the live callback routing are correctly configured.
