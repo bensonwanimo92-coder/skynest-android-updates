@@ -1,49 +1,40 @@
-# SkyNest Live M-Pesa Setup
+# SkyNest live M-Pesa setup
 
-SkyNest live rent collection uses Safaricom Daraja production credentials for each landlord merchant. A landlord's PayBill or Till is the settlement destination; SkyNest does not pool tenant funds.
+SkyNest M-Pesa runs through the existing Cloudflare Worker at `https://mpesaapi.bensonwanimo92.workers.dev`. The Android app calls this API directly with the signed-in user's Firebase ID token. Firebase Functions are not used for M-Pesa deployment.
 
-## One-time Firebase secret
+## Production configuration
 
-The Functions backend encrypts merchant credentials with AES-256-GCM. Before deploying the new Functions, create the encryption secret in the Firebase project:
+- Cloudflare Worker name: `mpesaapi`
+- Daraja environment: `production` (set in `cloudflare-worker/wrangler.toml`)
+- Firestore: retains tenant profiles, landlord merchant account metadata, pending checkout records, callback inbox and confirmed rent ledger.
+- Merchant credentials: each landlord enters their own approved production Daraja Consumer Key, Consumer Secret, PayBill/Buy Goods shortcode and Lipa Na M-Pesa Passkey. The Worker encrypts the credentials using `MPESA_ENCRYPTION_KEY`; secrets are never returned to the app.
 
-```bash
-openssl rand -hex 32
-firebase functions:secrets:set MPESA_CONFIG_ENCRYPTION_KEY
-```
+## Cloudflare Worker secrets
 
-Paste the generated 64-character hex value into the Firebase CLI prompt. Do not commit it, paste it into chat, or place it in the Android app. Keep a secure backup. Losing this key makes previously stored merchant credentials unreadable.
+Configure these in Cloudflare Worker settings. Do not commit or paste secret values into chat:
 
-The GitHub deploy identity (service account named `skynest-deployer`) needs `roles/serviceusage.serviceUsageAdmin` to enable APIs and `roles/secretmanager.admin` to create the encryption secret. The Cloud Functions runtime service account needs `roles/secretmanager.secretAccessor`; the workflow grants this to the default Compute Engine service account. If the deploy identity cannot enable APIs, a project owner must enable Secret Manager API in Google Cloud Console first. The secret must exist before deploying functions that bind to it. Firebase Cloud Functions deployment also requires the Firebase project to be on the Blaze (pay-as-you-go) plan and the required Google Cloud APIs/billing to be enabled.
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_WEB_API_KEY`
+- `FIREBASE_SERVICE_ACCOUNT_JSON` (secret)
+- `MPESA_ENCRYPTION_KEY` (secret; 32 random ASCII characters; preserve it to decrypt existing landlord configurations)
+- `STK_CALLBACK_TOKEN` (secret; at least 32 random characters)
+- `STK_CALLBACK_URL` (HTTPS callback URL ending in `/hooks/stk/result/<token>`, with the same token)
 
-## Landlord merchant onboarding
+The Firebase service account needs Firestore access to the SkyNest project. The Cloudflare Worker uses the Firestore REST API; it does not require Firebase Cloud Functions or Secret Manager.
 
-Each landlord must have a Safaricom Daraja application approved for the relevant live shortcode and Lipa Na M-Pesa Online enabled. They configure credentials inside SkyNest under **M-Pesa collection setup**:
+## Live merchant flow
 
-- Production Consumer Key
-- Production Consumer Secret
-- Production Lipa Na M-Pesa Passkey
-- PayBill shortcode; or for Buy Goods/Till, Store/Head Office shortcode and the actual Till number
+1. Landlord signs in and opens M-Pesa collection setup.
+2. Landlord enters their own Safaricom-approved PayBill or Buy Goods Till details and live Daraja credentials.
+3. Worker encrypts and saves the merchant configuration.
+4. Landlord initiates the KES 1 receiving-account verification prompt. This is a real payment to the configured merchant and is not entered as rent.
+5. Once the verified status is recorded for production, linked active tenants can request rent STK Push.
+6. Safaricom callback is checked against the pending checkout, merchant request, amount, payer phone and receipt. Only a confirmed callback creates the rent ledger entry.
 
-The backend authenticates the credentials with the production Daraja OAuth endpoint before saving them. Credentials are encrypted at rest and never returned to the app. Sandbox credentials are rejected by the live endpoint.
+A personal M-Pesa phone number is not a PayBill/Till STK merchant destination. Every landlord must have the appropriate live Daraja merchant integration approved by Safaricom.
 
-For a Till, Daraja authenticates using the Store/Head Office shortcode and sends the Buy Goods transaction to the Till number. For PayBill, the PayBill shortcode is used with CustomerPayBillOnline.
+## Deploy
 
-## Payment flow
+GitHub Actions includes the manual workflow **Deploy SkyNest M-Pesa Cloudflare Worker**. It requires repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The workflow deploys the Worker directly and does not run tests or emulator jobs. Cloudflare runtime secrets listed above must already be configured.
 
-1. An active tenant requests a rent payment from the app.
-2. The callable Function resolves the tenant's linked landlord and uses only that landlord's configured merchant credentials.
-3. Daraja sends the STK prompt to the tenant's Kenyan Safaricom number.
-4. Safaricom posts the callback to `mpesaStkCallback`.
-5. The backend queries Daraja for the checkout result and checks the callback amount, phone and receipt against the original payment intent.
-6. Only a confirmed, unique receipt creates a Paid record in the landlord's Payments/Ledger collection. Duplicate callbacks are idempotent.
-
-A callback that cannot be independently reconciled is not credited as Paid.
-
-## Production requirements and limitations
-
-- Deploy Cloud Functions in the Firebase project used by the app, with `MPESA_CONFIG_ENCRYPTION_KEY` configured first.
-- Each landlord is responsible for obtaining production Daraja approval and credentials for their own shortcode. SkyNest cannot manufacture Safaricom approval or credentials.
-- For Till merchants, the Store/Head Office number and Till number must be correctly supplied by Safaricom.
-- The current backend uses the Safaricom production API host only; no sandbox fallback is implemented.
-- Do not mark a payment paid based only on the tenant's screen, an STK request acceptance, or an unverified callback.
-- This implementation does not run simulator/emulator tests and adds no such test workflow.
+A successful deployment or `/health` response confirms only that the Worker is reachable. It does not prove that Safaricom credentials, callback routing or a merchant account are live. Do not initiate a real tenant payment until those production settings are in place.
