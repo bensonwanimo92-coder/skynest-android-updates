@@ -1224,6 +1224,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Account approvals', Icons.how_to_reg_outlined, Colors.green, const TenantApprovalsScreen()),
         _MenuItem('Tenants', Icons.people_alt_outlined, Colors.green, const TenantsScreen()),
         _MenuItem('Payments', Icons.payments_outlined, Colors.blue, const PaymentsScreen()),
+        _MenuItem('M-Pesa collection setup', Icons.account_balance_wallet_outlined, Colors.green, const LandlordMpesaSetupScreen()),
         _MenuItem('Tenant payment submissions', Icons.fact_check_outlined, Colors.teal, const PaymentSubmissionsScreen()),
         _MenuItem('Caretakers & invitations', Icons.badge_outlined, Colors.teal, const InvitationsScreen()),
         _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
