@@ -20,6 +20,7 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _verifying = false;
+  bool _routingEnabled = false;
 
   @override
   void initState() {
@@ -43,7 +44,8 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
         _status = data['status']?.toString() ?? 'not_configured';
         _type = data['accountType']?.toString() ?? 'paybill';
         _maskedAccount = data['maskedAccount']?.toString() ?? '';
-        _environment = data['environment']?.toString() ?? 'sandbox';
+        _environment = data['environment']?.toString() ?? 'production';
+        _routingEnabled = data['routingEnabled'] == true;
         _loading = false;
       });
     } catch (e) {
@@ -194,9 +196,9 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
                 TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Landlord verification phone', hintText: '07XXXXXXXX or 2547XXXXXXXX', border: OutlineInputBorder())),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
-                  onPressed: _verifying || _saving ? null : _verify,
+                  onPressed: _verifying || _saving || !_routingEnabled ? null : _verify,
                   icon: _verifying ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.verified_user_outlined),
-                  label: Text(_verifying ? 'Sending verification…' : 'Verify with KES 1 STK Push'),
+                  label: Text(!_routingEnabled ? 'Safaricom routing approval required' : (_verifying ? 'Sending verification…' : 'Verify with KES 1 STK Push')),
                 ),
                 const SizedBox(height: 16),
                 const Text('Direct settlement remains locked until Safaricom approves and enables SkyNest central merchant routing. No payment is sent while that approval is missing.'),
