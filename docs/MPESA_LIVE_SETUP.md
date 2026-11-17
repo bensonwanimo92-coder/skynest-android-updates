@@ -13,7 +13,7 @@ firebase functions:secrets:set MPESA_CONFIG_ENCRYPTION_KEY
 
 Paste the generated 64-character hex value into the Firebase CLI prompt. Do not commit it, paste it into chat, or place it in the Android app. Keep a secure backup. Losing this key makes previously stored merchant credentials unreadable.
 
-The deploy identity needs permission to create/read Secret Manager versions and deploy Cloud Functions. The secret must exist before deploying functions that bind to it.
+The deploy identity needs permission to create/read Secret Manager versions and deploy Cloud Functions. The secret must exist before deploying functions that bind to it. Firebase Cloud Functions deployment also requires the Firebase project to be on the Blaze (pay-as-you-go) plan and the required Google Cloud APIs/billing to be enabled.
 
 ## Landlord merchant onboarding
 
