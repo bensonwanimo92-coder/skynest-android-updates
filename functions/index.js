@@ -515,7 +515,7 @@ exports.requestTenantMpesaStk = onCall({
   const amount = Number(input.amount);
   const phone = normalizeKenyanPhone(input.phoneNumber);
   if (!Number.isSafeInteger(amount) || amount < 1 || amount > 250000 ||
-      !phone || !/^[A-Za-z0-9_-]{2,20}$/.test(String(input.accountReference || ""))) {
+      !phone || !/^[A-Za-z0-9_-]{2,12}$/.test(String(input.accountReference || ""))) {
     throw new HttpsError("invalid-argument",
       "Enter a whole KSh amount, a valid Kenyan M-Pesa number and a valid house/account reference.");
   }
