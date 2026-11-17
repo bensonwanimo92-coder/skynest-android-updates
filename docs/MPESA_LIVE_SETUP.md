@@ -7,7 +7,7 @@ SkyNest M-Pesa runs through the existing Cloudflare Worker at `https://mpesaapi.
 - Cloudflare Worker name: `mpesaapi`
 - Daraja environment: `production` (set in `cloudflare-worker/wrangler.toml`)
 - Firestore: retains tenant profiles, landlord merchant account metadata, pending checkout records, callback inbox and confirmed rent ledger.
-- Merchant credentials: each landlord enters their own approved production Daraja Consumer Key, Consumer Secret, PayBill/Buy Goods shortcode and Lipa Na M-Pesa Passkey. The Worker encrypts the credentials using `MPESA_ENCRYPTION_KEY`; secrets are never returned to the app.
+- Merchant credentials: one central SkyNest Daraja Consumer Key, Consumer Secret and Passkey are held only as Cloudflare secrets. Landlords enter only their receiving PayBill number or Buy Goods Till number. The Worker never requests landlord API credentials.
 
 ## Cloudflare Worker secrets
 
@@ -31,7 +31,7 @@ The Firebase service account needs Firestore access to the SkyNest project. The 
 5. Once the verified status is recorded for production, linked active tenants can request rent STK Push.
 6. Safaricom callback is checked against the pending checkout, merchant request, amount, payer phone and receipt. Only a confirmed callback creates the rent ledger entry.
 
-A personal M-Pesa phone number is not a PayBill/Till STK merchant destination. Every landlord must have the appropriate live Daraja merchant integration approved by Safaricom.
+Important: one central Daraja API does not automatically authorize STK Push to arbitrary PayBills/Tills. Safaricom must approve SkyNest as an aggregator or enable the specific sub-merchant/shortcode routing and settlement model. Until then, the Worker fails closed and sends no payment. Do not enable the flag based only on having central API keys.
 
 ## Deploy
 
