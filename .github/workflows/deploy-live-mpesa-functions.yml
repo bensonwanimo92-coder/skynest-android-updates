@@ -61,7 +61,11 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
         run: |
           set -euo pipefail
-          gcloud services enable secretmanager.googleapis.com --project "$FIREBASE_PROJECT_ID"
+          if gcloud services list --enabled --project "$FIREBASE_PROJECT_ID" --format='value(config.name)' | grep -qx 'secretmanager.googleapis.com'; then
+            echo "Secret Manager API is already enabled."
+          else
+            gcloud services enable secretmanager.googleapis.com --project "$FIREBASE_PROJECT_ID"
+          fi
 
       - name: Create persistent encryption secret if absent
         env:
