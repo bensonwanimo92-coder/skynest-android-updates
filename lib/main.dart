@@ -3,6 +3,7 @@ import 'calls/skynest_call_screen.dart';
 import 'security/message_encryption.dart';
 import 'security/biometric_security.dart';
 import 'reading/reading_hub.dart';
+import 'theme/skynest_typography.dart';
 import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
 import 'services/sound_service.dart';
@@ -193,9 +194,11 @@ class ThemeOption {
 class Themes {
   static ThemeData _make(Color seed, {Brightness brightness = Brightness.light, Color? surface}) {
     final scheme = ColorScheme.fromSeed(seedColor: seed, brightness: brightness, surface: surface);
+    final textTheme = buildSkyNestTextTheme(scheme);
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
+      textTheme: textTheme,
       scaffoldBackgroundColor: Colors.transparent,
       cardColor: brightness == Brightness.dark
           ? const Color(0xFF202B36)
@@ -205,6 +208,7 @@ class Themes {
         foregroundColor: scheme.onSurface,
         elevation: 0,
         scrolledUnderElevation: 1,
+        titleTextStyle: textTheme.titleLarge,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -212,11 +216,22 @@ class Themes {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: scheme.outlineVariant)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: scheme.outlineVariant)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: scheme.primary, width: 1.8)),
+        labelStyle: textTheme.titleSmall,
+        hintStyle: textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(backgroundColor: scheme.primary, foregroundColor: scheme.onPrimary, elevation: 3),
-      snackBarTheme: SnackBarThemeData(behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-      listTileTheme: ListTileThemeData(iconColor: scheme.primary, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5)),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        contentTextStyle: textTheme.bodyMedium?.copyWith(color: scheme.onInverseSurface),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      listTileTheme: ListTileThemeData(
+        iconColor: scheme.primary,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+        titleTextStyle: textTheme.titleMedium,
+        subtitleTextStyle: textTheme.bodyMedium,
+      ),
     );
   }
 
