@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'calls/skynest_call_screen.dart';
 import 'security/message_encryption.dart';
 import 'security/biometric_security.dart';
@@ -2625,120 +2626,184 @@ class TenantPayScreen extends StatefulWidget {
   State<TenantPayScreen> createState() => _TenantPayScreenState();
 }
 class _TenantPayScreenState extends State<TenantPayScreen> {
-  final tenant = TextEditingController(), house = TextEditingController(), amount = TextEditingController(), transactionCode = TextEditingController();
-  String paymentMethod = 'mpesa';
-  bool saving = false;
+  final phone = TextEditingController();
+  final amount = TextEditingController();
+  bool sending = false;
+  String? lastMessage;
   @override
-  void initState() {
-    super.initState();
-    _loadTenantDetails();
-  }
-  Future<void> _loadTenantDetails() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+  void dispose() { phone.dispose(); amount.dispose(); super.dispose(); }
+  Future<void> requestPush() async {
+    final value = int.tryParse(amount.text.trim());
+    if (value == null || value < 1) { snack(context, 'Enter a valid whole KSh amount.'); return; }
+    if (phone.text.trim().isEmpty) { snack(context, 'Enter the M-Pesa phone number for the prompt.'); return; }
+    setState(() { sending = true; lastMessage = null; });
     try {
-      final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      if (profile.data()?['role'] == 'tenant' && mounted) {
-        tenant.text = profile.data()?['displayName']?.toString() ?? '';
-        house.text = profile.data()?['houseNo']?.toString() ?? '';
-      }
-    } catch (_) {}
-  }
-  @override
-  void dispose() { tenant.dispose(); house.dispose(); amount.dispose(); transactionCode.dispose(); super.dispose(); }
-  Future<void> savePayment() async {
-    final value = double.tryParse(amount.text.trim());
-    final code = transactionCode.text.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
-    if (tenant.text.trim().isEmpty || value == null || value <= 0) { snack(context, 'Enter tenant name and a valid amount.'); return; }
-    if (paymentMethod == 'mpesa' && (code.length < 8 || code.length > 16 || !RegExp(r'^[A-Z0-9]+').hasMatch(code))) {
-      snack(context, 'Enter a valid M-Pesa transaction code (8–16 letters or numbers).');
-      return;
-    }
-    setState(() => saving = true);
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) throw StateError('Please sign in again.');
-      final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      final p = profile.data() ?? {};
-      if (p['role'] == 'tenant') {
-        final landlordId = p['landlordId']?.toString();
-        if (landlordId == null || landlordId.isEmpty) throw StateError('Your tenant account is not linked to a landlord.');
-        final submissionRef = FirebaseFirestore.instance.collection('paymentSubmissions').doc();
-        final batch = FirebaseFirestore.instance.batch();
-        batch.set(submissionRef, {
-          'tenantId': uid, 'tenantName': tenant.text.trim(), 'landlordId': landlordId,
-          'houseId': p['houseId'], 'houseNo': house.text.trim(), 'amount': value,
-          'method': paymentMethod.toUpperCase(), 'transactionCode': paymentMethod == 'mpesa' ? code : '',
-          'status': 'pending', 'createdAt': FieldValue.serverTimestamp(),
-        });
-        if (paymentMethod == 'mpesa') {
-          final codeRef = FirebaseFirestore.instance.collection('mpesaTransactionCodes').doc(code);
-          batch.set(codeRef, {
-            'tenantId': uid, 'landlordId': landlordId, 'submissionId': submissionRef.id,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-        }
-        await batch.commit();
-        if (mounted) { amount.clear(); snack(context, 'Payment details sent to your landlord for verification. No automatic M-Pesa payment was made.'); }
-      } else {
-        final paymentRef = await FirebaseFirestore.instance.collection('payments').add({
-          'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(), 'amount': value,
-          'method': paymentMethod.toUpperCase(), 'transactionCode': paymentMethod == 'mpesa' ? code : '', 'status': 'Pending verification',
-          'createdAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp(), 'createdBy': uid,
-        });
-        final matchingHouse = await FirebaseFirestore.instance.collection('houses')
-          .where('createdBy', isEqualTo: uid).where('houseNo', isEqualTo: house.text.trim()).limit(1).get();
-        if (matchingHouse.docs.isNotEmpty) {
-          final assigned = (matchingHouse.docs.first.data()['caretakerIds'] as List?)?.whereType<String>().toList() ?? <String>[];
-          if (assigned.isNotEmpty) {
-            await FirebaseFirestore.instance.collection('paymentConfirmations').add({
-              'landlordId': uid, 'caretakerId': assigned.first, 'paymentId': paymentRef.id,
-              'tenantName': tenant.text.trim(), 'houseNo': house.text.trim(),
-              'status': 'pending', 'createdAt': FieldValue.serverTimestamp(),
-            });
-          }
-        }
-        if (mounted) { amount.clear(); snack(context, 'Payment record saved. Confirm actual receipt before marking it received.'); }
-      }
-    } catch (e) { if (mounted) snack(context, 'Could not submit payment: ' + e.toString()); }
-    finally { if (mounted) setState(() => saving = false); }
+      final profile = await FirebaseFirestore.instance.collection('users')
+        .doc(FirebaseAuth.instance.currentUser!.uid).get();
+      final houseNo = profile.data()?['houseNo']?.toString() ?? 'RENT';
+      final response = await FirebaseFunctions.instance.httpsCallable('requestTenantMpesaStk').call({
+        'amount': value,
+        'phoneNumber': phone.text.trim(),
+        'accountReference': houseNo.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), ''),
+      });
+      final data = Map<String, dynamic>.from(response.data as Map);
+      final message = data['customerMessage']?.toString() ?? 'Check your phone for the M-Pesa PIN prompt.';
+      if (!mounted) return;
+      setState(() { lastMessage = message; amount.clear(); });
+      snack(context, message);
+    } on FirebaseFunctionsException catch (error) {
+      if (mounted) snack(context, error.message ?? 'Could not send the M-Pesa prompt.');
+    } catch (error) {
+      if (mounted) snack(context, 'Could not send the M-Pesa prompt: $error');
+    } finally { if (mounted) setState(() => sending = false); }
   }
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Record rent payment')),
+    appBar: AppBar(title: const Text('Pay rent with M-Pesa')),
     body: ListView(padding: const EdgeInsets.all(20), children: [
-      const Icon(Icons.phone_android, size: 56, color: Colors.green),
-      const Text('Record a rent payment', textAlign: TextAlign.center, style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+      const Icon(Icons.phone_android, size: 58, color: Colors.green),
+      const Text('M-Pesa STK Push', textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 8),
+      const Text('Enter the amount and Safaricom number to receive a secure M-Pesa PIN prompt. Your landlord receives the payment directly.',
+        textAlign: TextAlign.center),
+      const SizedBox(height: 24),
+      TextField(controller: phone, keyboardType: TextInputType.phone,
+        decoration: const InputDecoration(labelText: 'M-Pesa phone number',
+          hintText: '07XXXXXXXX or 2547XXXXXXXX', border: OutlineInputBorder())),
+      const SizedBox(height: 14),
+      TextField(controller: amount, keyboardType: TextInputType.number,
+        decoration: const InputDecoration(labelText: 'Rent amount (KSh)', border: OutlineInputBorder())),
       const SizedBox(height: 20),
-      TextField(controller: tenant, decoration: const InputDecoration(labelText: 'Tenant name', border: OutlineInputBorder())),
-      const SizedBox(height: 12),
-      TextField(controller: house, decoration: const InputDecoration(labelText: 'House number', border: OutlineInputBorder())),
-      const SizedBox(height: 12),
-      TextField(controller: amount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Amount (KSh)', border: OutlineInputBorder())),
-      const SizedBox(height: 12),
-      DropdownButtonFormField<String>(
-        value: paymentMethod,
-        decoration: const InputDecoration(labelText: 'Payment method'),
-        items: const [
-          DropdownMenuItem(value: 'mpesa', child: Text('M-Pesa')),
-          DropdownMenuItem(value: 'cash', child: Text('Cash')),
-          DropdownMenuItem(value: 'bank', child: Text('Bank')),
-        ],
-        onChanged: saving ? null : (value) => setState(() => paymentMethod = value ?? 'mpesa'),
-      ),
-      if (paymentMethod == 'mpesa') ...[
-        const SizedBox(height: 12),
-        TextField(controller: transactionCode, textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(labelText: 'M-Pesa transaction code', border: OutlineInputBorder())),
+      FilledButton.icon(onPressed: sending ? null : requestPush,
+        icon: sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_to_mobile),
+        label: Text(sending ? 'SENDING REQUEST...' : 'REQUEST M-PESA PROMPT')),
+      if (lastMessage != null) ...[
+        const SizedBox(height: 16),
+        Card(child: Padding(padding: const EdgeInsets.all(14), child: Text(lastMessage!))),
       ],
-      const SizedBox(height: 18),
-      FilledButton.icon(onPressed: saving ? null : savePayment, icon: const Icon(Icons.save_outlined), label: Text(saving ? 'Saving...' : 'SAVE PAYMENT RECORD')),
-      const SizedBox(height: 12),
-      const Text('This records a payment for verification only. It does not send an M-Pesa STK Push or confirm money received. Live Daraja payments require credentials and a secure backend server.'),
+      const SizedBox(height: 14),
+      const Text('The Ledger updates only after Safaricom confirms the transaction. Never share your M-Pesa PIN.',
+        textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
     ]),
   );
 }
 
+class LandlordMpesaSetupScreen extends StatefulWidget {
+  const LandlordMpesaSetupScreen({super.key});
+  @override
+  State<LandlordMpesaSetupScreen> createState() => _LandlordMpesaSetupScreenState();
+}
+class _LandlordMpesaSetupScreenState extends State<LandlordMpesaSetupScreen> {
+  final shortcode = TextEditingController(), storeShortcode = TextEditingController(),
+    tillNumber = TextEditingController(), consumerKey = TextEditingController(),
+    consumerSecret = TextEditingController(), passkey = TextEditingController();
+  String type = 'paybill';
+  bool saving = false, loading = true, configured = false;
+  String? configuredType, configuredShortcode;
+  @override
+  void initState() { super.initState(); loadStatus(); }
+  @override
+  void dispose() {
+    shortcode.dispose(); storeShortcode.dispose(); tillNumber.dispose();
+    consumerKey.dispose(); consumerSecret.dispose(); passkey.dispose(); super.dispose();
+  }
+  Future<void> loadStatus() async {
+    try {
+      final result = await FirebaseFunctions.instance.httpsCallable('getLandlordMpesaConfigStatus').call();
+      if (!mounted) return;
+      final data = Map<String, dynamic>.from(result.data as Map);
+      setState(() {
+        configured = data['configured'] == true;
+        configuredType = data['type']?.toString();
+        configuredShortcode = data['displayShortcode']?.toString();
+        loading = false;
+      });
+    } catch (_) { if (mounted) setState(() => loading = false); }
+  }
+  Future<void> saveConfig() async {
+    if (consumerKey.text.trim().isEmpty || consumerSecret.text.trim().isEmpty || passkey.text.trim().isEmpty) {
+      snack(context, 'Enter the live Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Passkey.'); return;
+    }
+    if (type == 'paybill' && shortcode.text.trim().isEmpty) {
+      snack(context, 'Enter your PayBill shortcode.'); return;
+    }
+    if (type == 'till' && (storeShortcode.text.trim().isEmpty || tillNumber.text.trim().isEmpty)) {
+      snack(context, 'Enter both Store/Head Office and Till numbers.'); return;
+    }
+    setState(() => saving = true);
+    try {
+      await FirebaseFunctions.instance.httpsCallable('saveLandlordMpesaConfig').call({
+        'type': type,
+        'shortcode': type == 'paybill' ? shortcode.text.trim() : storeShortcode.text.trim(),
+        'storeShortcode': storeShortcode.text.trim(),
+        'tillNumber': tillNumber.text.trim(),
+        'consumerKey': consumerKey.text.trim(),
+        'consumerSecret': consumerSecret.text.trim(),
+        'passkey': passkey.text.trim(),
+      });
+      if (!mounted) return;
+      consumerKey.clear(); consumerSecret.clear(); passkey.clear();
+      await loadStatus();
+      snack(context, 'Live Daraja credentials authenticated and saved securely.');
+    } on FirebaseFunctionsException catch (error) {
+      if (mounted) snack(context, error.message ?? 'Could not save M-Pesa setup.');
+    } catch (error) { if (mounted) snack(context, 'Could not save M-Pesa setup: $error'); }
+    finally { if (mounted) setState(() => saving = false); }
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('M-Pesa collection setup')),
+    body: ListView(padding: const EdgeInsets.all(18), children: [
+      const Icon(Icons.account_balance_wallet_outlined, size: 54, color: Colors.green),
+      const Text('Connect your own M-Pesa account', textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 8),
+      const Text('Rent payments settle to the PayBill or Till connected to these production Daraja credentials. Credentials are encrypted on the server and never displayed again.',
+        textAlign: TextAlign.center),
+      const SizedBox(height: 14),
+      if (loading) const LinearProgressIndicator(),
+      if (configured) Card(child: ListTile(
+        leading: const Icon(Icons.verified, color: Colors.green),
+        title: const Text('Live collection configured'),
+        subtitle: Text((configuredType ?? '').toUpperCase() + ' • ' + (configuredShortcode ?? '')),
+      )),
+      DropdownButtonFormField<String>(value: type,
+        decoration: const InputDecoration(labelText: 'Merchant type'),
+        items: const [
+          DropdownMenuItem(value: 'paybill', child: Text('PayBill')),
+          DropdownMenuItem(value: 'till', child: Text('Buy Goods / Till')),
+        ],
+        onChanged: saving ? null : (value) => setState(() => type = value ?? 'paybill')),
+      const SizedBox(height: 12),
+      if (type == 'paybill')
+        TextField(controller: shortcode, keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'PayBill number', border: OutlineInputBorder()))
+      else ...[
+        TextField(controller: storeShortcode, keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'Store / Head Office number', border: OutlineInputBorder())),
+        const SizedBox(height: 12),
+        TextField(controller: tillNumber, keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'Till number', border: OutlineInputBorder())),
+      ],
+      const SizedBox(height: 12),
+      TextField(controller: consumerKey, decoration: const InputDecoration(labelText: 'Production Consumer Key', border: OutlineInputBorder())),
+      const SizedBox(height: 12),
+      TextField(controller: consumerSecret, obscureText: true,
+        decoration: const InputDecoration(labelText: 'Production Consumer Secret', border: OutlineInputBorder())),
+      const SizedBox(height: 12),
+      TextField(controller: passkey, obscureText: true,
+        decoration: const InputDecoration(labelText: 'Production Lipa Na M-Pesa Passkey (64 characters)', border: OutlineInputBorder())),
+      const SizedBox(height: 18),
+      FilledButton.icon(onPressed: saving ? null : saveConfig,
+        icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.lock_outline),
+        label: Text(saving ? 'VERIFYING WITH SAFARICOM...' : 'VERIFY & SAVE LIVE CREDENTIALS')),
+      const SizedBox(height: 12),
+      const Text('Only enter credentials issued for this merchant by Safaricom. Never enter your M-Pesa PIN. Till setup requires the Store/Head Office shortcode and actual Till number.',
+        style: TextStyle(fontSize: 12)),
+    ]),
+  );
+}
 
 class PaymentSubmissionsScreen extends StatefulWidget {
   const PaymentSubmissionsScreen({super.key});
