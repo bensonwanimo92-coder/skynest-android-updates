@@ -617,11 +617,13 @@ exports.mpesaStkCallback = onRequest({
   }
 
   const db = getFirestore();
+  let callbackIntentRef = null;
   try {
     const matches = await db.collection("mpesaPaymentIntents")
       .where("checkoutRequestId", "==", String(callback.CheckoutRequestID)).limit(1).get();
     if (matches.empty) return res.status(200).json({ ResultCode: 0, ResultDesc: "Unknown checkout ignored." });
     const intentRef = matches.docs[0].ref;
+    callbackIntentRef = intentRef;
     const intent = matches.docs[0].data();
     if (intent.status === "paid") {
       return res.status(200).json({ ResultCode: 0, ResultDesc: "Already processed." });
@@ -703,6 +705,23 @@ exports.mpesaStkCallback = onRequest({
     return res.status(200).json({ ResultCode: 0, ResultDesc: "Payment processed." });
   } catch (error) {
     console.error("M-Pesa callback processing failed:", error);
-    return res.status(200).json({ ResultCode: 0, ResultDesc: "Callback queued for reconciliation." });
+    if (callbackIntentRef) {
+      try {
+        await db.runTransaction(async (transaction) => {
+          const current = await transaction.get(callbackIntentRef);
+          if (current.exists && current.get("status") === "pending") {
+            transaction.update(callbackIntentRef, {
+              status: "review_required",
+              failureReason: "Safaricom result could not be independently reconciled. " +
+                String(error.message || error).slice(0, 220),
+              updatedAt: FieldValue.serverTimestamp(),
+            });
+          }
+        });
+      } catch (recordError) {
+        console.error("Could not mark M-Pesa intent for reconciliation:", recordError);
+      }
+    }
+    return res.status(200).json({ ResultCode: 0, ResultDesc: "Callback received; reconciliation required." });
   }
 });
