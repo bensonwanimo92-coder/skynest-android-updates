@@ -56,6 +56,13 @@ jobs:
       - name: Set up Google Cloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Enable Secret Manager API
+        env:
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          gcloud services enable secretmanager.googleapis.com --project "$FIREBASE_PROJECT_ID"
+
       - name: Create persistent encryption secret if absent
         env:
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
