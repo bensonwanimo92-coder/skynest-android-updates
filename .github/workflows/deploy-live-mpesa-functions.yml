@@ -68,6 +68,12 @@ jobs:
           else
             echo "Persistent M-Pesa encryption secret already exists; preserving it."
           fi
+          PROJECT_NUMBER="$(gcloud projects describe "$FIREBASE_PROJECT_ID" --format='value(projectNumber)')"
+          gcloud secrets add-iam-policy-binding MPESA_CONFIG_ENCRYPTION_KEY \
+            --project "$FIREBASE_PROJECT_ID" \
+            --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+            --role="roles/secretmanager.secretAccessor" \
+            --quiet
 
       - name: Install Cloud Functions dependencies
         run: npm install --prefix functions --omit=dev
