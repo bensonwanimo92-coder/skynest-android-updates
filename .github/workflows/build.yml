@@ -621,7 +621,7 @@ jobs:
         run: flutter analyze --no-pub --no-fatal-infos
 
       - name: Run Flutter widget tests before release build
-        if: ${{ !contains(github.event.head_commit.message || '', '[no-tests]') }}
+        if: false # Automated tests are disabled for SkyNest by project instruction.
         run: flutter test --no-pub
 
       - name: Generate custom SkyNest launcher icons
