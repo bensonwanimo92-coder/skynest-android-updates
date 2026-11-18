@@ -8,6 +8,9 @@ import 'marketplace/marketplace_inventory_screen.dart';
 // ignore: duplicate_import -- retained for the legacy direct-message route.
 import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
+import 'settings/settings_hub_screen.dart';
+import 'plans/daily_plan_notebook_screen.dart';
+import 'widgets/tile_marquee.dart';
 import 'services/sound_service.dart';
 import 'services/voice_service.dart';
 import 'payments/mpesa_service.dart';
@@ -1320,35 +1323,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Tenants', Icons.people_alt_outlined, Colors.green, const TenantsScreen()),
         _MenuItem('Payments', Icons.payments_outlined, Colors.blue, const PaymentsScreen()),
         _MenuItem('M-Pesa receiving account', Icons.account_balance_wallet_outlined, Colors.green, const MpesaAccountScreen()),
-        _MenuItem('Tenant payment submissions', Icons.fact_check_outlined, Colors.teal, const PaymentSubmissionsScreen()),
         _MenuItem('Caretakers & invitations', Icons.badge_outlined, Colors.teal, const InvitationsScreen()),
-        _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
         _MenuItem('Electricity', Icons.electric_bolt, Colors.amber, const ElectricityScreen()),
         _MenuItem('Activity log', Icons.fact_check_outlined, Colors.blueGrey, const ActivityLogScreen()),
-        _MenuItem('Automation centre', Icons.auto_awesome_rounded, Colors.cyan, const AutomationCentreScreen()),
-        _MenuItem('Backup & export', Icons.cloud_download_outlined, Colors.blueGrey, const BackupExportScreen()),
-        _MenuItem('Global search', Icons.search_rounded, Colors.teal, GlobalSearchScreen(onOpenCollection: (collection) {
-          final Widget destination;
-          switch (collection) {
-            case 'houses': destination = const HousesScreen(); break;
-            case 'tenants': destination = const TenantsScreen(); break;
-            case 'payments': destination = const PaymentsScreen(); break;
-            case 'plans': destination = const PlansScreen(); break;
-            case 'calendarEvents': destination = const CalendarScreen(); break;
-            case 'activityLogs': destination = const ActivityLogScreen(); break;
-            case 'complaints': destination = const ComplaintsScreen(); break;
-            default: destination = const ReportsScreen();
-          }
-          Navigator.push(context, MaterialPageRoute<void>(builder: (_) => destination));
-        })),
         _MenuItem('Reports', Icons.analytics_outlined, Colors.deepPurple, const ReportsScreen()),
         _MenuItem('Calculator', Icons.calculate_outlined, Colors.purple, const CalculatorScreen()),
         _MenuItem('Calendar', Icons.calendar_month, Colors.cyan, const CalendarScreen()),
-        _MenuItem('Plans', Icons.assignment_outlined, Colors.indigo, const PlansScreen()),
+        _MenuItem('Plans notebook', Icons.menu_book_rounded, Colors.indigo, DailyPlanNotebookScreen(projectPlansBuilder: (_) => const PlansScreen())),
         _MenuItem('Achievements', Icons.emoji_events_outlined, Colors.amber, const AchievementsScreen()),
-        _MenuItem('Pamphlets', Icons.menu_book_outlined, Colors.brown, const PamphletsScreen()),
         _MenuItem('Reading & media hub', Icons.auto_stories_rounded, Colors.teal, const ReadingHubScreen()),
         _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
         _MenuItem('Premium', Icons.workspace_premium, Colors.deepOrange, const PremiumScreen()),
@@ -1358,6 +1342,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Assigned houses', Icons.home_work_outlined, Colors.orange, const CaretakerHousesScreen()),
         _MenuItem('Tenant approvals', Icons.how_to_reg_outlined, Colors.green, const TenantApprovalsScreen()),
         _MenuItem('Rent confirmations', Icons.fact_check_outlined, Colors.blue, const CaretakerPaymentsScreen()),
+        _MenuItem('Reports', Icons.analytics_outlined, Colors.deepPurple, const ReportsScreen()),
         _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('House requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
@@ -1369,7 +1354,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } else {
       items.addAll([
         _MenuItem('Find a vacant house', Icons.home_work_outlined, Colors.orange, const TenantPortalScreen()),
-        _MenuItem('My complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
+        _MenuItem('Help & support', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('House change requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
@@ -1382,8 +1367,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     items.add(_MenuItem('Inventory', Icons.storefront_rounded, const Color(0xFF2563EB), const MarketplaceInventoryScreen()));
     items.add(_MenuItem('Discovery', Icons.explore_rounded, const Color(0xFF06B6D4), const MarketDiscoveryScreen()));
     items.add(_MenuItem('Media Centre', Icons.library_music_rounded, const Color(0xFF22D3EE), const MediaCentreScreen()));
-    items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
-    items.add(_MenuItem('Security & fingerprint', Icons.fingerprint_rounded, Colors.blueGrey, const SecuritySettingsScreen()));
+    items.add(_MenuItem('Settings', Icons.settings_rounded, Colors.blueGrey, const SettingsHubScreen()));
     items.add(_MenuItem('Notification centre', Icons.notifications_active_outlined, Colors.deepPurple, NotificationCentreScreen(ownerId: FirebaseAuth.instance.currentUser?.uid ?? 'guest')));
 
     final query = searchQuery.trim().toLowerCase();
@@ -1393,6 +1377,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Utility destinations stay in the app bar/control centre, not in the rotating card deck.
     final filteredItems = orderedItems.where((item) =>
       item.title != 'Recycle Bin' &&
+      item.title != 'Automation centre' &&
+      item.title != 'Backup & export' &&
+      item.title != 'Global search' &&
+      item.title != 'Tenant payment submissions' &&
+      item.title != 'Pamphlets' &&
       !_hiddenDashboardTiles.contains(item.title) &&
       item.title.toLowerCase().contains(query)).toList();
     final displayName = FirebaseAuth.instance.currentUser?.displayName?.trim();
@@ -1833,12 +1822,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                                   const SizedBox(height: 9),
                                                   Row(
                                                     children: [
-                                                      Text(
-                                                        'Explore module',
-                                                        style: TextStyle(
-                                                          color: Colors.white.withOpacity(0.78),
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.w600,
+                                                      Expanded(
+                                                        child: TileMarqueeText(
+                                                          text: 'EXPLORE  •  ${item.title.toUpperCase()}  •  SKY NEST',
                                                         ),
                                                       ),
                                                       const Spacer(),
@@ -2722,6 +2708,14 @@ class PaymentsScreen extends StatelessWidget {
     appBar: AppBar(
       title: const Text('Payment records'),
       actions: [
+        IconButton(
+          tooltip: 'Tenant payment submissions',
+          icon: const Icon(Icons.fact_check_outlined),
+          onPressed: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const PaymentSubmissionsScreen()),
+          ),
+        ),
         IconButton(
           tooltip: 'Open rent ledger',
           icon: const Icon(Icons.account_balance_wallet_outlined),
