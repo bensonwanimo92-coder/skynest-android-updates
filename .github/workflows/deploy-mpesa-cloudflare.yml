@@ -20,7 +20,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Deploy production Worker (no test or emulator jobs)
+      - name: Run Worker syntax and payment validation tests
+        working-directory: cloudflare-worker
+        run: npm run check
+
+      - name: Deploy production Worker
         working-directory: cloudflare-worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

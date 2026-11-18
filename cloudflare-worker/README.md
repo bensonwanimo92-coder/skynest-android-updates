@@ -39,6 +39,10 @@ All Daraja credentials are central SkyNest Cloudflare secrets. Landlords enter o
 
 ## Deployment
 
-The Android app calls `https://mpesaapi.bensonwanimo92.workers.dev` by default. The Wrangler Worker name is `mpesaapi` so deployment updates that existing endpoint rather than creating a second Worker. The GitHub Actions deployment workflow is manual and deploys this Worker without simulator, emulator, or test jobs. Configure the Cloudflare API token and account ID as GitHub Actions secrets before running it.
+The Android app calls `https://mpesaapi.bensonwanimo92.workers.dev` by default. The Wrangler Worker name is `mpesaapi` so deployment updates that existing endpoint rather than creating a second Worker. The GitHub Actions deployment workflow is manual and runs the Worker syntax checks and pure Node validation tests before deployment. These checks do not launch a simulator or emulator. Configure the Cloudflare API token and account ID as GitHub Actions secrets before running it.
 
 Production mode is selected in `wrangler.toml`. Do not send a real payment until SkyNest central production credentials, callback URL and Safaricom-approved merchant routing are configured. The code deliberately rejects payment and verification requests while merchant routing is disabled.
+
+## Validation
+
+From this directory, run `npm run check`. It checks Worker JavaScript syntax and runs the built-in Node.js test suite for callback, tenant-house assignment and merchant-account validation. The deployment workflow requires these checks to pass before Wrangler can deploy the Worker.
