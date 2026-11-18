@@ -72,8 +72,14 @@ class _DailyPlanNotebookScreenState extends State<DailyPlanNotebookScreen> {
               };
               try {
                 if (page == null) {
+                  final existing = await FirebaseFirestore.instance.collection('plans')
+                      .where('createdBy', isEqualTo: uid).get();
+                  final countForDay = existing.docs.where((doc) =>
+                    doc.data()['recordType'] == 'daily_note' && doc.data()['dateKey'] == _dateKey(_day)).length;
+                  data['pageNumber'] = countForDay + 1;
                   data['createdAt'] = FieldValue.serverTimestamp();
                   await FirebaseFirestore.instance.collection('plans').add(data);
+                  if (mounted) setState(() => _pageIndex = countForDay);
                 } else {
                   await page.reference.update(data);
                 }
