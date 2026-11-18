@@ -360,6 +360,39 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
     }
   }
 
+  Future<void> _importMediaFiles() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: <String>[
+          'mp3', 'm4a', 'aac', 'wav', 'ogg', 'opus', 'flac',
+          'mp4', 'm4v', 'mov', 'webm', 'mkv', '3gp',
+        ],
+        allowMultiple: true,
+        withData: false,
+      );
+      if (result == null || !mounted) return;
+      final selected = result.files.where((file) =>
+        file.path != null && (_isAudio(file.name) || _isVideo(file.name))).toList();
+      final knownPaths = <String>{
+        ..._localMedia.map((file) => file.path).whereType<String>(),
+        ..._downloadedMedia.map((file) => file.path).whereType<String>(),
+      };
+      final additions = selected.where((file) => !knownPaths.contains(file.path)).toList();
+      setState(() => _localMedia.addAll(additions));
+      await _saveLibraryPreferences();
+      _message(additions.isEmpty
+        ? 'No new supported media files were imported.'
+        : 'Imported ${additions.length} media file(s), including MP3 audio where selected.');
+    } catch (error) {
+      _message('Could not import media files: $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _playLocal(PlatformFile file) async {
     final path = file.path;
     if (path == null) {
@@ -574,6 +607,11 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
       appBar: AppBar(
         title: const Text('SkyNest Media Centre'),
         actions: [
+          IconButton(
+            tooltip: 'Import MP3, audio or video files',
+            onPressed: _busy ? null : _importMediaFiles,
+            icon: const Icon(Icons.audio_file_outlined),
+          ),
           IconButton(
             tooltip: 'Add media from phone storage',
             onPressed: _busy ? null : _pickLocal,
