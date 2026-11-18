@@ -3,12 +3,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../main.dart';
 
 /// Daily plans are stored in the existing owner-scoped plans collection so
 /// they inherit the same Firestore ownership rules as ordinary plans.
 class DailyPlanNotebookScreen extends StatefulWidget {
-  const DailyPlanNotebookScreen({super.key});
+  const DailyPlanNotebookScreen({super.key, this.projectPlansBuilder});
+  final WidgetBuilder? projectPlansBuilder;
 
   @override
   State<DailyPlanNotebookScreen> createState() => _DailyPlanNotebookScreenState();
@@ -136,9 +136,9 @@ class _DailyPlanNotebookScreenState extends State<DailyPlanNotebookScreen> {
           ),
           IconButton(
             tooltip: 'Project plans and reminders',
-            onPressed: () => Navigator.push<void>(
+            onPressed: widget.projectPlansBuilder == null ? null : () => Navigator.push<void>(
               context,
-              MaterialPageRoute<void>(builder: (_) => const PlansScreen()),
+              MaterialPageRoute<void>(builder: widget.projectPlansBuilder!),
             ),
             icon: const Icon(Icons.account_tree_outlined),
           ),
