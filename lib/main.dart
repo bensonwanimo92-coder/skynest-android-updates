@@ -16,6 +16,7 @@ import 'services/sound_service.dart';
 import 'services/voice_service.dart';
 import 'payments/mpesa_service.dart';
 import 'payments/rent_ledger_screen.dart';
+import 'payments/caretaker_ledger_screen.dart';
 import 'payments/mpesa_account_screen.dart';
 import 'services/notification_service.dart';
 import 'control_centre/notification_centre.dart';
@@ -7049,6 +7050,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
         onPressed: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const ComplaintsScreen()))),
       IconButton(tooltip: 'Rent ledger', icon: const Icon(Icons.account_balance_wallet_outlined),
         onPressed: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const RentLedgerScreen()))),
+      IconButton(tooltip: 'Caretaker ledger', icon: const Icon(Icons.fact_check_outlined),
+        onPressed: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const CaretakerLedgerScreen()))),
       IconButton(tooltip: 'Refresh reports', icon: const Icon(Icons.refresh),
         onPressed: () => setState(_load)),
     ]),
@@ -7182,7 +7185,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () async {
               final profile = await FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).get();
-              final page = profile.data()?['role'] == 'caretaker' ? const CaretakerPaymentsScreen() : const RentLedgerScreen();
+              final page = profile.data()?['role'] == 'caretaker' ? const CaretakerPaymentsScreen() : const CaretakerLedgerScreen();
               if (context.mounted) Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => page));
             },
           )),
