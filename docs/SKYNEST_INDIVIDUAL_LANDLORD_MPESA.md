@@ -3,7 +3,7 @@
 Status: approved product direction — each landlord supplies their own Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Passkey. The implementation is being repaired on a dedicated branch; no production deployment has been made.
 Target branch: fix/individual-landlord-daraja-credentials
 
-The current Worker selects Sandbox or Production globally through `DARAJA_ENV`; the landlord-specific credentials are separate, but the environment is not independently selectable per landlord. Keep the deployment in Sandbox until the required multi-landlord checks and Safaricom live onboarding are complete.
+The approved implementation is production-only: there is no Sandbox switch or Sandbox endpoint in the payment Worker. Each landlord must enter credentials issued for their live Safaricom Daraja merchant account. The live KES 1 verification is a real charge and must be explicitly approved by the landlord.
 
 ## Product decision
 
@@ -22,9 +22,9 @@ The setup wizard has these steps:
    - PayBill: PayBill/business shortcode.
    - Till: Till number plus the Safaricom Daraja shortcode/head-office number required for that Till.
 3. Enter the Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Online Passkey. These are write-only secrets: after saving, the app must never read them back or display them.
-4. The platform initially runs in Sandbox. Production is a controlled platform rollout after the relevant landlord has Safaricom-approved live Daraja credentials and controlled verification succeeds.
+4. SkyNest uses Safaricom production endpoints only. The landlord must have a live Daraja application approved by Safaricom.
 5. Save as Pending verification.
-6. Run a controlled test STK Push to the landlord's own M-Pesa phone, using a small amount selected and explicitly confirmed by the landlord. The test must not create a rent payment or tenant ledger entry.
+6. Send an explicitly confirmed KES 1 live STK Push to the landlord's own M-Pesa phone. This is a real charge to the landlord's receiving account and must never be recorded as rent.
 7. Activate the receiving account only after the trusted backend validates the Daraja response and the test callback. Show Verified, Pending, Action required, Suspended or Failed states.
 
 The screen also shows masked shortcode details, business name, account type, environment, verification time, last successful test, and a Change/Disable action. Changing credentials invalidates the old verification and returns the account to Pending verification.
@@ -87,18 +87,18 @@ After verification, show a compact account card:
 - M-Pesa PayBill / Buy Goods Till
 - masked shortcode/Till
 - registered business name
-- Sandbox / Production
+- Production
 - Verified status and date
 - Change details / Disable account
 
 ## Rollout and acceptance gates
 
-1. Confirm the exact Daraja onboarding and request parameters for both PayBill and Buy Goods Till with Safaricom for the merchant's live account. A successful sandbox test does not establish production eligibility.
+1. Confirm the exact Daraja onboarding and request parameters for both PayBill and Buy Goods Till with Safaricom for each merchant's live account.
 2. Implement encrypted credential storage and landlord-only setup/status endpoints.
 3. Implement PayBill flow first and add Till only after shortcode/head-office/transaction-type handling is confirmed.
 4. Update Firestore rules and tests so only trusted backend code can create confirmed M-Pesa payments.
 5. Add Flutter landlord setup UI and tenant account-status/payment routing.
-6. Test two different landlord accounts in sandbox and prove each tenant's STK request uses only their own landlord's shortcode/credentials.
+6. Confirm two live landlord accounts are isolated and each tenant STK request uses only their own landlord's shortcode/credentials.
 7. Test success, cancellation, timeout, duplicate callback, callback-before-pending-write, reused receipt, wrong amount, wrong payer, disabled account, changed credentials and cross-landlord isolation.
 8. Deploy Worker and Firestore rules separately from the APK. Keep production disabled until Safaricom merchant approval and live controlled tests pass.
 
@@ -117,7 +117,7 @@ Implemented on `integration/skynest-complete-release-candidate`:
 Not yet complete or independently verified:
 
 - Cloudflare Worker has not been deployed with the new code and the required `MPESA_ENCRYPTION_KEY` secret.
-- Sandbox end-to-end tests, including two-landlord isolation, have not yet been run against Safaricom and Firebase.
+- Live end-to-end verification, including two-landlord isolation, has not yet been completed against Safaricom and Firebase.
 - Live PayBill/Till payloads and merchant onboarding must be confirmed with Safaricom before production use.
 - No in-app manual personal-phone receiving-instructions form has been added yet. The existing tenant payment-submission flow can be used for manual receipt review if the landlord shares their Send Money number separately.
 - Rate limiting, strict CORS origin allowlists, audit events for account changes, disable-account workflow, credential key rotation, transaction-status reconciliation and full timeout/reversal handling remain to be implemented.
