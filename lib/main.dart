@@ -11,6 +11,7 @@ import 'settings/sound_settings.dart';
 import 'settings/settings_hub_screen.dart';
 import 'plans/daily_plan_notebook_screen.dart';
 import 'widgets/tile_marquee.dart';
+import 'tenant/my_room_screen.dart';
 import 'services/sound_service.dart';
 import 'services/voice_service.dart';
 import 'payments/mpesa_service.dart';
@@ -1354,6 +1355,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } else {
       items.addAll([
         _MenuItem('Find a vacant house', Icons.home_work_outlined, Colors.orange, const TenantPortalScreen()),
+        _MenuItem('My room', Icons.meeting_room_outlined, Colors.blue, const MyRoomScreen()),
         _MenuItem('Help & support', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('House change requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
