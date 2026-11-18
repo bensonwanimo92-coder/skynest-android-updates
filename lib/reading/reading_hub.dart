@@ -335,14 +335,57 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
   Future<void> _readIssue(_ReadingIssue issue) async {
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => Scaffold(
-        appBar: AppBar(title: Text(issue.title)),
-        body: PdfPreview(
-          build: (_) => _buildIssuePdf(issue),
-          pdfFileName: '${_fileName(issue)}.pdf',
-          allowPrinting: true,
-          allowSharing: true,
-          canChangePageFormat: false,
-          canChangeOrientation: false,
+        appBar: AppBar(
+          title: Text(issue.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          actions: [
+            IconButton(
+              tooltip: 'Download complete article as PDF',
+              icon: const Icon(Icons.download_for_offline_outlined),
+              onPressed: () => _downloadIssue(issue),
+            ),
+          ],
+        ),
+        body: SelectionArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 36),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: LinearGradient(
+                    colors: [issue.color.withOpacity(.95), Theme.of(context).colorScheme.primary],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Icon(issue.icon, color: Colors.white, size: 34),
+                  const SizedBox(height: 14),
+                  Text(issue.title, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 8),
+                  Text(issue.subtitle, style: const TextStyle(color: Colors.white.withOpacity(.9), height: 1.5)),
+                ]),
+              ),
+              const SizedBox(height: 22),
+              ...issue.sections.map((section) => Padding(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(section.heading, style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w800,
+                  )),
+                  const SizedBox(height: 10),
+                  Text(section.body, style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.75, fontSize: 16)),
+                ]),
+              )),
+              OutlinedButton.icon(
+                onPressed: () => _downloadIssue(issue),
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: const Text('Save full article as PDF'),
+              ),
+            ],
+          ),
         ),
       ),
     ));
