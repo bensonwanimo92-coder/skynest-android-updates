@@ -20,7 +20,7 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
   String _type = 'paybill';
   String _status = 'not_configured';
   String _maskedAccount = '';
-  String _environment = 'sandbox';
+  String _environment = 'production';
   bool _loading = true;
   bool _saving = false;
   bool _verifying = false;
@@ -53,7 +53,7 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
         _type = data['accountType']?.toString() ?? 'paybill';
         _businessName.text = data['registeredBusinessName']?.toString() ?? '';
         _maskedAccount = data['maskedAccount']?.toString() ?? '';
-        _environment = data['environment']?.toString() ?? 'sandbox';
+        _environment = data['environment']?.toString() ?? 'production';
         _loading = false;
       });
     } catch (e) {
@@ -93,7 +93,7 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
         _consumerSecret.clear();
         _passkey.clear();
       });
-      _message('Account details encrypted and saved. Complete the KES 1 verification next.');
+      _message('Account details encrypted and saved. Complete the live KES 1 verification next.');
     } catch (e) {
       _message(e.toString());
     } finally {
@@ -111,7 +111,7 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Verify receiving account'),
-        content: const Text('SkyNest will send a KES 1 STK Push to your phone. Approve it with your M-Pesa PIN. This is a real KES 1 payment to the configured PayBill/Till, but it will not be recorded as rent.'),
+        content: const Text('SkyNest will send a KES 1 STK Push to your phone. Approve it with your M-Pesa PIN. This is a REAL KES 1 payment to the configured PayBill/Till. It will not be recorded as rent. Only continue if these are your approved live merchant credentials.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('SEND KES 1 PROMPT')),
@@ -166,7 +166,7 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
                       ]),
                       const SizedBox(height: 8),
                       Text(_maskedAccount.isEmpty ? 'No receiving account saved yet.' : 'Saved account • $_maskedAccount'),
-                      Text('Environment: $_environment', style: Theme.of(context).textTheme.bodySmall),
+                      Text('Connection: $_environment', style: Theme.of(context).textTheme.bodySmall),
                       const SizedBox(height: 8),
                       const Text('Tenant rent payments will be routed to this landlord’s own merchant account. Credentials are encrypted by the server and are never returned to this app.'),
                     ]),
@@ -221,7 +221,7 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
                 const Divider(height: 36),
                 Text('Verify merchant connection', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 6),
-                const Text('A KES 1 STK Push checks that the saved Daraja credentials can initiate a payment to this merchant account. The prompt goes to the landlord’s own M-Pesa phone. This confirms the API route, not legal ownership of the merchant account.'),
+                const Text('A live KES 1 STK Push checks that the saved production Daraja credentials can initiate a payment to this merchant account. The prompt goes to the landlord’s own M-Pesa phone. This confirms the API route, not legal ownership of the merchant account.'),
                 const SizedBox(height: 12),
                 TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Landlord verification phone', hintText: '07XXXXXXXX or 2547XXXXXXXX', border: OutlineInputBorder())),
                 const SizedBox(height: 12),
@@ -231,7 +231,7 @@ class _MpesaAccountScreenState extends State<MpesaAccountScreen> {
                   label: Text(_verifying ? 'Sending verification…' : 'Verify with KES 1 STK Push'),
                 ),
                 const SizedBox(height: 16),
-                const Text('Important: production payments remain unavailable until the landlord has Safaricom-approved live Daraja credentials and the verification payment succeeds in the production environment.'),
+                const Text('Production only: use Safaricom-approved live Daraja credentials. The KES 1 verification is a real charge; tenant payments unlock only after Safaricom accepts the request and its callback confirms success.'),
               ],
             ),
     );
