@@ -2,6 +2,9 @@ name: Deploy SkyNest M-Pesa Worker to Cloudflare Production
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
