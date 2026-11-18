@@ -4068,7 +4068,7 @@ class _PlansScreenState extends State<PlansScreen> {
         builder: (context, snapshot) {
           if (snapshot.hasError) return errorView('Plans could not load: ${snapshot.error}');
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          final docs = snapshot.data!.docs.toList()..sort((a, b) {
+          final docs = snapshot.data!.docs.where((doc) => doc.data()['recordType'] != 'daily_note').toList()..sort((a, b) {
             final ad = a.data()['deadline'], bd = b.data()['deadline'];
             return (ad is Timestamp ? ad.toDate() : DateTime(9999))
               .compareTo(bd is Timestamp ? bd.toDate() : DateTime(9999));
@@ -4226,8 +4226,74 @@ class _PlansScreenState extends State<PlansScreen> {
   );
 }
 
-class AchievementsScreen extends StatelessWidget {
+class AchievementsScreen extends StatefulWidget {
   const AchievementsScreen({super.key});
+  @override
+  State<AchievementsScreen> createState() => _AchievementsScreenState();
+}
+
+class _AchievementsScreenState extends State<AchievementsScreen> {
+  Map<String, Map<String, String>> _achievementOverrides = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAchievementOverrides();
+  }
+
+  Future<void> _loadAchievementOverrides() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('skynest_achievement_overrides_$uid');
+      if (raw == null) return;
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() => _achievementOverrides = decoded.map((key, value) => MapEntry(
+        key, (value as Map).map((k, v) => MapEntry(k.toString(), v.toString())),
+      )));
+    } catch (error) {
+      debugPrint('Achievement customisations could not be loaded: $error');
+    }
+  }
+
+  Future<void> _editAchievement(Map<String, dynamic> achievement) async {
+    final id = achievement['id']?.toString() ?? '';
+    final title = TextEditingController(text: achievement['title']?.toString() ?? '');
+    final description = TextEditingController(text: achievement['description']?.toString() ?? '');
+    await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Edit achievement'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: title, decoration: const InputDecoration(labelText: 'Achievement title')),
+        const SizedBox(height: 8),
+        TextField(controller: description, minLines: 2, maxLines: 4,
+          decoration: const InputDecoration(labelText: 'Description')),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+        FilledButton(onPressed: () async {
+          if (title.text.trim().isEmpty || description.text.trim().isEmpty) return;
+          final next = Map<String, Map<String, String>>.from(_achievementOverrides);
+          next[id] = {'title': title.text.trim(), 'description': description.text.trim()};
+          final uid = FirebaseAuth.instance.currentUser?.uid;
+          try {
+            if (uid != null) {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('skynest_achievement_overrides_$uid', jsonEncode(next));
+            }
+            if (!mounted) return;
+            setState(() => _achievementOverrides = next);
+            if (dialogContext.mounted) Navigator.pop(dialogContext);
+          } catch (error) {
+            if (dialogContext.mounted) snack(dialogContext, 'Could not save achievement changes: $error');
+          }
+        }, child: const Text('Save changes')),
+      ],
+    ));
+    title.dispose();
+    description.dispose();
+  }
 
   DateTime? _dateOf(dynamic value) {
     if (value is Timestamp) return value.toDate();
@@ -4284,29 +4350,36 @@ class AchievementsScreen extends StatelessWidget {
                 final completedPlans = planDocs.where((d) =>
                   d.data()['isCompleted'] == true || d.data()['done'] == true).length;
                 final achievements = <Map<String, dynamic>>[
-                  {'title': 'First Rent', 'description': 'Record your first confirmed rent payment.',
+                  {'id': 'first_rent', 'title': 'First Rent', 'description': 'Record your first confirmed rent payment.',
                     'points': 10, 'icon': Icons.payments_outlined, 'color': Colors.green,
                     'unlocked': receivedPayments.isNotEmpty,
                     'detail': receivedPayments.isNotEmpty ? 'Unlocked' : 'Waiting for a confirmed payment'},
-                  {'title': 'Super Landlord', 'description': 'Have five occupied houses.',
+                  {'id': 'super_landlord', 'title': 'Super Landlord', 'description': 'Have five occupied houses.',
                     'points': 50, 'icon': Icons.star_rounded, 'color': Colors.amber,
                     'unlocked': occupiedDocs.length >= 5,
                     'detail': occupiedDocs.length.toString() + ' of 5 occupied houses'},
-                  {'title': 'No Arrears', 'description': 'All tenants with recorded balances have no outstanding arrears.',
+                  {'id': 'no_arrears', 'title': 'No Arrears', 'description': 'All tenants with recorded balances have no outstanding arrears.',
                     'points': 30, 'icon': Icons.check_circle_outline, 'color': Colors.blue,
                     'unlocked': balances.isNotEmpty && balances.every((v) => v <= 0),
                     'detail': balances.isEmpty ? 'Add tenant balance information to qualify' :
                       balances.where((v) => v > 0).length.toString() + ' tenant balance(s) above zero'},
-                  {'title': 'Builder', 'description': 'Complete a property plan.',
+                  {'id': 'builder', 'title': 'Builder', 'description': 'Complete a property plan.',
                     'points': 100, 'icon': Icons.construction, 'color': Colors.orange,
                     'unlocked': completedPlans > 0,
                     'detail': completedPlans.toString() + ' completed plan(s)'},
-                  {'title': '100% Collection', 'description': 'Collect at least the recorded rent total for occupied houses this month.',
+                  {'id': 'full_collection', 'title': '100% Collection', 'description': 'Collect at least the recorded rent total for occupied houses this month.',
                     'points': 40, 'icon': Icons.emoji_events_outlined, 'color': Colors.purple,
                     'unlocked': expectedRent > 0 && collected >= expectedRent,
                     'detail': expectedRent <= 0 ? 'Add rent amounts to occupied houses' :
                       currency.format(collected) + ' of ' + currency.format(expectedRent) + ' recorded'},
                 ];
+                for (final achievement in achievements) {
+                  final override = _achievementOverrides[achievement['id']?.toString()];
+                  if (override != null) {
+                    achievement['title'] = override['title'] ?? achievement['title'];
+                    achievement['description'] = override['description'] ?? achievement['description'];
+                  }
+                }
                 final unlocked = achievements.where((a) => a['unlocked'] == true).toList();
                 final points = unlocked.fold<int>(0, (sum, a) => sum + (a['points'] as int));
                 final level = points < 20 ? 'Beginner' : points < 100 ? 'Pro' : 'Tycoon';
@@ -4344,12 +4417,16 @@ class AchievementsScreen extends StatelessWidget {
                             color: isUnlocked ? Colors.green.shade700 : Theme.of(context).colorScheme.onSurfaceVariant)),
                         ]),
                         isThreeLine: true,
-                        trailing: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(isUnlocked ? Icons.lock_open_rounded : Icons.lock_outline,
-                            color: isUnlocked ? color : Colors.grey, size: 19),
-                          const SizedBox(height: 3),
-                          Text(a['points'].toString() + ' pts',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Icon(isUnlocked ? Icons.lock_open_rounded : Icons.lock_outline,
+                              color: isUnlocked ? color : Colors.grey, size: 19),
+                            const SizedBox(height: 3),
+                            Text(a['points'].toString() + ' pts',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          ]),
+                          IconButton(tooltip: 'Edit achievement', onPressed: () => _editAchievement(a),
+                            icon: const Icon(Icons.edit_outlined, size: 19)),
                         ]),
                       ));
                   }),
