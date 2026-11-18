@@ -45,7 +45,6 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:math' as math;
 import 'package:table_calendar/table_calendar.dart';
 
 const brand = Color(0xFF1565C0);
@@ -1087,8 +1086,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String searchQuery = '';
   List<String> _dashboardOrder = [];
   Set<String> _hiddenDashboardTiles = {};
-  final PageController _dashboardPageController = PageController(viewportFraction: 0.78);
-  int _activeDashboardIndex = 0;
 
   @override
   void initState() {
@@ -1219,7 +1216,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     banner?.dispose();
-    _dashboardPageController.dispose();
     super.dispose();
   }
 
@@ -1641,237 +1637,83 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                       )
-                    : PageView.builder(
-                        controller: _dashboardPageController,
-                        padEnds: true,
-                        onPageChanged: (index) => setState(() => _activeDashboardIndex = index),
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
                         itemCount: filteredItems.length,
                         itemBuilder: (context, index) {
                           final item = filteredItems[index];
                           final scheme = Theme.of(context).colorScheme;
-                          final cardOffset = (index - _activeDashboardIndex).toDouble();
-                          final cardDepth = cardOffset.abs().clamp(0.0, 1.0);
-                          var hovered = false;
-                          return StatefulBuilder(
-                            builder: (context, setTileState) => MouseRegion(
-                              onEnter: (_) => setTileState(() => hovered = true),
-                              onExit: (_) => setTileState(() => hovered = false),
-                              child: AnimatedScale(
-                                scale: hovered ? 1.035 : (index == _activeDashboardIndex ? 1.0 : 0.86),
-                                duration: const Duration(milliseconds: 190),
-                                curve: Curves.easeOutCubic,
-                                child: Transform(
-                                  alignment: Alignment.center,
-                                  transform: Matrix4.identity()
-                                    ..setEntry(3, 2, 0.0012)
-                                    ..translate(math.sin(cardOffset * 0.85) * 42.0, cardDepth * 12.0)
-                                    ..rotateY(-cardOffset * 0.28),
-                                  child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 190),
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 11),
+                            child: Material(
+                              color: const Color(0xFFE6E8EB),
+                              borderRadius: BorderRadius.circular(15),
+                              elevation: 1.5,
+                              shadowColor: Colors.black.withOpacity(0.10),
+                              clipBehavior: Clip.antiAlias,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(15),
+                                onLongPress: () => _openControlCentre(context, items),
+                                onTap: () async {
+                                  await SkyNestFeedback.playTap();
+                                  if (!context.mounted) return;
+                                  await _previewModule(context, item);
+                                },
+                                child: Container(
+                                  constraints: const BoxConstraints(minHeight: 82),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
                                   decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(25),
-                                    border: Border.all(
-                                      color: item.color.withOpacity(hovered ? 0.95 : 0.52),
-                                      width: hovered ? 1.8 : 1.15,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: item.color.withOpacity(hovered ? 0.30 : 0.16),
-                                        blurRadius: hovered ? 24 : 15,
-                                        spreadRadius: hovered ? 1 : 0,
-                                        offset: const Offset(0, 8),
-                                      ),
-                                      const BoxShadow(
-                                        color: Color(0x33020A18),
-                                        blurRadius: 16,
-                                        offset: Offset(0, 7),
-                                      ),
-                                    ],
+                                    border: Border.all(color: const Color(0xFFCDD1D6), width: 1),
+                                    borderRadius: BorderRadius.circular(15),
                                   ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(24),
-                                    child: Material(
-                                      color: const Color(0xFF09172B),
-                                      child: InkWell(
-                                        onLongPress: () => _openControlCentre(context, items),
-                                        onTap: () async {
-                                          await SkyNestFeedback.playTap();
-                                          if (!context.mounted) return;
-                                          await _previewModule(context, item);
-                                        },
-                                        child: Stack(
-                                          fit: StackFit.expand,
-                                          children: [
-                                            Image.network(
-                                              _menuImageFor(item.title),
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) => DecoratedBox(
-                                                decoration: BoxDecoration(
-                                                  gradient: LinearGradient(
-                                                    begin: Alignment.topLeft,
-                                                    end: Alignment.bottomRight,
-                                                    colors: [
-                                                      Color.lerp(item.color, const Color(0xFF07152F), 0.35)!,
-                                                      const Color(0xFF07152F),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 48,
+                                        height: 48,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFD5D9DE),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(item.icon, size: 25, color: const Color(0xFF4B5563)),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: TweenAnimationBuilder<double>(
+                                          tween: Tween<double>(begin: 0, end: 1),
+                                          duration: const Duration(milliseconds: 620),
+                                          curve: Curves.easeOutCubic,
+                                          builder: (context, progress, child) => Opacity(
+                                            opacity: progress,
+                                            child: Transform.translate(
+                                              offset: Offset(0, 9 * (1 - progress)),
+                                              child: child,
                                             ),
-                                            DecoratedBox(
-                                              decoration: BoxDecoration(
-                                                gradient: LinearGradient(
-                                                  begin: Alignment.topCenter,
-                                                  end: Alignment.bottomCenter,
-                                                  colors: [
-                                                    const Color(0x99071327),
-                                                    const Color(0x44071327),
-                                                    const Color(0xF2071022),
-                                                  ],
-                                                  stops: const [0, 0.36, 1],
-                                                ),
-                                              ),
+                                          ),
+                                          child: Text(
+                                            item.title,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontFamily: 'serif',
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w600,
+                                              letterSpacing: 0.15,
+                                              color: Color(0xFF303841),
                                             ),
-                                            Positioned(
-                                              top: 0,
-                                              left: 0,
-                                              right: 0,
-                                              height: 3,
-                                              child: DecoratedBox(
-                                                decoration: BoxDecoration(
-                                                  gradient: LinearGradient(
-                                                    colors: [
-                                                      item.color.withOpacity(0.15),
-                                                      item.color,
-                                                      scheme.tertiary,
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            Positioned(
-                                              top: 13,
-                                              right: 13,
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0x7708172B),
-                                                  borderRadius: BorderRadius.circular(30),
-                                                  border: Border.all(color: Colors.white.withOpacity(0.22)),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Icon(Icons.auto_awesome, size: 11, color: item.color.withOpacity(0.95)),
-                                                    const SizedBox(width: 5),
-                                                    const Text(
-                                                      'SKYNEST',
-                                                      style: TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 8,
-                                                        letterSpacing: 1.15,
-                                                        fontWeight: FontWeight.w800,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                            Positioned(
-                                              right: -18,
-                                              top: 45,
-                                              child: Icon(item.icon, size: 112, color: Colors.white.withOpacity(0.075)),
-                                            ),
-                                            Padding(
-                                              padding: const EdgeInsets.fromLTRB(15, 17, 15, 15),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Container(
-                                                    width: 56,
-                                                    height: 56,
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.white.withOpacity(0.13),
-                                                      borderRadius: BorderRadius.circular(18),
-                                                      border: Border.all(color: Colors.white.withOpacity(0.36)),
-                                                      boxShadow: [
-                                                        BoxShadow(
-                                                          color: item.color.withOpacity(0.22),
-                                                          blurRadius: 15,
-                                                          spreadRadius: 1,
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    child: Icon(item.icon, size: 29, color: Colors.white),
-                                                  ),
-                                                  const Spacer(),
-                                                  Text(
-                                                    item.title,
-                                                    maxLines: 2,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 16,
-                                                      fontWeight: FontWeight.w800,
-                                                      height: 1.14,
-                                                      letterSpacing: -0.25,
-                                                      shadows: [
-                                                        Shadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 9),
-                                                  Row(
-                                                    children: [
-                                                      Expanded(
-                                                        child: TileMarqueeText(
-                                                          text: 'EXPLORE  •  ${item.title.toUpperCase()}  •  SKY NEST',
-                                                        ),
-                                                      ),
-                                                      const Spacer(),
-                                                      Container(
-                                                        width: 29,
-                                                        height: 29,
-                                                        decoration: BoxDecoration(
-                                                          color: item.color.withOpacity(0.22),
-                                                          shape: BoxShape.circle,
-                                                          border: Border.all(color: item.color.withOpacity(0.8)),
-                                                        ),
-                                                        child: const Icon(
-                                                          Icons.arrow_forward_rounded,
-                                                          size: 16,
-                                                          color: Colors.white,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ),
+                                      const SizedBox(width: 10),
+                                      Icon(Icons.arrow_forward_ios_rounded, size: 16, color: scheme.onSurfaceVariant),
+                                    ],
                                   ),
                                 ),
                               ),
                             ),
                           );
                         },
-                      ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8, top: 2),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.swipe_rounded, size: 15, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 7),
-                    Text('Swipe to spin · Hold a card to arrange',
-                      style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                  ],
-                ),
+                      )
               ),
             ],
           ),
