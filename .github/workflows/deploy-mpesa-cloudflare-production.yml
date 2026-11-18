@@ -35,6 +35,10 @@ jobs:
           node --check src/index.js
           node --check src/payment_validation.js
 
+      - name: Run Worker unit tests
+        working-directory: cloudflare-worker
+        run: npm test
+
       - name: Validate required deployment credentials
         shell: bash
         env:
