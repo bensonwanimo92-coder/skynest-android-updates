@@ -7186,22 +7186,113 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
 
 class CaretakerHousesScreen extends StatelessWidget {
   const CaretakerHousesScreen({super.key});
+
+  Future<void> _offerVacantHouse(BuildContext context, String landlordId,
+      QueryDocumentSnapshot<Map<String, dynamic>> house,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> tenants) async {
+    if (tenants.isEmpty) { snack(context, 'No tenant accounts are linked to this landlord yet.'); return; }
+    String? selectedId;
+    final selected = await showDialog<QueryDocumentSnapshot<Map<String, dynamic>>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+        title: Text('Offer vacant house ${house.data()['houseNo'] ?? ''}'),
+        content: DropdownButtonFormField<String>(
+          value: selectedId,
+          decoration: const InputDecoration(labelText: 'Select tenant'),
+          items: tenants.map((tenant) {
+            final data = tenant.data();
+            return DropdownMenuItem(value: tenant.id, child: Text((data['displayName'] ?? data['name'] ?? data['email'] ?? tenant.id).toString()));
+          }).toList(),
+          onChanged: (value) => setDialogState(() => selectedId = value),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('CANCEL')),
+          FilledButton(onPressed: selectedId == null ? null : () {
+            final matches = tenants.where((t) => t.id == selectedId);
+            if (matches.isNotEmpty) Navigator.pop(dialogContext, matches.first);
+          }, child: const Text('SEND FOR APPROVAL')),
+        ],
+      )),
+    );
+    if (selected == null) return;
+    final tenant = selected.data();
+    final tenantId = selected.id;
+    try {
+      await FirebaseFirestore.instance.collection('houseRequests').add({
+        'tenantId': tenantId,
+        'tenantName': (tenant['displayName'] ?? tenant['name'] ?? tenant['email'] ?? 'Tenant').toString(),
+        'landlordId': landlordId,
+        'houseId': house.id,
+        'houseNo': house.data()['houseNo'] ?? '',
+        'currentHouseId': tenant['houseId'],
+        'requestType': tenant['houseId'] == null ? 'new' : 'transfer',
+        'status': 'pending',
+        'source': 'caretaker_vacant_house_portal',
+        'submittedBy': FirebaseAuth.instance.currentUser?.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      if (context.mounted) snack(context, 'Tenant offer sent to the landlord for approval.');
+    } catch (e) {
+      if (context.mounted) snack(context, 'Could not send tenant offer: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    return Scaffold(appBar: AppBar(title: const Text('Assigned properties')),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('houses').where('caretakerIds', arrayContains: uid).snapshots(),
-        builder: (context, snap) {
-          if (snap.hasError) return errorView('Assigned properties could not load.');
-          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          if (snap.data!.docs.isEmpty) return const EmptyView('No properties have been assigned to you yet.');
-          return ListView(children: snap.data!.docs.map((doc) => ListTile(
-            leading: const Icon(Icons.home_work_outlined), title: Text('House ' + (doc.data()['houseNo'] ?? '').toString()),
-            subtitle: Text(doc.data()['isOccupied'] == true ? 'Occupied' : 'Vacant'),
-          )).toList());
-        },
-      ),
+    if (uid == null) return const Scaffold(body: Center(child: Text('Sign in to view assigned properties.')));
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
+      builder: (context, profile) {
+        if (!profile.hasData) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        final landlordId = profile.data?.data()?['landlordId']?.toString() ?? '';
+        if (landlordId.isEmpty) return const Scaffold(body: Center(child: Text('Your caretaker account is not linked to a landlord.')));
+        return Scaffold(
+          appBar: AppBar(title: const Text('Caretaker Property Portal')),
+          body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance.collection('houses').where('caretakerIds', arrayContains: uid).snapshots(),
+            builder: (context, snap) {
+              if (snap.hasError) return errorView('Assigned properties could not load.');
+              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+              final houses = snap.data!.docs;
+              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance.collection('tenants').where('landlordId', isEqualTo: landlordId).snapshots(),
+                builder: (context, tenantSnap) {
+                  final tenants = tenantSnap.data?.docs ?? <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                  final vacant = houses.where((h) => h.data()['isOccupied'] != true).toList();
+                  return ListView(padding: const EdgeInsets.all(14), children: [
+                    Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('VACANT HOUSE ALLOCATION PORTAL', style: TextStyle(fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 6),
+                      const Text('Review the vacant units assigned to your care, select an existing tenant and send a proposed allocation to the landlord for approval. The house is not marked occupied until approval.'),
+                      const SizedBox(height: 8),
+                      Text('${vacant.length} vacant · ${houses.length - vacant.length} occupied', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ]))),
+                    if (tenantSnap.hasError) const Padding(padding: EdgeInsets.all(12), child: Text('Tenant directory could not load.')),
+                    if (houses.isEmpty) const EmptyView('No properties have been assigned to you yet.'),
+                    ...houses.map((doc) {
+                      final d = doc.data();
+                      final isVacant = d['isOccupied'] != true;
+                      return Card(child: ListTile(
+                        leading: Icon(isVacant ? Icons.home_work_outlined : Icons.home_filled,
+                          color: isVacant ? Colors.green : null),
+                        title: Text('House ${d['houseNo'] ?? doc.id}'),
+                        subtitle: Text('${isVacant ? 'VACANT' : 'OCCUPIED'} · ${currency.format((d['rent'] as num?)?.toDouble() ?? 0)} / month'),
+                        isThreeLine: true,
+                        trailing: isVacant ? FilledButton(
+                          onPressed: tenantSnap.hasData && !tenantSnap.hasError
+                            ? () => _offerVacantHouse(context, landlordId, doc, tenants) : null,
+                          child: const Text('OFFER TO TENANT'),
+                        ) : const Icon(Icons.lock_outline),
+                      ));
+                    }),
+                  ]);
+                },
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
