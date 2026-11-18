@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class MyRoomScreen extends StatelessWidget {
-  const MyRoomScreen({super.key});
+  const MyRoomScreen({super.key, this.supportBuilder});
+  final WidgetBuilder? supportBuilder;
 
   String _value(dynamic value, {String fallback = 'Not provided'}) {
     final text = value?.toString().trim() ?? '';
@@ -18,7 +19,17 @@ class MyRoomScreen extends StatelessWidget {
       return const Scaffold(body: Center(child: Text('Sign in to view your room.')));
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('My room')),
+      appBar: AppBar(
+        title: const Text('My room'),
+        actions: [
+          if (supportBuilder != null) IconButton(
+            tooltip: 'Report an issue',
+            icon: const Icon(Icons.support_agent_outlined),
+            onPressed: () => Navigator.push<void>(context,
+              MaterialPageRoute<void>(builder: supportBuilder!)),
+          ),
+        ],
+      ),
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
         builder: (context, profile) {
