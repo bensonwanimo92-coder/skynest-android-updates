@@ -191,7 +191,8 @@ service cloud.firestore {
       );
       allow read: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
-        (resource.data.landlordId != null && landlordFor(resource.data.landlordId))
+        (resource.data.landlordId != null && landlordFor(resource.data.landlordId)) ||
+        (myRole() == 'caretaker' && resource.data.landlordId == profile(request.auth.uid).landlordId)
       );
       allow update, delete: if signedIn() && resource.data.createdBy == request.auth.uid;
     }
