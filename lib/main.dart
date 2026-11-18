@@ -7049,9 +7049,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
       IconButton(tooltip: 'Tenant complaints', icon: const Icon(Icons.support_agent),
         onPressed: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const ComplaintsScreen()))),
       IconButton(tooltip: 'Rent ledger', icon: const Icon(Icons.account_balance_wallet_outlined),
-        onPressed: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const RentLedgerScreen()))),
+        onPressed: () async {
+          final profile = await FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).get();
+          final page = profile.data()?['role'] == 'caretaker' ? const CaretakerPaymentsScreen() : const RentLedgerScreen();
+          if (context.mounted) Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => page));
+        }),
       IconButton(tooltip: 'Caretaker ledger', icon: const Icon(Icons.fact_check_outlined),
-        onPressed: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const CaretakerLedgerScreen()))),
+        onPressed: () async {
+          final profile = await FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).get();
+          final page = profile.data()?['role'] == 'caretaker' ? const CaretakerPaymentsScreen() : const CaretakerLedgerScreen();
+          if (context.mounted) Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => page));
+        }),
       IconButton(tooltip: 'Refresh reports', icon: const Icon(Icons.refresh),
         onPressed: () => setState(_load)),
     ]),
