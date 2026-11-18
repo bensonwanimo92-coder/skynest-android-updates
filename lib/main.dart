@@ -7026,13 +7026,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     reportData = FirebaseFirestore.instance.collection('users').doc(uid).get().then((profile) {
       final data = profile.data() ?? <String, dynamic>{};
-      final ownerId = data['role'] == 'caretaker' ? (data['landlordId']?.toString() ?? uid) : uid;
+      final caretaker = data['role'] == 'caretaker';
+      final ownerId = caretaker ? (data['landlordId']?.toString() ?? uid) : uid;
       return Future.wait([
-        FirebaseFirestore.instance.collection('payments').where('landlordId', isEqualTo: ownerId).get(),
-        FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: ownerId).get(),
+        FirebaseFirestore.instance.collection('payments').where('createdBy', isEqualTo: caretaker ? uid : ownerId).get(),
+        caretaker
+          ? FirebaseFirestore.instance.collection('houses').where('caretakerIds', arrayContains: uid).get()
+          : FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: ownerId).get(),
         FirebaseFirestore.instance.collection('tenants').where('landlordId', isEqualTo: ownerId).get(),
         FirebaseFirestore.instance.collection('complaints').where('landlordId', isEqualTo: ownerId).get(),
-        FirebaseFirestore.instance.collection('paymentConfirmations').where('landlordId', isEqualTo: ownerId).get(),
+        caretaker
+          ? FirebaseFirestore.instance.collection('paymentConfirmations').where('caretakerId', isEqualTo: uid).get()
+          : FirebaseFirestore.instance.collection('paymentConfirmations').where('landlordId', isEqualTo: ownerId).get(),
       ]);
     });
   }
@@ -7175,7 +7180,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
             title: const Text('Caretaker ledger link'),
             subtitle: Text('$caretakerConfirmed confirmed · ${caretakerConfirmations.length - caretakerConfirmed} awaiting or pending'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const CaretakerPaymentsScreen())),
+            onTap: () async {
+              final profile = await FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).get();
+              final page = profile.data()?['role'] == 'caretaker' ? const CaretakerPaymentsScreen() : const RentLedgerScreen();
+              if (context.mounted) Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => page));
+            },
           )),
           if (topHouse != null) Card(child: ListTile(
             leading: const Icon(Icons.emoji_events_outlined, color: Colors.amber),
