@@ -364,7 +364,7 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
                   const SizedBox(height: 14),
                   Text(issue.title, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 8),
-                  Text(issue.subtitle, style: const TextStyle(color: Colors.white.withOpacity(.9), height: 1.5)),
+                  Text(issue.subtitle, style: TextStyle(color: Colors.white.withOpacity(.9), height: 1.5)),
                 ]),
               ),
               const SizedBox(height: 22),
