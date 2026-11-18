@@ -213,6 +213,25 @@ service cloud.firestore {
     }
 
 
+    match /caretakerWorkLedger/{id} {
+      allow create: if activeUser() && myRole() == 'caretaker' &&
+        request.resource.data.caretakerId == request.auth.uid &&
+        request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
+        request.resource.data.houseId is string &&
+        request.auth.uid in get(/databases/$(database)/documents/houses/$(request.resource.data.houseId)).data.caretakerIds &&
+        get(/databases/$(database)/documents/houses/$(request.resource.data.houseId)).data.landlordId == profile(request.auth.uid).landlordId;
+      allow read: if activeUser() && (
+        resource.data.caretakerId == request.auth.uid ||
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid)
+      );
+      allow update: if activeUser() && (
+        (myRole() == 'caretaker' && resource.data.caretakerId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','notes','updatedAt'])) ||
+        (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid)
+      );
+      allow delete: if activeUser() && myRole() == 'landlord' && resource.data.landlordId == request.auth.uid;
+    }
+
     match /paymentConfirmations/{id} {
       allow read: if activeUser() && (
         (myRole() == 'caretaker' && resource.data.caretakerId == request.auth.uid) ||
@@ -376,8 +395,14 @@ service cloud.firestore {
     }
 
     match /houseRequests/{id} {
-      allow create: if activeUser() && myRole() == 'tenant' && request.resource.data.tenantId == request.auth.uid &&
-        request.resource.data.landlordId == profile(request.auth.uid).landlordId;
+      allow create: if activeUser() && (
+        (myRole() == 'tenant' && request.resource.data.tenantId == request.auth.uid &&
+          request.resource.data.landlordId == profile(request.auth.uid).landlordId) ||
+        (myRole() == 'caretaker' && request.resource.data.submittedBy == request.auth.uid &&
+          request.resource.data.landlordId == profile(request.auth.uid).landlordId &&
+          request.resource.data.source == 'caretaker_vacant_house_portal' &&
+          request.resource.data.status == 'pending')
+      );
       allow read: if activeUser() && (
         resource.data.tenantId == request.auth.uid || landlordFor(resource.data.landlordId)
       );
