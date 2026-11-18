@@ -1,7 +1,7 @@
 import { validateSuccessfulCallback } from "./payment_validation.js";
 
 // SkyNest M-Pesa Cloudflare Worker.
-// Sandbox-first per-landlord Daraja STK Push. Do not enable production until Safaricom onboarding and end-to-end tests pass.
+// Production-only per-landlord Daraja STK Push. Live merchant credentials and Safaricom onboarding are required.
 
 const darajaTokens = new Map();
 let googleToken = null;
@@ -145,13 +145,18 @@ async function verifyFirebaseUser(request, env) {
   return user.localId;
 }
 async function darajaAccessToken(env, credentials = {}) {
-  const consumerKey = credentials.consumerKey || env.DARAJA_CONSUMER_KEY;
-  const consumerSecret = credentials.consumerSecret || env.DARAJA_CONSUMER_SECRET;
+  // Never fall back to platform-wide Daraja credentials: every landlord
+  // must authenticate with the credentials stored for their own merchant account.
+  const consumerKey = String(credentials.consumerKey || "");
+  const consumerSecret = String(credentials.consumerSecret || "");
   if (!consumerKey || !consumerSecret) throw new HttpError("This landlord's Daraja API credentials are not configured.", 500);
-  const cacheKey = consumerKey;
+  const cacheKey = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(consumerKey + ":" + consumerSecret))));
   const cached = darajaTokens.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) return cached.token;
-  const host = env.DARAJA_ENV === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
+  if (credentials.environment !== "production") {
+    throw new HttpError("Only explicitly configured live production Daraja credentials are accepted.", 409);
+  }
+  const host = "https://api.safaricom.co.ke";
   const basic = btoa(consumerKey + ":" + consumerSecret);
   const response = await fetch(host + "/oauth/v1/generate?grant_type=client_credentials", {
     headers: { authorization: "Basic " + basic },
@@ -216,8 +221,8 @@ async function saveLandlordPaymentAccount(request, env) {
   const passkey = String(input.passkey || "").trim();
   if (!["paybill", "till"].includes(type)) throw new HttpError("Choose PayBill or Buy Goods Till.");
   if (!businessName || businessName.length > 120) throw new HttpError("Enter the registered business name.");
-  if (!/^\\d{5,7}$/.test(shortcode)) throw new HttpError("Enter a valid 5–7 digit Daraja business shortcode.");
-  if (type === "till" && !/^\\d{5,20}$/.test(tillNumber)) throw new HttpError("Enter a valid Buy Goods Till number.");
+  if (!/^\d{5,7}$/.test(shortcode)) throw new HttpError("Enter a valid 5–7 digit Daraja business shortcode.");
+  if (type === "till" && !/^\d{5,20}$/.test(tillNumber)) throw new HttpError("Enter a valid Buy Goods Till number.");
   if (type === "paybill" && tillNumber) throw new HttpError("A Till number is not used for PayBill.");
   if (consumerKey.length < 8 || consumerSecret.length < 8 || passkey.length < 8) {
     throw new HttpError("Enter the Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Passkey.");
@@ -225,7 +230,7 @@ async function saveLandlordPaymentAccount(request, env) {
   const envelope = await encryptLandlordConfig(env, {
     accountType: type, businessName, businessShortCode: shortcode,
     tillNumber: type === "till" ? tillNumber : "",
-    consumerKey, consumerSecret, passkey,
+    consumerKey, consumerSecret, passkey, environment: "production",
   });
   const accountFields = {
     landlordId: uid,
@@ -234,7 +239,7 @@ async function saveLandlordPaymentAccount(request, env) {
     maskedAccount: (type === "till" ? tillNumber : shortcode).slice(-4).padStart(8, "•"),
     encryptedConfig: envelope,
     status: "pending_verification",
-    environment: String(env.DARAJA_ENV || "sandbox"),
+    environment: "production",
     updatedAt: { __firestoreTimestamp: new Date() },
   };
   const saved = await createDocument(env, "landlordPaymentAccounts", uid, accountFields);
@@ -259,7 +264,7 @@ async function getLandlordPaymentAccount(request, env) {
     registeredBusinessName: data.registeredBusinessName || "",
     maskedAccount: data.maskedAccount || "",
     status: data.status || "pending_verification",
-    environment: data.environment || "sandbox",
+    environment: data.environment || "production",
     credentialsStored: Boolean(data.encryptedConfig),
   });
 }
@@ -306,9 +311,10 @@ async function verifyLandlordPaymentAccount(request, env) {
   if (!expectedCallback.pathname.endsWith("/hooks/stk/result/" + env.STK_CALLBACK_TOKEN)) {
     throw new HttpError("STK_CALLBACK_URL path must end with /hooks/stk/result/<STK_CALLBACK_TOKEN>.", 500);
   }
-  const host = env.DARAJA_ENV === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
+  const host = merchant.environment === "production" ? "https://api.safaricom.co.ke" : "";
+  if (!host) throw new HttpError("This landlord account is not configured for production Daraja.", 409);
   const accessToken = await darajaAccessToken(env, merchant);
-  const accountReference = "SNVERIFY" + crypto.randomUUID().replace(/-/g, "").slice(0, 5).toUpperCase();
+  const accountReference = "SNV" + crypto.randomUUID().replace(/-/g, "").slice(0, 5).toUpperCase();
   const payload = {
     BusinessShortCode: merchant.businessShortCode,
     Password: btoa(merchant.businessShortCode + merchant.passkey + timestamp),
@@ -320,7 +326,7 @@ async function verifyLandlordPaymentAccount(request, env) {
     PhoneNumber: phone,
     CallBackURL: callbackUrl,
     AccountReference: accountReference,
-    TransactionDesc: "SkyNest verify",
+    TransactionDesc: "SN verify",
   };
   const response = await fetch(host + "/mpesa/stkpush/v1/processrequest", {
     method: "POST",
@@ -391,11 +397,12 @@ async function requestStkPush(request, env) {
   const accountResult = await firestore(env, "landlordPaymentAccounts/" + encodeURIComponent(String(profile.landlordId)));
   if (accountResult.status === 404) throw new HttpError("Your landlord has not configured an M-Pesa receiving account yet.", 409);
   const accountMeta = decodeFields(accountResult.data.fields);
-  if (accountMeta.status !== "verified" || accountMeta.verifiedEnvironment !== String(env.DARAJA_ENV || "sandbox")) {
-    throw new HttpError("Your landlord's M-Pesa account is not verified for the current " + String(env.DARAJA_ENV || "sandbox") + " environment. Ask the landlord to verify it in SkyNest.", 409);
+  if (accountMeta.status !== "verified" || accountMeta.verifiedEnvironment !== "production") {
+    throw new HttpError("Your landlord's live M-Pesa account is not verified yet. Ask the landlord to complete live account verification in SkyNest.", 409);
   }
   const merchant = await decryptLandlordConfig(env, accountMeta.encryptedConfig);
-  const host = env.DARAJA_ENV === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
+  const host = merchant.environment === "production" ? "https://api.safaricom.co.ke" : "";
+  if (!host) throw new HttpError("This landlord account is not configured for production Daraja.", 409);
   const timestamp = darajaTimestamp();
   const callbackUrl = String(env.STK_CALLBACK_URL);
   const expectedCallback = new URL(callbackUrl);
@@ -504,7 +511,7 @@ async function settleCallback(env, body, knownPending = null) {
         verifiedAt: { __firestoreTimestamp: new Date() },
         verificationReceipt: receipt,
         verificationPhone: paidPhone,
-        verifiedEnvironment: String(env.DARAJA_ENV || "sandbox"),
+        verifiedEnvironment: "production",
       });
     } else {
       const payment = {
@@ -562,7 +569,7 @@ export default {
     const url = new URL(request.url);
     try {
       if (request.method === "GET" && url.pathname === "/health") {
-        return json({ ok: true, service: "skynest-mpesa", environment: env.DARAJA_ENV || "sandbox" });
+        return json({ ok: true, service: "skynest-mpesa", environment: "production" });
       }
       if (request.method === "GET" && url.pathname === "/api/mpesa/account") {
         return await getLandlordPaymentAccount(request, env);

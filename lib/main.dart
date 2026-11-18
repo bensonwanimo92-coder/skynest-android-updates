@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'calls/skynest_call_screen.dart';
 import 'security/message_encryption.dart';
@@ -8,10 +9,14 @@ import 'marketplace/marketplace_inventory_screen.dart';
 // ignore: duplicate_import -- retained for the legacy direct-message route.
 import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
+import 'settings/settings_hub_screen.dart';
+import 'plans/daily_plan_notebook_screen.dart';
+import 'tenant/my_room_screen.dart';
 import 'services/sound_service.dart';
 import 'services/voice_service.dart';
 import 'payments/mpesa_service.dart';
 import 'payments/rent_ledger_screen.dart';
+import 'payments/caretaker_ledger_screen.dart';
 import 'payments/mpesa_account_screen.dart';
 import 'services/notification_service.dart';
 import 'control_centre/notification_centre.dart';
@@ -40,7 +45,6 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:math' as math;
 import 'package:table_calendar/table_calendar.dart';
 
 const brand = Color(0xFF1565C0);
@@ -1082,8 +1086,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String searchQuery = '';
   List<String> _dashboardOrder = [];
   Set<String> _hiddenDashboardTiles = {};
-  final PageController _dashboardPageController = PageController(viewportFraction: 0.78);
-  int _activeDashboardIndex = 0;
 
   @override
   void initState() {
@@ -1214,7 +1216,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     banner?.dispose();
-    _dashboardPageController.dispose();
     super.dispose();
   }
 
@@ -1320,35 +1321,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Tenants', Icons.people_alt_outlined, Colors.green, const TenantsScreen()),
         _MenuItem('Payments', Icons.payments_outlined, Colors.blue, const PaymentsScreen()),
         _MenuItem('M-Pesa receiving account', Icons.account_balance_wallet_outlined, Colors.green, const MpesaAccountScreen()),
-        _MenuItem('Tenant payment submissions', Icons.fact_check_outlined, Colors.teal, const PaymentSubmissionsScreen()),
         _MenuItem('Caretakers & invitations', Icons.badge_outlined, Colors.teal, const InvitationsScreen()),
-        _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
         _MenuItem('Electricity', Icons.electric_bolt, Colors.amber, const ElectricityScreen()),
         _MenuItem('Activity log', Icons.fact_check_outlined, Colors.blueGrey, const ActivityLogScreen()),
-        _MenuItem('Automation centre', Icons.auto_awesome_rounded, Colors.cyan, const AutomationCentreScreen()),
-        _MenuItem('Backup & export', Icons.cloud_download_outlined, Colors.blueGrey, const BackupExportScreen()),
-        _MenuItem('Global search', Icons.search_rounded, Colors.teal, GlobalSearchScreen(onOpenCollection: (collection) {
-          final Widget destination;
-          switch (collection) {
-            case 'houses': destination = const HousesScreen(); break;
-            case 'tenants': destination = const TenantsScreen(); break;
-            case 'payments': destination = const PaymentsScreen(); break;
-            case 'plans': destination = const PlansScreen(); break;
-            case 'calendarEvents': destination = const CalendarScreen(); break;
-            case 'activityLogs': destination = const ActivityLogScreen(); break;
-            case 'complaints': destination = const ComplaintsScreen(); break;
-            default: destination = const ReportsScreen();
-          }
-          Navigator.push(context, MaterialPageRoute<void>(builder: (_) => destination));
-        })),
         _MenuItem('Reports', Icons.analytics_outlined, Colors.deepPurple, const ReportsScreen()),
         _MenuItem('Calculator', Icons.calculate_outlined, Colors.purple, const CalculatorScreen()),
         _MenuItem('Calendar', Icons.calendar_month, Colors.cyan, const CalendarScreen()),
-        _MenuItem('Plans', Icons.assignment_outlined, Colors.indigo, const PlansScreen()),
+        _MenuItem('Plans', Icons.menu_book_rounded, Colors.indigo, DailyPlanNotebookScreen(projectPlansBuilder: (_) => const PlansScreen())),
         _MenuItem('Achievements', Icons.emoji_events_outlined, Colors.amber, const AchievementsScreen()),
-        _MenuItem('Pamphlets', Icons.menu_book_outlined, Colors.brown, const PamphletsScreen()),
         _MenuItem('Reading & media hub', Icons.auto_stories_rounded, Colors.teal, const ReadingHubScreen()),
         _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
         _MenuItem('Premium', Icons.workspace_premium, Colors.deepOrange, const PremiumScreen()),
@@ -1358,7 +1340,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Assigned houses', Icons.home_work_outlined, Colors.orange, const CaretakerHousesScreen()),
         _MenuItem('Tenant approvals', Icons.how_to_reg_outlined, Colors.green, const TenantApprovalsScreen()),
         _MenuItem('Rent confirmations', Icons.fact_check_outlined, Colors.blue, const CaretakerPaymentsScreen()),
-        _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
+        _MenuItem('Reports', Icons.analytics_outlined, Colors.deepPurple, const ReportsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('House requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
@@ -1369,7 +1351,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } else {
       items.addAll([
         _MenuItem('Find a vacant house', Icons.home_work_outlined, Colors.orange, const TenantPortalScreen()),
-        _MenuItem('My complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
+        _MenuItem('My room', Icons.meeting_room_outlined, Colors.blue, MyRoomScreen(supportBuilder: (_) => const ComplaintsScreen())),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('House change requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
@@ -1382,8 +1364,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     items.add(_MenuItem('Inventory', Icons.storefront_rounded, const Color(0xFF2563EB), const MarketplaceInventoryScreen()));
     items.add(_MenuItem('Discovery', Icons.explore_rounded, const Color(0xFF06B6D4), const MarketDiscoveryScreen()));
     items.add(_MenuItem('Media Centre', Icons.library_music_rounded, const Color(0xFF22D3EE), const MediaCentreScreen()));
-    items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
-    items.add(_MenuItem('Security & fingerprint', Icons.fingerprint_rounded, Colors.blueGrey, const SecuritySettingsScreen()));
+    items.add(_MenuItem('Settings', Icons.settings_rounded, Colors.blueGrey, const SettingsHubScreen()));
     items.add(_MenuItem('Notification centre', Icons.notifications_active_outlined, Colors.deepPurple, NotificationCentreScreen(ownerId: FirebaseAuth.instance.currentUser?.uid ?? 'guest')));
 
     final query = searchQuery.trim().toLowerCase();
@@ -1393,6 +1374,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Utility destinations stay in the app bar/control centre, not in the rotating card deck.
     final filteredItems = orderedItems.where((item) =>
       item.title != 'Recycle Bin' &&
+      item.title != 'Automation centre' &&
+      item.title != 'Backup & export' &&
+      item.title != 'Global search' &&
+      item.title != 'Tenant payment submissions' &&
+      item.title != 'Pamphlets' &&
       !_hiddenDashboardTiles.contains(item.title) &&
       item.title.toLowerCase().contains(query)).toList();
     final displayName = FirebaseAuth.instance.currentUser?.displayName?.trim();
@@ -1651,240 +1637,83 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                       )
-                    : PageView.builder(
-                        controller: _dashboardPageController,
-                        padEnds: true,
-                        onPageChanged: (index) => setState(() => _activeDashboardIndex = index),
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
                         itemCount: filteredItems.length,
                         itemBuilder: (context, index) {
                           final item = filteredItems[index];
                           final scheme = Theme.of(context).colorScheme;
-                          final cardOffset = (index - _activeDashboardIndex).toDouble();
-                          final cardDepth = cardOffset.abs().clamp(0.0, 1.0);
-                          var hovered = false;
-                          return StatefulBuilder(
-                            builder: (context, setTileState) => MouseRegion(
-                              onEnter: (_) => setTileState(() => hovered = true),
-                              onExit: (_) => setTileState(() => hovered = false),
-                              child: AnimatedScale(
-                                scale: hovered ? 1.035 : (index == _activeDashboardIndex ? 1.0 : 0.86),
-                                duration: const Duration(milliseconds: 190),
-                                curve: Curves.easeOutCubic,
-                                child: Transform(
-                                  alignment: Alignment.center,
-                                  transform: Matrix4.identity()
-                                    ..setEntry(3, 2, 0.0012)
-                                    ..translate(math.sin(cardOffset * 0.85) * 42.0, cardDepth * 12.0)
-                                    ..rotateY(-cardOffset * 0.28),
-                                  child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 190),
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 11),
+                            child: Material(
+                              color: const Color(0xFFE6E8EB),
+                              borderRadius: BorderRadius.circular(15),
+                              elevation: 1.5,
+                              shadowColor: Colors.black.withOpacity(0.10),
+                              clipBehavior: Clip.antiAlias,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(15),
+                                onLongPress: () => _openControlCentre(context, items),
+                                onTap: () async {
+                                  await SkyNestFeedback.playTap();
+                                  if (!context.mounted) return;
+                                  await _previewModule(context, item);
+                                },
+                                child: Container(
+                                  constraints: const BoxConstraints(minHeight: 82),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
                                   decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(25),
-                                    border: Border.all(
-                                      color: item.color.withOpacity(hovered ? 0.95 : 0.52),
-                                      width: hovered ? 1.8 : 1.15,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: item.color.withOpacity(hovered ? 0.30 : 0.16),
-                                        blurRadius: hovered ? 24 : 15,
-                                        spreadRadius: hovered ? 1 : 0,
-                                        offset: const Offset(0, 8),
-                                      ),
-                                      const BoxShadow(
-                                        color: Color(0x33020A18),
-                                        blurRadius: 16,
-                                        offset: Offset(0, 7),
-                                      ),
-                                    ],
+                                    border: Border.all(color: const Color(0xFFCDD1D6), width: 1),
+                                    borderRadius: BorderRadius.circular(15),
                                   ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(24),
-                                    child: Material(
-                                      color: const Color(0xFF09172B),
-                                      child: InkWell(
-                                        onLongPress: () => _openControlCentre(context, items),
-                                        onTap: () async {
-                                          await SkyNestFeedback.playTap();
-                                          if (!context.mounted) return;
-                                          await _previewModule(context, item);
-                                        },
-                                        child: Stack(
-                                          fit: StackFit.expand,
-                                          children: [
-                                            Image.network(
-                                              _menuImageFor(item.title),
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) => DecoratedBox(
-                                                decoration: BoxDecoration(
-                                                  gradient: LinearGradient(
-                                                    begin: Alignment.topLeft,
-                                                    end: Alignment.bottomRight,
-                                                    colors: [
-                                                      Color.lerp(item.color, const Color(0xFF07152F), 0.35)!,
-                                                      const Color(0xFF07152F),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 48,
+                                        height: 48,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFD5D9DE),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(item.icon, size: 25, color: const Color(0xFF4B5563)),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: TweenAnimationBuilder<double>(
+                                          tween: Tween<double>(begin: 0, end: 1),
+                                          duration: const Duration(milliseconds: 620),
+                                          curve: Curves.easeOutCubic,
+                                          builder: (context, progress, child) => Opacity(
+                                            opacity: progress,
+                                            child: Transform.translate(
+                                              offset: Offset(0, 9 * (1 - progress)),
+                                              child: child,
                                             ),
-                                            DecoratedBox(
-                                              decoration: BoxDecoration(
-                                                gradient: LinearGradient(
-                                                  begin: Alignment.topCenter,
-                                                  end: Alignment.bottomCenter,
-                                                  colors: [
-                                                    const Color(0x99071327),
-                                                    const Color(0x44071327),
-                                                    const Color(0xF2071022),
-                                                  ],
-                                                  stops: const [0, 0.36, 1],
-                                                ),
-                                              ),
+                                          ),
+                                          child: Text(
+                                            item.title,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontFamily: 'serif',
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w600,
+                                              letterSpacing: 0.15,
+                                              color: Color(0xFF303841),
                                             ),
-                                            Positioned(
-                                              top: 0,
-                                              left: 0,
-                                              right: 0,
-                                              height: 3,
-                                              child: DecoratedBox(
-                                                decoration: BoxDecoration(
-                                                  gradient: LinearGradient(
-                                                    colors: [
-                                                      item.color.withOpacity(0.15),
-                                                      item.color,
-                                                      scheme.tertiary,
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            Positioned(
-                                              top: 13,
-                                              right: 13,
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0x7708172B),
-                                                  borderRadius: BorderRadius.circular(30),
-                                                  border: Border.all(color: Colors.white.withOpacity(0.22)),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Icon(Icons.auto_awesome, size: 11, color: item.color.withOpacity(0.95)),
-                                                    const SizedBox(width: 5),
-                                                    const Text(
-                                                      'SKYNEST',
-                                                      style: TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 8,
-                                                        letterSpacing: 1.15,
-                                                        fontWeight: FontWeight.w800,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                            Positioned(
-                                              right: -18,
-                                              top: 45,
-                                              child: Icon(item.icon, size: 112, color: Colors.white.withOpacity(0.075)),
-                                            ),
-                                            Padding(
-                                              padding: const EdgeInsets.fromLTRB(15, 17, 15, 15),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Container(
-                                                    width: 56,
-                                                    height: 56,
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.white.withOpacity(0.13),
-                                                      borderRadius: BorderRadius.circular(18),
-                                                      border: Border.all(color: Colors.white.withOpacity(0.36)),
-                                                      boxShadow: [
-                                                        BoxShadow(
-                                                          color: item.color.withOpacity(0.22),
-                                                          blurRadius: 15,
-                                                          spreadRadius: 1,
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    child: Icon(item.icon, size: 29, color: Colors.white),
-                                                  ),
-                                                  const Spacer(),
-                                                  Text(
-                                                    item.title,
-                                                    maxLines: 2,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 16,
-                                                      fontWeight: FontWeight.w800,
-                                                      height: 1.14,
-                                                      letterSpacing: -0.25,
-                                                      shadows: [
-                                                        Shadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 9),
-                                                  Row(
-                                                    children: [
-                                                      Text(
-                                                        'Explore module',
-                                                        style: TextStyle(
-                                                          color: Colors.white.withOpacity(0.78),
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                      const Spacer(),
-                                                      Container(
-                                                        width: 29,
-                                                        height: 29,
-                                                        decoration: BoxDecoration(
-                                                          color: item.color.withOpacity(0.22),
-                                                          shape: BoxShape.circle,
-                                                          border: Border.all(color: item.color.withOpacity(0.8)),
-                                                        ),
-                                                        child: const Icon(
-                                                          Icons.arrow_forward_rounded,
-                                                          size: 16,
-                                                          color: Colors.white,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ),
+                                      const SizedBox(width: 10),
+                                      Icon(Icons.arrow_forward_ios_rounded, size: 16, color: scheme.onSurfaceVariant),
+                                    ],
                                   ),
                                 ),
                               ),
                             ),
                           );
                         },
-                      ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8, top: 2),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.swipe_rounded, size: 15, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 7),
-                    Text('Swipe to spin · Hold a card to arrange',
-                      style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                  ],
-                ),
+                      )
               ),
             ],
           ),
@@ -2722,6 +2551,14 @@ class PaymentsScreen extends StatelessWidget {
     appBar: AppBar(
       title: const Text('Payment records'),
       actions: [
+        IconButton(
+          tooltip: 'Tenant payment submissions',
+          icon: const Icon(Icons.fact_check_outlined),
+          onPressed: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const PaymentSubmissionsScreen()),
+          ),
+        ),
         IconButton(
           tooltip: 'Open rent ledger',
           icon: const Icon(Icons.account_balance_wallet_outlined),
@@ -4074,7 +3911,7 @@ class _PlansScreenState extends State<PlansScreen> {
         builder: (context, snapshot) {
           if (snapshot.hasError) return errorView('Plans could not load: ${snapshot.error}');
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          final docs = snapshot.data!.docs.toList()..sort((a, b) {
+          final docs = snapshot.data!.docs.where((doc) => doc.data()['recordType'] != 'daily_note').toList()..sort((a, b) {
             final ad = a.data()['deadline'], bd = b.data()['deadline'];
             return (ad is Timestamp ? ad.toDate() : DateTime(9999))
               .compareTo(bd is Timestamp ? bd.toDate() : DateTime(9999));
@@ -4232,8 +4069,74 @@ class _PlansScreenState extends State<PlansScreen> {
   );
 }
 
-class AchievementsScreen extends StatelessWidget {
+class AchievementsScreen extends StatefulWidget {
   const AchievementsScreen({super.key});
+  @override
+  State<AchievementsScreen> createState() => _AchievementsScreenState();
+}
+
+class _AchievementsScreenState extends State<AchievementsScreen> {
+  Map<String, Map<String, String>> _achievementOverrides = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAchievementOverrides();
+  }
+
+  Future<void> _loadAchievementOverrides() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('skynest_achievement_overrides_$uid');
+      if (raw == null) return;
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() => _achievementOverrides = decoded.map((key, value) => MapEntry(
+        key, (value as Map).map((k, v) => MapEntry(k.toString(), v.toString())),
+      )));
+    } catch (error) {
+      debugPrint('Achievement customisations could not be loaded: $error');
+    }
+  }
+
+  Future<void> _editAchievement(Map<String, dynamic> achievement) async {
+    final id = achievement['id']?.toString() ?? '';
+    final title = TextEditingController(text: achievement['title']?.toString() ?? '');
+    final description = TextEditingController(text: achievement['description']?.toString() ?? '');
+    await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Edit achievement'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: title, decoration: const InputDecoration(labelText: 'Achievement title')),
+        const SizedBox(height: 8),
+        TextField(controller: description, minLines: 2, maxLines: 4,
+          decoration: const InputDecoration(labelText: 'Description')),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+        FilledButton(onPressed: () async {
+          if (title.text.trim().isEmpty || description.text.trim().isEmpty) return;
+          final next = Map<String, Map<String, String>>.from(_achievementOverrides);
+          next[id] = {'title': title.text.trim(), 'description': description.text.trim()};
+          final uid = FirebaseAuth.instance.currentUser?.uid;
+          try {
+            if (uid != null) {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('skynest_achievement_overrides_$uid', jsonEncode(next));
+            }
+            if (!mounted) return;
+            setState(() => _achievementOverrides = next);
+            if (dialogContext.mounted) Navigator.pop(dialogContext);
+          } catch (error) {
+            if (dialogContext.mounted) snack(dialogContext, 'Could not save achievement changes: $error');
+          }
+        }, child: const Text('Save changes')),
+      ],
+    ));
+    title.dispose();
+    description.dispose();
+  }
 
   DateTime? _dateOf(dynamic value) {
     if (value is Timestamp) return value.toDate();
@@ -4290,29 +4193,36 @@ class AchievementsScreen extends StatelessWidget {
                 final completedPlans = planDocs.where((d) =>
                   d.data()['isCompleted'] == true || d.data()['done'] == true).length;
                 final achievements = <Map<String, dynamic>>[
-                  {'title': 'First Rent', 'description': 'Record your first confirmed rent payment.',
+                  {'id': 'first_rent', 'title': 'First Rent', 'description': 'Record your first confirmed rent payment.',
                     'points': 10, 'icon': Icons.payments_outlined, 'color': Colors.green,
                     'unlocked': receivedPayments.isNotEmpty,
                     'detail': receivedPayments.isNotEmpty ? 'Unlocked' : 'Waiting for a confirmed payment'},
-                  {'title': 'Super Landlord', 'description': 'Have five occupied houses.',
+                  {'id': 'super_landlord', 'title': 'Super Landlord', 'description': 'Have five occupied houses.',
                     'points': 50, 'icon': Icons.star_rounded, 'color': Colors.amber,
                     'unlocked': occupiedDocs.length >= 5,
                     'detail': occupiedDocs.length.toString() + ' of 5 occupied houses'},
-                  {'title': 'No Arrears', 'description': 'All tenants with recorded balances have no outstanding arrears.',
+                  {'id': 'no_arrears', 'title': 'No Arrears', 'description': 'All tenants with recorded balances have no outstanding arrears.',
                     'points': 30, 'icon': Icons.check_circle_outline, 'color': Colors.blue,
                     'unlocked': balances.isNotEmpty && balances.every((v) => v <= 0),
                     'detail': balances.isEmpty ? 'Add tenant balance information to qualify' :
                       balances.where((v) => v > 0).length.toString() + ' tenant balance(s) above zero'},
-                  {'title': 'Builder', 'description': 'Complete a property plan.',
+                  {'id': 'builder', 'title': 'Builder', 'description': 'Complete a property plan.',
                     'points': 100, 'icon': Icons.construction, 'color': Colors.orange,
                     'unlocked': completedPlans > 0,
                     'detail': completedPlans.toString() + ' completed plan(s)'},
-                  {'title': '100% Collection', 'description': 'Collect at least the recorded rent total for occupied houses this month.',
+                  {'id': 'full_collection', 'title': '100% Collection', 'description': 'Collect at least the recorded rent total for occupied houses this month.',
                     'points': 40, 'icon': Icons.emoji_events_outlined, 'color': Colors.purple,
                     'unlocked': expectedRent > 0 && collected >= expectedRent,
                     'detail': expectedRent <= 0 ? 'Add rent amounts to occupied houses' :
                       currency.format(collected) + ' of ' + currency.format(expectedRent) + ' recorded'},
                 ];
+                for (final achievement in achievements) {
+                  final override = _achievementOverrides[achievement['id']?.toString()];
+                  if (override != null) {
+                    achievement['title'] = override['title'] ?? achievement['title'];
+                    achievement['description'] = override['description'] ?? achievement['description'];
+                  }
+                }
                 final unlocked = achievements.where((a) => a['unlocked'] == true).toList();
                 final points = unlocked.fold<int>(0, (sum, a) => sum + (a['points'] as int));
                 final level = points < 20 ? 'Beginner' : points < 100 ? 'Pro' : 'Tycoon';
@@ -4350,12 +4260,16 @@ class AchievementsScreen extends StatelessWidget {
                             color: isUnlocked ? Colors.green.shade700 : Theme.of(context).colorScheme.onSurfaceVariant)),
                         ]),
                         isThreeLine: true,
-                        trailing: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(isUnlocked ? Icons.lock_open_rounded : Icons.lock_outline,
-                            color: isUnlocked ? color : Colors.grey, size: 19),
-                          const SizedBox(height: 3),
-                          Text(a['points'].toString() + ' pts',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Icon(isUnlocked ? Icons.lock_open_rounded : Icons.lock_outline,
+                              color: isUnlocked ? color : Colors.grey, size: 19),
+                            const SizedBox(height: 3),
+                            Text(a['points'].toString() + ' pts',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          ]),
+                          IconButton(tooltip: 'Edit achievement', onPressed: () => _editAchievement(a),
+                            icon: const Icon(Icons.edit_outlined, size: 19)),
                         ]),
                       ));
                   }),
@@ -6951,16 +6865,41 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
   void _load() {
     final uid = FirebaseAuth.instance.currentUser!.uid;
-    reportData = Future.wait([
-      FirebaseFirestore.instance.collection('payments').where('createdBy', isEqualTo: uid).get(),
-      FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: uid).get(),
-      FirebaseFirestore.instance.collection('tenants').where('landlordId', isEqualTo: uid).get(),
-    ]);
+    reportData = FirebaseFirestore.instance.collection('users').doc(uid).get().then((profile) {
+      final data = profile.data() ?? <String, dynamic>{};
+      final caretaker = data['role'] == 'caretaker';
+      final ownerId = caretaker ? (data['landlordId']?.toString() ?? uid) : uid;
+      return Future.wait([
+        FirebaseFirestore.instance.collection('payments').where('createdBy', isEqualTo: caretaker ? uid : ownerId).get(),
+        caretaker
+          ? FirebaseFirestore.instance.collection('houses').where('caretakerIds', arrayContains: uid).get()
+          : FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: ownerId).get(),
+        FirebaseFirestore.instance.collection('tenants').where('landlordId', isEqualTo: ownerId).get(),
+        FirebaseFirestore.instance.collection('complaints').where('landlordId', isEqualTo: ownerId).get(),
+        caretaker
+          ? FirebaseFirestore.instance.collection('paymentConfirmations').where('caretakerId', isEqualTo: uid).get()
+          : FirebaseFirestore.instance.collection('paymentConfirmations').where('landlordId', isEqualTo: ownerId).get(),
+      ]);
+    });
   }
   String _monthLabel(DateTime date) => DateFormat('MMMM yyyy').format(date);
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Property reports'), actions: [
+      IconButton(tooltip: 'Tenant complaints', icon: const Icon(Icons.support_agent),
+        onPressed: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const ComplaintsScreen()))),
+      IconButton(tooltip: 'Rent ledger', icon: const Icon(Icons.account_balance_wallet_outlined),
+        onPressed: () async {
+          final profile = await FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).get();
+          final page = profile.data()?['role'] == 'caretaker' ? const CaretakerPaymentsScreen() : const RentLedgerScreen();
+          if (context.mounted) Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => page));
+        }),
+      IconButton(tooltip: 'Caretaker ledger', icon: const Icon(Icons.fact_check_outlined),
+        onPressed: () async {
+          final profile = await FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).get();
+          final page = profile.data()?['role'] == 'caretaker' ? const CaretakerPaymentsScreen() : const CaretakerLedgerScreen();
+          if (context.mounted) Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => page));
+        }),
       IconButton(tooltip: 'Refresh reports', icon: const Icon(Icons.refresh),
         onPressed: () => setState(_load)),
     ]),
@@ -6972,6 +6911,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
         final payments = snap.data![0].docs;
         final houses = snap.data![1].docs;
         final tenants = snap.data![2].docs;
+        final complaints = snap.data![3].docs;
+        final caretakerConfirmations = snap.data![4].docs;
+        final openComplaints = complaints.where((d) => (d.data()['status']?.toString() ?? 'open') != 'resolved').length;
+        final caretakerConfirmed = caretakerConfirmations.where((d) => d.data()['status'] == 'confirmed_by_caretaker').length;
         final start = selectedMonth;
         final end = DateTime(start.year, start.month + 1);
         final previousStart = DateTime(start.year, start.month - 1);
@@ -7051,6 +6994,49 @@ class _ReportsScreenState extends State<ReportsScreen> {
             Expanded(child: _ReportMetric(title: 'Occupied', value: (occupancy * 100).toStringAsFixed(0) + '%', icon: Icons.apartment_outlined)),
           ]),
           const SizedBox(height: 12),
+          Card(child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.support_agent, color: Colors.deepOrange),
+                const SizedBox(width: 8),
+                const Expanded(child: Text('Tenant complaints', style: TextStyle(fontWeight: FontWeight.w800))),
+                Text('${complaints.length}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+              ]),
+              const SizedBox(height: 5),
+              Text('$openComplaints open · ${complaints.length - openComplaints} resolved',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+              if (complaints.isNotEmpty) ...[
+                const Divider(height: 18),
+                ...complaints.take(3).map((doc) {
+                  final d = doc.data();
+                  return ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(d['subject']?.toString() ?? 'Tenant complaint', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text('${d['createdByName'] ?? 'Tenant'} · ${d['status'] ?? 'open'}'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const ComplaintsScreen())),
+                  );
+                }),
+              ],
+              Align(alignment: Alignment.centerRight, child: TextButton.icon(
+                onPressed: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const ComplaintsScreen())),
+                icon: const Icon(Icons.open_in_new), label: const Text('Open complaints'),
+              )),
+            ]),
+          )),
+          Card(child: ListTile(
+            leading: const Icon(Icons.fact_check_outlined, color: Colors.teal),
+            title: const Text('Caretaker ledger link'),
+            subtitle: Text('$caretakerConfirmed confirmed · ${caretakerConfirmations.length - caretakerConfirmed} awaiting or pending'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              final profile = await FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).get();
+              final page = profile.data()?['role'] == 'caretaker' ? const CaretakerPaymentsScreen() : const CaretakerLedgerScreen();
+              if (context.mounted) Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => page));
+            },
+          )),
           if (topHouse != null) Card(child: ListTile(
             leading: const Icon(Icons.emoji_events_outlined, color: Colors.amber),
             title: const Text('Top earning house'),
@@ -7200,22 +7186,113 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
 
 class CaretakerHousesScreen extends StatelessWidget {
   const CaretakerHousesScreen({super.key});
+
+  Future<void> _offerVacantHouse(BuildContext context, String landlordId,
+      QueryDocumentSnapshot<Map<String, dynamic>> house,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> tenants) async {
+    if (tenants.isEmpty) { snack(context, 'No tenant accounts are linked to this landlord yet.'); return; }
+    String? selectedId;
+    final selected = await showDialog<QueryDocumentSnapshot<Map<String, dynamic>>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+        title: Text('Offer vacant house ${house.data()['houseNo'] ?? ''}'),
+        content: DropdownButtonFormField<String>(
+          value: selectedId,
+          decoration: const InputDecoration(labelText: 'Select tenant'),
+          items: tenants.map((tenant) {
+            final data = tenant.data();
+            return DropdownMenuItem(value: tenant.id, child: Text((data['displayName'] ?? data['name'] ?? data['email'] ?? tenant.id).toString()));
+          }).toList(),
+          onChanged: (value) => setDialogState(() => selectedId = value),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('CANCEL')),
+          FilledButton(onPressed: selectedId == null ? null : () {
+            final matches = tenants.where((t) => t.id == selectedId);
+            if (matches.isNotEmpty) Navigator.pop(dialogContext, matches.first);
+          }, child: const Text('SEND FOR APPROVAL')),
+        ],
+      )),
+    );
+    if (selected == null) return;
+    final tenant = selected.data();
+    final tenantId = selected.id;
+    try {
+      await FirebaseFirestore.instance.collection('houseRequests').add({
+        'tenantId': tenantId,
+        'tenantName': (tenant['displayName'] ?? tenant['name'] ?? tenant['email'] ?? 'Tenant').toString(),
+        'landlordId': landlordId,
+        'houseId': house.id,
+        'houseNo': house.data()['houseNo'] ?? '',
+        'currentHouseId': tenant['houseId'],
+        'requestType': tenant['houseId'] == null ? 'new' : 'transfer',
+        'status': 'pending',
+        'source': 'caretaker_vacant_house_portal',
+        'submittedBy': FirebaseAuth.instance.currentUser?.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      if (context.mounted) snack(context, 'Tenant offer sent to the landlord for approval.');
+    } catch (e) {
+      if (context.mounted) snack(context, 'Could not send tenant offer: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    return Scaffold(appBar: AppBar(title: const Text('Assigned properties')),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('houses').where('caretakerIds', arrayContains: uid).snapshots(),
-        builder: (context, snap) {
-          if (snap.hasError) return errorView('Assigned properties could not load.');
-          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          if (snap.data!.docs.isEmpty) return const EmptyView('No properties have been assigned to you yet.');
-          return ListView(children: snap.data!.docs.map((doc) => ListTile(
-            leading: const Icon(Icons.home_work_outlined), title: Text('House ' + (doc.data()['houseNo'] ?? '').toString()),
-            subtitle: Text(doc.data()['isOccupied'] == true ? 'Occupied' : 'Vacant'),
-          )).toList());
-        },
-      ),
+    if (uid == null) return const Scaffold(body: Center(child: Text('Sign in to view assigned properties.')));
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
+      builder: (context, profile) {
+        if (!profile.hasData) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        final landlordId = profile.data?.data()?['landlordId']?.toString() ?? '';
+        if (landlordId.isEmpty) return const Scaffold(body: Center(child: Text('Your caretaker account is not linked to a landlord.')));
+        return Scaffold(
+          appBar: AppBar(title: const Text('Caretaker Property Portal')),
+          body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance.collection('houses').where('caretakerIds', arrayContains: uid).snapshots(),
+            builder: (context, snap) {
+              if (snap.hasError) return errorView('Assigned properties could not load.');
+              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+              final houses = snap.data!.docs;
+              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance.collection('tenants').where('landlordId', isEqualTo: landlordId).snapshots(),
+                builder: (context, tenantSnap) {
+                  final tenants = tenantSnap.data?.docs ?? <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                  final vacant = houses.where((h) => h.data()['isOccupied'] != true).toList();
+                  return ListView(padding: const EdgeInsets.all(14), children: [
+                    Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('VACANT HOUSE ALLOCATION PORTAL', style: TextStyle(fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 6),
+                      const Text('Review the vacant units assigned to your care, select an existing tenant and send a proposed allocation to the landlord for approval. The house is not marked occupied until approval.'),
+                      const SizedBox(height: 8),
+                      Text('${vacant.length} vacant · ${houses.length - vacant.length} occupied', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ]))),
+                    if (tenantSnap.hasError) const Padding(padding: EdgeInsets.all(12), child: Text('Tenant directory could not load.')),
+                    if (houses.isEmpty) const EmptyView('No properties have been assigned to you yet.'),
+                    ...houses.map((doc) {
+                      final d = doc.data();
+                      final isVacant = d['isOccupied'] != true;
+                      return Card(child: ListTile(
+                        leading: Icon(isVacant ? Icons.home_work_outlined : Icons.home_filled,
+                          color: isVacant ? Colors.green : null),
+                        title: Text('House ${d['houseNo'] ?? doc.id}'),
+                        subtitle: Text('${isVacant ? 'VACANT' : 'OCCUPIED'} · ${currency.format((d['rent'] as num?)?.toDouble() ?? 0)} / month'),
+                        isThreeLine: true,
+                        trailing: isVacant ? FilledButton(
+                          onPressed: tenantSnap.hasData && !tenantSnap.hasError
+                            ? () => _offerVacantHouse(context, landlordId, doc, tenants) : null,
+                          child: const Text('OFFER TO TENANT'),
+                        ) : const Icon(Icons.lock_outline),
+                      ));
+                    }),
+                  ]);
+                },
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -7353,7 +7430,8 @@ String _modulePreviewDescription(String title) {
     'Notices': 'Publish notices, choose urgency and templates, and track tenant acknowledgements.',
     'Electricity': 'Register meters, allocate usage and keep electricity billing records.',
     'Activity log': 'Review important account and property actions with timestamps.',
-    'Reports': 'Explore rent collection, occupancy, monthly comparisons and top-performing properties.',
+    'Reports': 'Review rent collection, occupancy, tenant complaints, caretaker confirmations and property performance.',
+    'Settings': 'Manage fingerprint security, sounds, automation routines and backup or export tools.',
     'Calculator': 'Estimate rent, arrears, fees, expenses, loans and property costs.',
     'Calendar': 'Review dated payment activity and upcoming property events.',
     'Plans': 'Create reminders and track property-management tasks.',
