@@ -10,7 +10,6 @@ import 'messaging/direct_message_screen.dart';
 import 'settings/sound_settings.dart';
 import 'settings/settings_hub_screen.dart';
 import 'plans/daily_plan_notebook_screen.dart';
-import 'widgets/tile_marquee.dart';
 import 'tenant/my_room_screen.dart';
 import 'services/sound_service.dart';
 import 'services/voice_service.dart';
