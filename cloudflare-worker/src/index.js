@@ -151,8 +151,9 @@ async function darajaAccessToken(env, credentials = {}) {
   const cacheKey = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(consumerKey + ":" + consumerSecret))));
   const cached = darajaTokens.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) return cached.token;
-  const host = merchant.environment === "production" ? "https://api.safaricom.co.ke" : "";
-  if (!host) throw new HttpError("This landlord account is not configured for production Daraja.", 409);
+  const environment = credentials.environment || "production";
+  if (environment !== "production") throw new HttpError("Only live production Daraja credentials are accepted.", 409);
+  const host = "https://api.safaricom.co.ke";
   const basic = btoa(consumerKey + ":" + consumerSecret);
   const response = await fetch(host + "/oauth/v1/generate?grant_type=client_credentials", {
     headers: { authorization: "Basic " + basic },
@@ -260,7 +261,7 @@ async function getLandlordPaymentAccount(request, env) {
     registeredBusinessName: data.registeredBusinessName || "",
     maskedAccount: data.maskedAccount || "",
     status: data.status || "pending_verification",
-    environment: data.environment || "sandbox",
+    environment: data.environment || "production",
     credentialsStored: Boolean(data.encryptedConfig),
   });
 }
