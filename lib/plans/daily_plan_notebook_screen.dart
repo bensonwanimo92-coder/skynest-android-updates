@@ -186,7 +186,7 @@ class _DailyPlanNotebookScreenState extends State<DailyPlanNotebookScreen> {
               ),
             );
           }
-          final index = _pageIndex.clamp(0, pages.length - 1);
+          final index = _pageIndex.clamp(0, pages.length - 1).toInt();
           return Column(
             children: [
               Padding(
