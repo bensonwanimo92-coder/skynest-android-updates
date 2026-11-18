@@ -145,14 +145,17 @@ async function verifyFirebaseUser(request, env) {
   return user.localId;
 }
 async function darajaAccessToken(env, credentials = {}) {
-  const consumerKey = credentials.consumerKey || env.DARAJA_CONSUMER_KEY;
-  const consumerSecret = credentials.consumerSecret || env.DARAJA_CONSUMER_SECRET;
+  // Never fall back to platform-wide Daraja credentials: every landlord
+  // must authenticate with the credentials stored for their own merchant account.
+  const consumerKey = String(credentials.consumerKey || "");
+  const consumerSecret = String(credentials.consumerSecret || "");
   if (!consumerKey || !consumerSecret) throw new HttpError("This landlord's Daraja API credentials are not configured.", 500);
   const cacheKey = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(consumerKey + ":" + consumerSecret))));
   const cached = darajaTokens.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) return cached.token;
-  const environment = credentials.environment || "production";
-  if (environment !== "production") throw new HttpError("Only live production Daraja credentials are accepted.", 409);
+  if (credentials.environment !== "production") {
+    throw new HttpError("Only explicitly configured live production Daraja credentials are accepted.", 409);
+  }
   const host = "https://api.safaricom.co.ke";
   const basic = btoa(consumerKey + ":" + consumerSecret);
   const response = await fetch(host + "/oauth/v1/generate?grant_type=client_credentials", {
