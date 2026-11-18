@@ -9,6 +9,7 @@ import 'package:pdf/pdf.dart' as pdf;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'reading_hub_storage.dart';
+import 'public_domain_library_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ReadingHubScreen extends StatefulWidget {
@@ -461,7 +462,18 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
                 style: TextStyle(color: Colors.white70, height: 1.4)),
             ]),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 18),
+          Card(
+            child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.auto_stories_rounded)),
+              title: const Text('Full-length novels & books', style: TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: const Text('Search complete public-domain novels and read full editions in SkyNest.'),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => const PublicDomainLibraryScreen(),
+              )),
+            ),
+          ),
           const SizedBox(height: 20),
           Row(children: <Widget>[
             Expanded(child: Text('My offline downloads', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold))),
