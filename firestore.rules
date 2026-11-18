@@ -171,7 +171,8 @@ service cloud.firestore {
       allow read: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
         (myRole() == 'caretaker' && request.auth.uid in resource.data.caretakerIds) ||
-        (myRole() == 'tenant' && resource.data.landlordId == profile(request.auth.uid).landlordId && resource.data.isOccupied == false)
+        (myRole() == 'tenant' && resource.data.landlordId == profile(request.auth.uid).landlordId &&
+          (resource.data.isOccupied == false || profile(request.auth.uid).houseId == houseId))
       );
       allow update: if activeUser() && (
         resource.data.createdBy == request.auth.uid ||
