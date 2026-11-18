@@ -1,7 +1,9 @@
 # SkyNest Individual Landlord M-Pesa Receiving Accounts
 
-Status: initial per-landlord PayBill/Till setup and routing implemented on the integration candidate; sandbox deployment and end-to-end acceptance still pending.
-Target branch: integration/skynest-complete-release-candidate
+Status: approved product direction — each landlord supplies their own Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Passkey. The implementation is being repaired on a dedicated branch; no production deployment has been made.
+Target branch: fix/individual-landlord-daraja-credentials
+
+The current Worker selects Sandbox or Production globally through `DARAJA_ENV`; the landlord-specific credentials are separate, but the environment is not independently selectable per landlord. Keep the deployment in Sandbox until the required multi-landlord checks and Safaricom live onboarding are complete.
 
 ## Product decision
 
@@ -20,7 +22,7 @@ The setup wizard has these steps:
    - PayBill: PayBill/business shortcode.
    - Till: Till number plus the Safaricom Daraja shortcode/head-office number required for that Till.
 3. Enter the Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Online Passkey. These are write-only secrets: after saving, the app must never read them back or display them.
-4. Choose Sandbox or Production. Production is unavailable until Safaricom has approved the merchant's live Daraja application and a controlled verification succeeds.
+4. The platform initially runs in Sandbox. Production is a controlled platform rollout after the relevant landlord has Safaricom-approved live Daraja credentials and controlled verification succeeds.
 5. Save as Pending verification.
 6. Run a controlled test STK Push to the landlord's own M-Pesa phone, using a small amount selected and explicitly confirmed by the landlord. The test must not create a rent payment or tenant ledger entry.
 7. Activate the receiving account only after the trusted backend validates the Daraja response and the test callback. Show Verified, Pending, Action required, Suspended or Failed states.
