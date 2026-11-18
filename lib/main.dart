@@ -1356,8 +1356,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } else {
       items.addAll([
         _MenuItem('Find a vacant house', Icons.home_work_outlined, Colors.orange, const TenantPortalScreen()),
-        _MenuItem('My room', Icons.meeting_room_outlined, Colors.blue, const MyRoomScreen()),
-        _MenuItem('Help & support', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
+        _MenuItem('My room', Icons.meeting_room_outlined, Colors.blue, MyRoomScreen(supportBuilder: (_) => const ComplaintsScreen())),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('House change requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
