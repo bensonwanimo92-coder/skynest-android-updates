@@ -1345,7 +1345,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Tenant approvals', Icons.how_to_reg_outlined, Colors.green, const TenantApprovalsScreen()),
         _MenuItem('Rent confirmations', Icons.fact_check_outlined, Colors.blue, const CaretakerPaymentsScreen()),
         _MenuItem('Reports', Icons.analytics_outlined, Colors.deepPurple, const ReportsScreen()),
-        _MenuItem('Complaints', Icons.support_agent, Colors.deepOrange, const ComplaintsScreen()),
         _MenuItem('Tenant groups', Icons.groups_outlined, Colors.indigo, const TenantGroupsScreen()),
         _MenuItem('House requests', Icons.swap_horiz, Colors.teal, const HouseRequestsScreen()),
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
