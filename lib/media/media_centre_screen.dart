@@ -881,6 +881,23 @@ class _MediaVideoScreen extends StatefulWidget {
 class _MediaVideoScreenState extends State<_MediaVideoScreen> {
   VideoPlayerController? _controller;
   String? _error;
+  bool _muted = false;
+  double _speed = 1.0;
+
+  String _time(Duration value) {
+    final minutes = value.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final hours = value.inHours;
+    return hours > 0 ? '$hours:$minutes:$seconds' : '$minutes:$seconds';
+  }
+
+  Future<void> _skip(Duration amount) async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final target = controller.value.position + amount;
+    final duration = controller.value.duration;
+    await controller.seekTo(target < Duration.zero ? Duration.zero : (target > duration ? duration : target));
+  }
 
   @override
   void initState() {
@@ -918,18 +935,95 @@ class _MediaVideoScreenState extends State<_MediaVideoScreen> {
             : AspectRatio(
                 aspectRatio: controller.value.aspectRatio,
                 child: Stack(
-                  alignment: Alignment.bottomCenter,
+                  fit: StackFit.expand,
                   children: [
-                    VideoPlayer(controller),
-                    VideoProgressIndicator(controller, allowScrubbing: true, padding: const EdgeInsets.all(12)),
+                    Center(child: VideoPlayer(controller)),
                     Positioned(
-                      bottom: 28,
-                      child: IconButton.filledTonal(
-                        iconSize: 34,
-                        onPressed: () => setState(() {
-                          controller.value.isPlaying ? controller.pause() : controller.play();
-                        }),
-                        icon: Icon(controller.value.isPlaying ? Icons.pause : Icons.play_arrow),
+                      left: 0, right: 0, bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(12, 24, 12, 10),
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, Color(0xE6000000)],
+                          ),
+                        ),
+                        child: ValueListenableBuilder<VideoPlayerValue>(
+                          valueListenable: controller,
+                          builder: (context, value, _) => Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              VideoProgressIndicator(
+                                controller,
+                                allowScrubbing: true,
+                                colors: const VideoProgressColors(
+                                  playedColor: Color(0xFF35C7E8),
+                                  bufferedColor: Colors.white38,
+                                  backgroundColor: Colors.white24,
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                              ),
+                              Row(children: [
+                                Text(_time(value.position), style: const TextStyle(color: Colors.white, fontSize: 11)),
+                                const Spacer(),
+                                Text(_time(value.duration), style: const TextStyle(color: Colors.white, fontSize: 11)),
+                              ]),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Back 10 seconds',
+                                    color: Colors.white,
+                                    onPressed: () => _skip(const Duration(seconds: -10)),
+                                    icon: const Icon(Icons.replay_10_rounded),
+                                  ),
+                                  IconButton.filled(
+                                    tooltip: value.isPlaying ? 'Pause' : 'Play',
+                                    onPressed: () => value.isPlaying ? controller.pause() : controller.play(),
+                                    iconSize: 30,
+                                    icon: Icon(value.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Forward 10 seconds',
+                                    color: Colors.white,
+                                    onPressed: () => _skip(const Duration(seconds: 10)),
+                                    icon: const Icon(Icons.forward_10_rounded),
+                                  ),
+                                  IconButton(
+                                    tooltip: _muted ? 'Unmute' : 'Mute',
+                                    color: Colors.white,
+                                    onPressed: () {
+                                      setState(() => _muted = !_muted);
+                                      controller.setVolume(_muted ? 0 : 1);
+                                    },
+                                    icon: Icon(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded),
+                                  ),
+                                  PopupMenuButton<double>(
+                                    tooltip: 'Playback speed',
+                                    initialValue: _speed,
+                                    onSelected: (speed) {
+                                      setState(() => _speed = speed);
+                                      controller.setPlaybackSpeed(speed);
+                                    },
+                                    itemBuilder: (_) => const [
+                                      PopupMenuItem(value: 0.5, child: Text('0.5×')),
+                                      PopupMenuItem(value: 0.75, child: Text('0.75×')),
+                                      PopupMenuItem(value: 1.0, child: Text('1.0×')),
+                                      PopupMenuItem(value: 1.25, child: Text('1.25×')),
+                                      PopupMenuItem(value: 1.5, child: Text('1.5×')),
+                                      PopupMenuItem(value: 2.0, child: Text('2.0×')),
+                                    ],
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(8),
+                                      child: Text('${_speed}×', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ],
