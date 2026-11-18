@@ -371,21 +371,42 @@ class _MediaCentreScreenState extends State<MediaCentreScreen> {
           'mp4', 'm4v', 'mov', 'webm', 'mkv', '3gp',
         ],
         allowMultiple: true,
-        withData: false,
+        withData: true,
       );
       if (result == null || !mounted) return;
       final selected = result.files.where((file) =>
-        file.path != null && (_isAudio(file.name) || _isVideo(file.name))).toList();
+        (_isAudio(file.name) || _isVideo(file.name)) &&
+        (file.path != null || file.bytes != null)).toList();
+      final importedDirectory = await _mediaDirectory('Imported');
+      final additions = <PlatformFile>[];
       final knownPaths = <String>{
         ..._localMedia.map((file) => file.path).whereType<String>(),
         ..._downloadedMedia.map((file) => file.path).whereType<String>(),
       };
-      final additions = selected.where((file) => !knownPaths.contains(file.path)).toList();
+      for (final picked in selected) {
+        final originalPath = picked.path;
+        final safeName = _safeFileName(picked.name);
+        final target = File('${importedDirectory.path}/${DateTime.now().microsecondsSinceEpoch}_$safeName');
+        try {
+          if (originalPath != null && await File(originalPath).exists()) {
+            await File(originalPath).copy(target.path);
+          } else if (picked.bytes != null) {
+            await target.writeAsBytes(picked.bytes!, flush: true);
+          } else {
+            continue;
+          }
+          if (!knownPaths.contains(target.path)) {
+            additions.add(PlatformFile(name: picked.name, size: await target.length(), path: target.path));
+          }
+        } catch (error) {
+          debugPrint('Could not copy selected media ${picked.name}: $error');
+        }
+      }
       setState(() => _localMedia.addAll(additions));
       await _saveLibraryPreferences();
       _message(additions.isEmpty
-        ? 'No new supported media files were imported.'
-        : 'Imported ${additions.length} media file(s), including MP3 audio where selected.');
+        ? 'No new supported media files could be copied into SkyNest storage.'
+        : 'Imported and saved ${additions.length} media file(s) to SkyNest storage.');
     } catch (error) {
       _message('Could not import media files: $error');
     } finally {
