@@ -311,7 +311,7 @@ async function verifyLandlordPaymentAccount(request, env) {
   const host = merchant.environment === "production" ? "https://api.safaricom.co.ke" : "";
   if (!host) throw new HttpError("This landlord account is not configured for production Daraja.", 409);
   const accessToken = await darajaAccessToken(env, merchant);
-  const accountReference = "SNVERIFY" + crypto.randomUUID().replace(/-/g, "").slice(0, 5).toUpperCase();
+  const accountReference = "SNV" + crypto.randomUUID().replace(/-/g, "").slice(0, 5).toUpperCase();
   const payload = {
     BusinessShortCode: merchant.businessShortCode,
     Password: btoa(merchant.businessShortCode + merchant.passkey + timestamp),
@@ -323,7 +323,7 @@ async function verifyLandlordPaymentAccount(request, env) {
     PhoneNumber: phone,
     CallBackURL: callbackUrl,
     AccountReference: accountReference,
-    TransactionDesc: "SkyNest verify",
+    TransactionDesc: "SN verify",
   };
   const response = await fetch(host + "/mpesa/stkpush/v1/processrequest", {
     method: "POST",
