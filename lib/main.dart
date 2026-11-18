@@ -6945,16 +6945,26 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
   void _load() {
     final uid = FirebaseAuth.instance.currentUser!.uid;
-    reportData = Future.wait([
-      FirebaseFirestore.instance.collection('payments').where('createdBy', isEqualTo: uid).get(),
-      FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: uid).get(),
-      FirebaseFirestore.instance.collection('tenants').where('landlordId', isEqualTo: uid).get(),
-    ]);
+    reportData = FirebaseFirestore.instance.collection('users').doc(uid).get().then((profile) {
+      final data = profile.data() ?? <String, dynamic>{};
+      final ownerId = data['role'] == 'caretaker' ? (data['landlordId']?.toString() ?? uid) : uid;
+      return Future.wait([
+        FirebaseFirestore.instance.collection('payments').where('landlordId', isEqualTo: ownerId).get(),
+        FirebaseFirestore.instance.collection('houses').where('createdBy', isEqualTo: ownerId).get(),
+        FirebaseFirestore.instance.collection('tenants').where('landlordId', isEqualTo: ownerId).get(),
+        FirebaseFirestore.instance.collection('complaints').where('landlordId', isEqualTo: ownerId).get(),
+        FirebaseFirestore.instance.collection('paymentConfirmations').where('landlordId', isEqualTo: ownerId).get(),
+      ]);
+    });
   }
   String _monthLabel(DateTime date) => DateFormat('MMMM yyyy').format(date);
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Property reports'), actions: [
+      IconButton(tooltip: 'Tenant complaints', icon: const Icon(Icons.support_agent),
+        onPressed: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const ComplaintsScreen()))),
+      IconButton(tooltip: 'Rent ledger', icon: const Icon(Icons.account_balance_wallet_outlined),
+        onPressed: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const RentLedgerScreen()))),
       IconButton(tooltip: 'Refresh reports', icon: const Icon(Icons.refresh),
         onPressed: () => setState(_load)),
     ]),
@@ -6966,6 +6976,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
         final payments = snap.data![0].docs;
         final houses = snap.data![1].docs;
         final tenants = snap.data![2].docs;
+        final complaints = snap.data![3].docs;
+        final caretakerConfirmations = snap.data![4].docs;
+        final openComplaints = complaints.where((d) => (d.data()['status']?.toString() ?? 'open') != 'resolved').length;
+        final caretakerConfirmed = caretakerConfirmations.where((d) => d.data()['status'] == 'confirmed_by_caretaker').length;
         final start = selectedMonth;
         final end = DateTime(start.year, start.month + 1);
         final previousStart = DateTime(start.year, start.month - 1);
@@ -7045,6 +7059,45 @@ class _ReportsScreenState extends State<ReportsScreen> {
             Expanded(child: _ReportMetric(title: 'Occupied', value: (occupancy * 100).toStringAsFixed(0) + '%', icon: Icons.apartment_outlined)),
           ]),
           const SizedBox(height: 12),
+          Card(child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.support_agent, color: Colors.deepOrange),
+                const SizedBox(width: 8),
+                const Expanded(child: Text('Tenant complaints', style: TextStyle(fontWeight: FontWeight.w800))),
+                Text('${complaints.length}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+              ]),
+              const SizedBox(height: 5),
+              Text('$openComplaints open · ${complaints.length - openComplaints} resolved',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+              if (complaints.isNotEmpty) ...[
+                const Divider(height: 18),
+                ...complaints.take(3).map((doc) {
+                  final d = doc.data();
+                  return ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(d['subject']?.toString() ?? 'Tenant complaint', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text('${d['createdByName'] ?? 'Tenant'} · ${d['status'] ?? 'open'}'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const ComplaintsScreen())),
+                  );
+                }),
+              ],
+              Align(alignment: Alignment.centerRight, child: TextButton.icon(
+                onPressed: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const ComplaintsScreen())),
+                icon: const Icon(Icons.open_in_new), label: const Text('Open complaints'),
+              )),
+            ]),
+          )),
+          Card(child: ListTile(
+            leading: const Icon(Icons.fact_check_outlined, color: Colors.teal),
+            title: const Text('Caretaker ledger link'),
+            subtitle: Text('$caretakerConfirmed confirmed · ${caretakerConfirmations.length - caretakerConfirmed} awaiting or pending'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const CaretakerPaymentsScreen())),
+          )),
           if (topHouse != null) Card(child: ListTile(
             leading: const Icon(Icons.emoji_events_outlined, color: Colors.amber),
             title: const Text('Top earning house'),
