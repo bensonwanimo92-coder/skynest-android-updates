@@ -7,15 +7,15 @@ Production-only Safaricom Daraja STK Push gateway for SkyNest. Each landlord con
 - Landlords can configure a separate PayBill or Buy Goods Till.
 - Tenant payment requests resolve the landlord from the tenant's trusted `users/{uid}.landlordId` profile. A tenant cannot submit or override a landlord ID, shortcode, till number or merchant credentials.
 - Only an account verified against Safaricom live production Daraja can receive tenant STK requests.
-- Landlord verification sends a KES 1 STK Push to the landlord's own phone. The successful callback activates that exact saved configuration. The KES 1 test is not recorded as rent.
+- Landlord verification sends a KES 1 STK Push to the landlord's own phone. This is a real charge: the landlord must explicitly approve it. The successful callback activates that exact saved configuration. It is not recorded as rent.
 - A personal mobile number is not an STK merchant destination. A landlord can separately accept manual Send Money to a personal M-Pesa number and have the tenant submit the receipt for landlord review. That manual flow is not an automated STK collection.
 - B2C is a separate business-to-customer payout API and is not used to collect tenant rent.
 
 ## Cloudflare configuration
 
-Worker name: `skynestmpesaapi`
+Worker name: `mpesaapi`
 
-Under Cloudflare > Workers & Pages > skynestmpesaapi > Settings > Variables and Secrets, configure:
+Under Cloudflare > Workers & Pages > mpesaapi > Settings > Variables and Secrets, configure:
 
 - `FIREBASE_PROJECT_ID` — plain text.
 - `FIREBASE_WEB_API_KEY` — plain text.
@@ -24,20 +24,17 @@ Under Cloudflare > Workers & Pages > skynestmpesaapi > Settings > Variables and 
 - `STK_CALLBACK_TOKEN` — secret; random value of at least 32 characters.
 - `STK_CALLBACK_URL` — plain text HTTPS URL ending in `/hooks/stk/result/YOUR_RANDOM_TOKEN`; the token must exactly match `STK_CALLBACK_TOKEN`.
 
-Do not paste secrets into chat, GitHub source files, or the Android app. Landlords enter their own Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Passkey in SkyNest. The Worker encrypts those values before writing `landlordPaymentAccounts/{landlordUid}`. Firestore client rules do not grant direct access to that collection.
+Do not paste secrets into chat, GitHub source files, or the Android app. Landlords enter their own Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Passkey in SkyNest. The Worker encrypts those values before writing `landlordPaymentAccounts/{landlordUid}`. Firestore client rules must not grant direct access to that collection.
+
+The GitHub Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` authenticate deployment only. They do not configure the Worker runtime. The six Firebase/encryption/callback settings above must exist in Cloudflare separately.
 
 ## Deploy
 
-From this folder with Wrangler authenticated:
+The approved GitHub Actions workflow deploys the production Worker directly from `fix/individual-landlord-daraja-credentials`:
 
-```sh
-npm install
-npm run check
-npm test
-npx wrangler deploy
-```
+`https://github.com/bensonwanimo92-coder/skynest-android-updates/actions/workflows/deploy-mpesa-cloudflare-production.yml`
 
-Alternatively, connect the GitHub repository in Cloudflare Workers Builds, set the project root to `cloudflare-worker`, and deploy with `npx wrangler deploy`. Configure all required secrets before deploying this version. Keep `DARAJA_ENV=sandbox` until end-to-end sandbox tests pass.
+The workflow performs JavaScript syntax checks and the Worker unit tests before deployment. Do not configure a Sandbox endpoint or `DARAJA_ENV=sandbox`; this integration is production-only.
 
 ## API routes
 
@@ -52,14 +49,13 @@ A successful rent callback creates `payments/{M-Pesa receipt}` using the fields 
 
 ## Release verification checklist
 
-1. Configure Firebase, encryption and callback secrets in Cloudflare.
-2. Deploy the Worker and check `GET /health`.
+1. Configure all six Firebase, encryption and callback settings in Cloudflare.
+2. Confirm `GET /health` responds successfully; this is only a basic availability check.
 3. In the landlord dashboard, save live PayBill/Till details and that merchant's production Daraja credentials.
-4. Send the KES 1 verification STK to the landlord's own live M-Pesa phone and approve it.
-5. Refresh the account screen and confirm it shows Verified for the sandbox environment.
+4. Only after explicit approval, send the KES 1 verification STK to the landlord's own live M-Pesa phone and approve the real charge.
+5. Refresh the account screen and confirm it shows Verified for the production environment.
 6. Link a tenant to that landlord and initiate a tenant STK request.
 7. Confirm exactly one receipt-backed rent record appears for the correct landlord.
 8. Repeat with a second landlord and test cross-landlord isolation, wrong amount, wrong payer, cancelled prompt, duplicate callback, duplicate receipt and early callback.
-9. Production endpoints are used exclusively. Each landlord must have Safaricom-approved live merchant credentials and must complete the explicitly confirmed live KES 1 account-verification prompt before tenant collections are enabled.
 
-A green health response or a successful unit-test run alone is not an end-to-end payment test.
+A green health response or a successful unit-test run alone is not an end-to-end payment test. Never initiate the KES 1 live verification charge without the landlord's explicit approval.
