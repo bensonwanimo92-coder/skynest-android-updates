@@ -32,7 +32,7 @@ The GitHub Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` au
 
 The approved GitHub Actions workflow deploys the production Worker directly from `fix/mpesa-three-role-flow`:
 
-`https://github.com/bensonwanimo92-coder/skynest-android-updates/actions/workflows/deploy-mpesa-cloudflare-production.yml`
+`https://github.com/bensonwanimo92-coder/skynest-android-updates/actions/workflows/deploy-mpesa-cloudflare.yml`
 
 The workflow performs JavaScript syntax checks and the Worker unit tests before deployment. Do not configure a Sandbox endpoint or `DARAJA_ENV=sandbox`; this integration is production-only.
 
