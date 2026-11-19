@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feature/skynest-mpesa-cloudflare
+      - upgrade/mpesa-on-build-5506
     paths:
       - 'lib/**'
       - 'pubspec.yaml'
