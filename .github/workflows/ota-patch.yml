@@ -99,14 +99,14 @@ jobs:
                       depth -= 1
                       if depth == 0:
                           line_start = text.rfind("\n", 0, opening) + 1
-                          indent = re.match(r"\\s*", text[line_start:opening]).group(0)
-                          return text[:index] + "\\n" + indent + "    " + statement + "\\n" + text[index:]
+                          indent = re.match(r"\s*", text[line_start:opening]).group(0)
+                          return text[:index] + "\n" + indent + "    " + statement + "\n" + text[index:]
               raise SystemExit("Unbalanced Gradle block: " + marker)
 
           if "isCoreLibraryDesugaringEnabled = true" not in source:
               updated = insert_into_block(source, "compileOptions {", "isCoreLibraryDesugaringEnabled = true")
               if updated is None:
-                  updated = insert_into_block(source, "android {", "compileOptions {\\n            isCoreLibraryDesugaringEnabled = true\\n        }")
+                  updated = insert_into_block(source, "android {", "compileOptions {\n            isCoreLibraryDesugaringEnabled = true\n        }")
               if updated is None:
                   raise SystemExit("Could not locate Android Gradle block for core library desugaring.")
               source = updated
@@ -114,7 +114,7 @@ jobs:
           if "coreLibraryDesugaring(" not in source:
               updated = insert_into_block(source, "dependencies {", 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")')
               if updated is None:
-                  source += "\\ndependencies {\\n    coreLibraryDesugaring(\\"com.android.tools:desugar_jdk_libs:2.1.5\\")\\n}\\n"
+                  source += "\ndependencies {\n    coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs:2.1.5\")\n}\n"
               else:
                   source = updated
 
