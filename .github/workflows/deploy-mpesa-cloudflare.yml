@@ -1,36 +1,55 @@
-name: Deploy SkyNest M-Pesa Cloudflare Worker
+name: Deploy SkyNest M-Pesa Worker to Cloudflare Production
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/mpesa-three-role-flow
 
 permissions:
   contents: read
 
+concurrency:
+  group: skynest-mpesa-worker-production
+  cancel-in-progress: false
+
 jobs:
-  deploy:
+  validate-and-deploy:
+    name: Validate and deploy production Worker
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Checkout integration branch
+      - name: Check out approved Daraja branch
         uses: actions/checkout@v4
         with:
-          ref: integration/roles-on-current-main
+          ref: fix/mpesa-three-role-flow
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Run Worker syntax and payment validation tests
+      - name: Validate Worker source
         working-directory: cloudflare-worker
-        run: npm run check
+        run: |
+          node --check src/index.js
+          node --check src/payment_validation.js
+
+      - name: Run Worker unit tests
+        working-directory: cloudflare-worker
+        run: npm test
+
+      - name: Validate required deployment credentials
+        shell: bash
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CF_API_TOKEN" || { echo "::error::Missing GitHub secret CLOUDFLARE_API_TOKEN"; exit 1; }
+          test -n "$CF_ACCOUNT_ID" || { echo "::error::Missing GitHub secret CLOUDFLARE_ACCOUNT_ID"; exit 1; }
 
       - name: Deploy production Worker
-        working-directory: cloudflare-worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::CLOUDFLARE_API_TOKEN is missing."; exit 1; }
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::CLOUDFLARE_ACCOUNT_ID is missing."; exit 1; }
-          npx --yes wrangler@4 deploy --config wrangler.toml
+        run: npx --yes wrangler@4 deploy --config cloudflare-worker/wrangler.toml
