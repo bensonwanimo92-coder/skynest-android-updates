@@ -10,6 +10,7 @@ on:
       - feature/skynest-build-3409
       - feature/skynest-mpesa-cloudflare
       - feature/skynest-combined-upgrade
+      - upgrade/mpesa-on-build-5506
     tags:
       - 'v*'
   workflow_dispatch:
