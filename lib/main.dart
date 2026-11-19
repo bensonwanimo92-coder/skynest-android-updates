@@ -2681,12 +2681,12 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
     setState(() => saving = true);
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) throw StateError('Please sign in again.');
+      if (uid == null) throw const MpesaException('Please sign in again.');
       final profile = await FirebaseFirestore.instance.collection('users').doc(uid).get();
       final p = profile.data() ?? {};
       if (p['role'] == 'tenant' && paymentMethod == 'mpesa') {
         final phoneNumber = phone.text.trim();
-        if (phoneNumber.isEmpty) throw StateError('Enter the M-Pesa phone number to receive the payment prompt.');
+        if (phoneNumber.isEmpty) throw const MpesaException('Enter the M-Pesa phone number to receive the payment prompt.');
         final message = await SkyNestMpesaService.requestStkPush(
           amountKes: value.round(),
           phone: phoneNumber,
@@ -2698,11 +2698,11 @@ class _TenantPayScreenState extends State<TenantPayScreen> {
         return;
       }
       if (paymentMethod == 'mpesa' && (code.length < 8 || code.length > 16 || !RegExp(r'^[A-Z0-9]+').hasMatch(code))) {
-        throw StateError('Enter a valid M-Pesa transaction code (8–16 letters or numbers).');
+        throw const MpesaException('Enter a valid M-Pesa transaction code (8–16 letters or numbers).');
       }
       if (p['role'] == 'tenant') {
         final landlordId = p['landlordId']?.toString();
-        if (landlordId == null || landlordId.isEmpty) throw StateError('Your tenant account is not linked to a landlord.');
+        if (landlordId == null || landlordId.isEmpty) throw const MpesaException('Your tenant account is not linked to a landlord.');
         final submissionRef = FirebaseFirestore.instance.collection('paymentSubmissions').doc();
         final batch = FirebaseFirestore.instance.batch();
         batch.set(submissionRef, {
