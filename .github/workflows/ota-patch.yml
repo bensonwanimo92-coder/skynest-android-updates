@@ -1,6 +1,9 @@
 name: SkyNest OTA Patch (Exact Shorebird Release)
 
 on:
+  push:
+    branches:
+      - upgrade/mpesa-on-build-5506
   workflow_dispatch:
     inputs:
       release_version:
@@ -414,7 +417,7 @@ jobs:
 
       - name: Pin the exact newly built Shorebird release version
         env:
-          PATCH_RELEASE_VERSION: ${{ inputs.release_version }}
+          PATCH_RELEASE_VERSION: ${{ inputs.release_version || '1.1.3+5518' }}
         run: |
           set -euo pipefail
           if ! [[ "$PATCH_RELEASE_VERSION" =~ ^1[.]1[.]3[+][0-9]+$ ]]; then
@@ -444,7 +447,7 @@ jobs:
       - name: Publish Shorebird OTA patch for the exact release
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
-          PATCH_RELEASE_VERSION: ${{ inputs.release_version }}
+          PATCH_RELEASE_VERSION: ${{ inputs.release_version || '1.1.3+5518' }}
         run: |
           set -euo pipefail
           shorebird patch android --release-version="$PATCH_RELEASE_VERSION" --track=stable
