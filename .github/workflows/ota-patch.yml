@@ -80,6 +80,46 @@ jobs:
           # Let the Android Gradle Plugin select its default Build Tools version.
           # Explicit buildToolsVersion injection is unnecessary and brittle across DSL templates.
           gradle.write_text(source)
+
+          # flutter_local_notifications requires Java 8+ API desugaring.
+          # Enable it in the app module and add the matching desugar library.
+          source = gradle.read_text()
+          def insert_into_block(text, pattern, statement):
+              match = re.search(pattern, text)
+              if not match:
+                  return None
+              opening = text.find("{", match.start())
+              depth = 0
+              for index in range(opening, len(text)):
+                  if text[index] == "{":
+                      depth += 1
+                  elif text[index] == "}":
+                      depth -= 1
+                      if depth == 0:
+                          indent = re.match(r"\\s*", text[match.start():opening]).group(0)
+                          return text[:index] + "\\n" + indent + "    " + statement + "\\n" + text[index:]
+              raise SystemExit("Unbalanced Gradle block: " + pattern)
+
+          if "isCoreLibraryDesugaringEnabled = true" not in source:
+              updated = insert_into_block(source, r"(?m)^\\s*compileOptions\\s*\\{", "isCoreLibraryDesugaringEnabled = true")
+              if updated is None:
+                  updated = insert_into_block(source, r"(?m)^\\s*android\\s*\\{", "compileOptions {\\n            isCoreLibraryDesugaringEnabled = true\\n        }")
+              if updated is None:
+                  raise SystemExit("Could not locate Android Gradle block for core library desugaring.")
+              source = updated
+
+          if "coreLibraryDesugaring(" not in source:
+              updated = insert_into_block(source, r"(?m)^\\s*dependencies\\s*\\{", 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")')
+              if updated is None:
+                  source += '\\ndependencies {\\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")\\n}\\n'
+              else:
+                  source = updated
+
+          if "isCoreLibraryDesugaringEnabled = true" not in source or "coreLibraryDesugaring(" not in source:
+              raise SystemExit("Core library desugaring configuration is incomplete.")
+          gradle.write_text(source)
+          print("PASS: Core library desugaring enabled for flutter_local_notifications.")
+
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           tree = ET.parse(manifest)
           root = tree.getroot()
