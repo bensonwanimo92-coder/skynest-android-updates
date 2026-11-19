@@ -35,6 +35,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.47.0'
           cache: true
 
       - name: Generate Android project files
@@ -448,7 +449,33 @@ jobs:
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
           PATCH_RELEASE_VERSION: ${{ inputs.release_version || '1.1.3+5518' }}
+          SKYNEST_TURN_URL: ${{ secrets.SKYNEST_TURN_URL }}
+          SKYNEST_TURN_USERNAME: ${{ secrets.SKYNEST_TURN_USERNAME }}
+          SKYNEST_TURN_CREDENTIAL: ${{ secrets.SKYNEST_TURN_CREDENTIAL }}
           SKYNEST_API_BASE_URL: ${{ vars.SKYNEST_API_BASE_URL }}
         run: |
           set -euo pipefail
-          shorebird patch android --release-version="$PATCH_RELEASE_VERSION" --track=stable -- --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" --dart-define=SKYNEST_TURN_USERNAME="$SKYNEST_TURN_USERNAME" --dart-define=SKYNEST_TURN_CREDENTIAL="$SKYNEST_TURN_CREDENTIAL" --dart-define=SKYNEST_API_BASE_URL="$SKYNEST_API_BASE_URL"
+          if ! [[ "$PATCH_RELEASE_VERSION" =~ ^1[.]1[.]3[+][0-9]+$ ]]; then
+            echo "::error::Invalid Shorebird release version: $PATCH_RELEASE_VERSION"
+            exit 1
+          fi
+          BUILD_NUMBER="${PATCH_RELEASE_VERSION##*+}"
+          # Fail early if a required secret is absent; never silently build a
+          # patch with empty networking configuration.
+          : "${SKYNEST_TURN_URL:?SKYNEST_TURN_URL secret is missing}"
+          : "${SKYNEST_TURN_USERNAME:?SKYNEST_TURN_USERNAME secret is missing}"
+          : "${SKYNEST_TURN_CREDENTIAL:?SKYNEST_TURN_CREDENTIAL secret is missing}"
+          # Mirror build.yml exactly: Flutter 3.47.0, both ARM ABIs, same
+          # build name/number and all four compile-time defines.
+          shorebird patch android \
+            --release-version="$PATCH_RELEASE_VERSION" \
+            --track=stable \
+            --target-platform=android-arm,android-arm64 \
+            --flutter-version=3.47.0 \
+            -- \
+            --build-name=1.1.3 \
+            --build-number="$BUILD_NUMBER" \
+            --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" \
+            --dart-define=SKYNEST_TURN_USERNAME="$SKYNEST_TURN_USERNAME" \
+            --dart-define=SKYNEST_TURN_CREDENTIAL="$SKYNEST_TURN_CREDENTIAL" \
+            --dart-define=SKYNEST_API_BASE_URL="$SKYNEST_API_BASE_URL"
