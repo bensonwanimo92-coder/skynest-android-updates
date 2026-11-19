@@ -77,10 +77,8 @@ jobs:
               source, count = re.subn(rf"(?m)^(\s*){key}\s*=\s*[^\n]+", rf"\g<1>{key} = {value}", source, count=1)
               if count != 1:
                   raise SystemExit(f"Could not set {key} = {value}")
-          if re.search(r"(?m)^\s*buildToolsVersion\s*=", source):
-              source = re.sub(r'(?m)^\s*buildToolsVersion\s*=\s*[^\n]+', '    buildToolsVersion = "36.0.0"', source, count=1)
-          else:
-              source = re.sub(r"(?m)^(\s*compileSdk\s*=\s*34\s*)$", r'\1\n    buildToolsVersion = "36.0.0"', source, count=1)
+          # Let the Android Gradle Plugin select its default Build Tools version.
+          # Explicit buildToolsVersion injection is unnecessary and brittle across DSL templates.
           gradle.write_text(source)
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           tree = ET.parse(manifest)
@@ -109,7 +107,7 @@ jobs:
                       item.set(android + "exported", "true" if item.find("intent-filter") is not None else "false")
           tree.write(manifest, encoding="utf-8", xml_declaration=True)
           text = gradle.read_text()
-          for expected in ('compileSdk = 36', 'minSdk = 24', 'targetSdk = 34', 'buildToolsVersion = "36.0.0"'):
+          for expected in ('compileSdk = 36', 'minSdk = 24', 'targetSdk = 34'):
               if expected not in text:
                   raise SystemExit("Gradle configuration verification failed: " + expected)
           print("PASS: Android 14 app configuration and manifest.")
@@ -124,7 +122,7 @@ jobs:
           p.write_text(content)
           PY
 
-      - name: Install Android 14 SDK and Build Tools
+      - name: Install Android API 36 SDK and Build Tools
         run: |
           set -euo pipefail
           set +e
@@ -137,7 +135,7 @@ jobs:
           fi
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Audit native Android source for API 31-34 requirements
+      - name: Audit native Android source for platform compatibility requirements
         run: |
           set -euo pipefail
           python3 - <<'PY'
