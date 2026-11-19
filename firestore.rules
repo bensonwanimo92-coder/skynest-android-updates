@@ -238,7 +238,15 @@ service cloud.firestore {
         (myRole() == 'caretaker' && resource.data.caretakerId == request.auth.uid) ||
         (myRole() == 'landlord' && resource.data.landlordId == request.auth.uid)
       );
-      allow update: if activeUser() && myRole() == 'caretaker' && resource.data.caretakerId == request.auth.uid &&
+      // A caretaker may only confirm an assigned pending manual collection when
+      // the landlord has explicitly granted can_collect. Enforce this in rules,
+      // not only in the client UI, so direct Firestore writes cannot bypass it.
+      allow update: if activeUser() && myRole() == 'caretaker' &&
+        profile(request.auth.uid).caretakerPermission == 'can_collect' &&
+        resource.data.caretakerId == request.auth.uid &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'confirmed_by_caretaker' &&
+        request.resource.data.confirmedBy == request.auth.uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedBy', 'confirmedAt']);
       allow create: if activeUser() && myRole() == 'landlord' && request.resource.data.landlordId == request.auth.uid &&
         request.resource.data.keys().hasOnly(['landlordId', 'caretakerId', 'tenantName', 'houseNo', 'paymentId', 'status', 'createdAt']);
