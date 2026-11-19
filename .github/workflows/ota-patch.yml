@@ -460,17 +460,14 @@ jobs:
             exit 1
           fi
           BUILD_NUMBER="${PATCH_RELEASE_VERSION##*+}"
-          # Fail early if a required secret is absent; never silently build a
-          # patch with empty networking configuration.
-          : "${SKYNEST_TURN_URL:?SKYNEST_TURN_URL secret is missing}"
-          : "${SKYNEST_TURN_USERNAME:?SKYNEST_TURN_USERNAME secret is missing}"
-          : "${SKYNEST_TURN_CREDENTIAL:?SKYNEST_TURN_CREDENTIAL secret is missing}"
+          # Empty secret values are allowed when the original release used
+          # empty defines. Keep every define present to preserve exact flag parity.
           # Mirror build.yml exactly: Flutter 3.47.0, both ARM ABIs, same
           # build name/number and all four compile-time defines.
           shorebird patch android \
             --release-version="$PATCH_RELEASE_VERSION" \
             --track=stable \
-            --target-platform=android-arm,android-arm64 \
+            --target-platform android-arm,android-arm64 \
             --flutter-version=3.47.0 \
             -- \
             --build-name=1.1.3 \
