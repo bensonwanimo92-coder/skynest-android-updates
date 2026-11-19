@@ -3,6 +3,15 @@ import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
 
+/// User-safe M-Pesa operation error. Unlike StateError, this never prefixes
+/// routine server/validation failures with the misleading text 'Bad state:'.
+class MpesaException implements Exception {
+  final String message;
+  const MpesaException(this.message);
+  @override
+  String toString() => message;
+}
+
 /// Calls the SkyNest Cloudflare Worker M-Pesa API. The base URL is injected at
 /// build time; no Daraja credentials are ever stored in the Android app.
 class SkyNestMpesaService {
@@ -14,14 +23,14 @@ class SkyNestMpesaService {
   static Map<String, dynamic> _decodeResponse(String raw, int statusCode) {
     if (raw.trim().isEmpty) {
       if (statusCode >= 200 && statusCode < 300) return <String, dynamic>{};
-      throw StateError('M-Pesa service returned an empty response (HTTP $statusCode).');
+      throw MpesaException('M-Pesa service returned an empty response (HTTP $statusCode).');
     }
     try {
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) return decoded;
       throw const FormatException('Expected a JSON object.');
     } on FormatException {
-      throw StateError(
+      throw MpesaException(
         'M-Pesa service returned an unreadable response (HTTP $statusCode). '
         'The payment server may be unavailable or misconfigured. Please try again later.',
       );
@@ -29,11 +38,11 @@ class SkyNestMpesaService {
   }
 
   static Future<Map<String, dynamic>> _call(String path, {String method = 'GET', Map<String, dynamic>? body}) async {
-    if (_baseUrl.isEmpty) throw StateError('M-Pesa service is not configured in this app build yet.');
+    if (_baseUrl.isEmpty) throw MpesaException('M-Pesa service is not configured in this app build yet.');
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw StateError('Sign in to SkyNest first.');
+    if (user == null) throw MpesaException('Sign in to SkyNest first.');
     final idToken = await user.getIdToken();
-    if (idToken == null || idToken.isEmpty) throw StateError('Could not verify your SkyNest session. Sign in again.');
+    if (idToken == null || idToken.isEmpty) throw MpesaException('Could not verify your SkyNest session. Sign in again.');
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
     try {
       final request = await client.openUrl(method, Uri.parse(_baseUrl).resolve(path));
@@ -44,7 +53,7 @@ class SkyNestMpesaService {
       final raw = await response.transform(utf8.decoder).join();
       final data = _decodeResponse(raw, response.statusCode);
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw StateError(data['error']?.toString() ?? 'M-Pesa request failed. Try again.');
+        throw MpesaException(data['error']?.toString() ?? 'M-Pesa request failed. Try again.');
       }
       return data;
     } finally {
@@ -80,13 +89,13 @@ class SkyNestMpesaService {
     required String phone,
   }) async {
     if (_baseUrl.isEmpty) {
-      throw StateError('M-Pesa service is not configured in this app build yet.');
+      throw MpesaException('M-Pesa service is not configured in this app build yet.');
     }
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw StateError('Sign in to SkyNest before paying rent.');
+    if (user == null) throw MpesaException('Sign in to SkyNest before paying rent.');
     final idToken = await user.getIdToken();
     if (idToken == null || idToken.isEmpty) {
-      throw StateError('Could not verify your SkyNest session. Sign in again.');
+      throw MpesaException('Could not verify your SkyNest session. Sign in again.');
     }
 
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
@@ -100,7 +109,10 @@ class SkyNestMpesaService {
       final body = await response.transform(utf8.decoder).join();
       final data = _decodeResponse(body, response.statusCode);
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw StateError(data['error']?.toString() ?? 'M-Pesa request failed. Try again.');
+        throw MpesaException(data['error']?.toString() ?? 'M-Pesa request failed. Try again.');
+      }
+      if (data['accepted'] != true || (data['checkoutRequestId']?.toString().trim().isEmpty ?? true)) {
+        throw const MpesaException('The payment server did not confirm that Safaricom accepted the STK Push. No payment confirmation was recorded. Please try again later.');
       }
       return data['message']?.toString() ?? 'Check your phone for the M-Pesa prompt.';
     } finally {
