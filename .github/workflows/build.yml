@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - integration/roles-on-current-main
+      - fix/mpesa-three-role-flow
     tags:
       - 'v*'
   workflow_dispatch:
