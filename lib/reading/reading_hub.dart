@@ -9,6 +9,7 @@ import 'package:pdf/pdf.dart' as pdf;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'reading_hub_storage.dart';
+import 'latest_request_guard.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ReadingHubScreen extends StatefulWidget {
@@ -23,6 +24,7 @@ class ReadingHubScreen extends StatefulWidget {
 class _ReadingHubScreenState extends State<ReadingHubScreen> {
   final TextEditingController _search = TextEditingController();
   final HttpClient _http = HttpClient()..connectionTimeout = const Duration(seconds: 12);
+  final LatestRequestGuard _searchRequestGuard = LatestRequestGuard();
   List<_BookResult> _results = <_BookResult>[];
   bool _searching = false;
   bool _downloading = false;
@@ -211,6 +213,9 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
   ];
 
   Future<void> _searchBooks(String value) async {
+    // Open Library responses can arrive out of order on mobile networks. Only
+    // the latest submitted query may update the visible results or error state.
+    final requestToken = _searchRequestGuard.begin();
     final query = value.trim();
     if (query.isEmpty) {
       setState(() {
@@ -243,14 +248,14 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
           .whereType<Map<String, dynamic>>()
           .map(_BookResult.fromJson)
           .toList();
-      if (!mounted) return;
+      if (!mounted || !_searchRequestGuard.isCurrent(requestToken)) return;
       setState(() {
         _results = docs;
         _searching = false;
         _searchError = docs.isEmpty ? 'No matching titles found. Try another title, author or subject.' : null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_searchRequestGuard.isCurrent(requestToken)) return;
       setState(() {
         _searching = false;
         _searchError = 'Search could not connect. Check your internet connection and try again.';
@@ -373,6 +378,7 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
   }
   @override
   void dispose() {
+    _searchRequestGuard.invalidate();
     _search.dispose();
     _http.close(force: true);
     super.dispose();
