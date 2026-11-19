@@ -80,7 +80,7 @@ jobs:
           if re.search(r"(?m)^\s*buildToolsVersion\s*=", source):
               source = re.sub(r'(?m)^\s*buildToolsVersion\s*=\s*[^\n]+', '    buildToolsVersion = "36.0.0"', source, count=1)
           else:
-              source = re.sub(r"(?m)^(\s*compileSdk\s*=\s*34\s*)$", r'\1\n    buildToolsVersion = "34.0.0"', source, count=1)
+              source = re.sub(r"(?m)^(\s*compileSdk\s*=\s*34\s*)$", r'\1\n    buildToolsVersion = "36.0.0"', source, count=1)
           gradle.write_text(source)
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           tree = ET.parse(manifest)
@@ -299,7 +299,7 @@ jobs:
                   gradle_file.write_text("\n".join(output) + "\n")
                   patched.append(str(gradle_file))
           for auth_file in auth_files:
-              if not any(line.strip() == "compileSdkVersion 34" for line in auth_file.read_text().splitlines()):
+              if not any(line.strip() == "compileSdkVersion 36" for line in auth_file.read_text().splitlines()):
                   raise SystemExit(f"firebase_auth compile SDK was not set to 36: {auth_file}")
           print(f"Patched {len(patched)} Android plugin Gradle files.")
           PY
