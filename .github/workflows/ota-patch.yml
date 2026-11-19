@@ -351,10 +351,10 @@ jobs:
           BUILD_NUMBER="${PATCH_RELEASE_VERSION##*+}"
           # The ABI selector is a Flutter build argument, not a Shorebird patch option.
           # Flutter 3.47.0 is pinned above to match the base release toolchain.
-          shorebird patch android \
+          shorebird patch \
+            --platforms=android \
             --release-version="$PATCH_RELEASE_VERSION" \
             --track=stable \
-            --flutter-version=3.47.0 \
             -- \
             --target-platform=android-arm,android-arm64 \
             --build-name=1.1.3 \
