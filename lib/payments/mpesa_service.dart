@@ -15,10 +15,15 @@ class MpesaException implements Exception {
 /// Calls the SkyNest Cloudflare Worker M-Pesa API. The base URL is injected at
 /// build time; no Daraja credentials are ever stored in the Android app.
 class SkyNestMpesaService {
-  static const String _baseUrl = String.fromEnvironment(
+  // An explicitly empty --dart-define overrides String.fromEnvironment's
+  // defaultValue. Treat that empty build variable as unset so OTA patches and
+  // release builds always retain the known SkyNest Worker endpoint.
+  static const String _configuredBaseUrl = String.fromEnvironment(
     'SKYNEST_API_BASE_URL',
-    defaultValue: 'https://mpesaapi.bensonwanimo92.workers.dev',
   );
+  static const String _baseUrl = _configuredBaseUrl == ''
+      ? 'https://mpesaapi.bensonwanimo92.workers.dev'
+      : _configuredBaseUrl;
 
   static Map<String, dynamic> _decodeResponse(String raw, int statusCode) {
     if (raw.trim().isEmpty) {
