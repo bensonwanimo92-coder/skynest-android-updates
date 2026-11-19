@@ -1,7 +1,6 @@
 # SkyNest Individual Landlord M-Pesa Receiving Accounts
 
-Status: approved product direction — each landlord supplies their own Daraja Consumer Key, Consumer Secret and Lipa Na M-Pesa Passkey. The implementation is being repaired on a dedicated branch; no production deployment has been made.
-Target branch: fix/mpesa-three-role-flow
+Status: the per-landlord production Worker has been deployed from `fix/mpesa-three-role-flow` (19 November 2026). Worker syntax checks and unit tests passed on the deployed commit. The Android signed build is still running. No live KES 1 verification charge or tenant rent STK payment has been initiated.
 
 The approved implementation is production-only: there is no Sandbox switch or Sandbox endpoint in the payment Worker. Each landlord must enter credentials issued for their live Safaricom Daraja merchant account. The live KES 1 verification is a real charge and must be explicitly approved by the landlord.
 
@@ -116,12 +115,12 @@ Implemented on `integration/skynest-complete-release-candidate`:
 
 Not yet complete or independently verified:
 
-- Cloudflare Worker has not been deployed with the new code and the required `MPESA_ENCRYPTION_KEY` secret.
+- Cloudflare production deployment completed successfully; runtime configuration is still to be confirmed through authenticated account setup and a non-charge health/configuration check.
 - Live end-to-end verification, including two-landlord isolation, has not yet been completed against Safaricom and Firebase.
 - Live PayBill/Till payloads and merchant onboarding must be confirmed with Safaricom before production use.
 - No in-app manual personal-phone receiving-instructions form has been added yet. The existing tenant payment-submission flow can be used for manual receipt review if the landlord shares their Send Money number separately.
 - Rate limiting, strict CORS origin allowlists, audit events for account changes, disable-account workflow, credential key rotation, transaction-status reconciliation and full timeout/reversal handling remain to be implemented.
 - Firestore account/callback collections rely on the default-deny client rules and trusted Worker service credentials; add explicit emulator tests to prove client denial.
-- The Android release build for the latest commit is still queued behind an earlier Shorebird setup job.
+- The signed Android release build for the M-Pesa repair branch is currently running; do not distribute an APK until it succeeds and the artifact is verified.
 
 Do not describe the integration as production-ready or issue a final APK until the Worker is deployed, secrets are configured, sandbox tests pass, two-landlord isolation is proven, and the signed Android build completes.
