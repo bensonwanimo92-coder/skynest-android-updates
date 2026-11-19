@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - integration/skynest-complete-release-candidate
+      - upgrade/mpesa-on-build-5506
     paths:
       - "cloudflare-worker/**"
       - ".github/workflows/mpesa-worker-checks.yml"
