@@ -73,12 +73,12 @@ jobs:
           if not gradle.exists():
               raise SystemExit("Expected generated Kotlin Gradle file is missing.")
           source = gradle.read_text()
-          for key, value in (("compileSdk", "34"), ("minSdk", "24"), ("targetSdk", "34")):
+          for key, value in (("compileSdk", "36"), ("minSdk", "24"), ("targetSdk", "34")):
               source, count = re.subn(rf"(?m)^(\s*){key}\s*=\s*[^\n]+", rf"\g<1>{key} = {value}", source, count=1)
               if count != 1:
                   raise SystemExit(f"Could not set {key} = {value}")
           if re.search(r"(?m)^\s*buildToolsVersion\s*=", source):
-              source = re.sub(r'(?m)^\s*buildToolsVersion\s*=\s*[^\n]+', '    buildToolsVersion = "34.0.0"', source, count=1)
+              source = re.sub(r'(?m)^\s*buildToolsVersion\s*=\s*[^\n]+', '    buildToolsVersion = "36.0.0"', source, count=1)
           else:
               source = re.sub(r"(?m)^(\s*compileSdk\s*=\s*34\s*)$", r'\1\n    buildToolsVersion = "34.0.0"', source, count=1)
           gradle.write_text(source)
@@ -109,7 +109,7 @@ jobs:
                       item.set(android + "exported", "true" if item.find("intent-filter") is not None else "false")
           tree.write(manifest, encoding="utf-8", xml_declaration=True)
           text = gradle.read_text()
-          for expected in ('compileSdk = 34', 'minSdk = 24', 'targetSdk = 34', 'buildToolsVersion = "34.0.0"'):
+          for expected in ('compileSdk = 36', 'minSdk = 24', 'targetSdk = 34', 'buildToolsVersion = "36.0.0"'):
               if expected not in text:
                   raise SystemExit("Gradle configuration verification failed: " + expected)
           print("PASS: Android 14 app configuration and manifest.")
@@ -135,7 +135,7 @@ jobs:
             echo "sdkmanager --licenses failed with exit code $license_status."
             exit "$license_status"
           fi
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Audit native Android source for API 31-34 requirements
         run: |
@@ -269,7 +269,7 @@ jobs:
           convert -background none assets/branding/skynest_launcher.svg -resize 1024x1024 assets/branding/skynest_launcher.png
           dart run flutter_launcher_icons
 
-      - name: Align Flutter Android plugin compile SDK to API 34
+      - name: Align Flutter Android plugin compile SDK to API 36
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -291,7 +291,7 @@ jobs:
                   stripped = line.lstrip()
                   indent = line[:len(line) - len(stripped)]
                   if stripped.startswith(("compileSdkVersion", "compileSdk ", "compileSdk=")):
-                      output.append(indent + ("compileSdk = 34" if gradle_file.name.endswith(".gradle.kts") else "compileSdkVersion 34"))
+                      output.append(indent + ("compileSdk = 36" if gradle_file.name.endswith(".gradle.kts") else "compileSdkVersion 36"))
                       changed = True
                   else:
                       output.append(line)
@@ -300,7 +300,7 @@ jobs:
                   patched.append(str(gradle_file))
           for auth_file in auth_files:
               if not any(line.strip() == "compileSdkVersion 34" for line in auth_file.read_text().splitlines()):
-                  raise SystemExit(f"firebase_auth compile SDK was not set to 34: {auth_file}")
+                  raise SystemExit(f"firebase_auth compile SDK was not set to 36: {auth_file}")
           print(f"Patched {len(patched)} Android plugin Gradle files.")
           PY
 
