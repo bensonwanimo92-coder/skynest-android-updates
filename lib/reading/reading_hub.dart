@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart' as pdf;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'bounded_response.dart';
 import 'reading_hub_storage.dart';
 import 'latest_request_guard.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -41,6 +42,14 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
     super.initState();
     _storage = ReadingHubStorage(directoryProvider: widget.offlineDirectoryProvider);
     _refreshOfflineFiles();
+  }
+
+  @override
+  void dispose() {
+    _searchRequestGuard.invalidate();
+    _search.dispose();
+    _http.close(force: true);
+    super.dispose();
   }
 
   Future<void> _refreshOfflineFiles() async {
@@ -242,7 +251,8 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException('Reading search returned HTTP ${response.statusCode}.');
       }
-      final body = await response.transform(utf8.decoder).join();
+      final bodyBytes = await readBoundedBytes(response, maxBytes: 1024 * 1024);
+      final body = utf8.decode(bodyBytes);
       final decoded = jsonDecode(body) as Map<String, dynamic>;
       final docs = (decoded['docs'] as List<dynamic>? ?? <dynamic>[])
           .whereType<Map<String, dynamic>>()
@@ -253,6 +263,12 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
         _results = docs;
         _searching = false;
         _searchError = docs.isEmpty ? 'No matching titles found. Try another title, author or subject.' : null;
+      });
+    } on ResponseSizeLimitException {
+      if (!mounted || !_searchRequestGuard.isCurrent(requestToken)) return;
+      setState(() {
+        _searching = false;
+        _searchError = 'Catalogue response was too large. Try a narrower search.';
       });
     } catch (error) {
       if (!mounted || !_searchRequestGuard.isCurrent(requestToken)) return;
