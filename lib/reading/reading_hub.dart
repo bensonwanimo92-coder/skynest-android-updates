@@ -392,13 +392,6 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF could not be saved to this device. Check available storage and try again.')));
     } finally { if (mounted) setState(() => _downloading = false); }
   }
-  @override
-  void dispose() {
-    _searchRequestGuard.invalidate();
-    _search.dispose();
-    _http.close(force: true);
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
