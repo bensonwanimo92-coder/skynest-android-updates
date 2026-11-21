@@ -56,12 +56,20 @@ class SkyNestMpesaService {
 
   static Future<Map<String, dynamic>> saveLandlordAccount({
     required String accountType,
+    required String registeredBusinessName,
     required String businessShortCode,
     String tillNumber = '',
+    required String consumerKey,
+    required String consumerSecret,
+    required String passkey,
   }) => _call('/api/mpesa/account', method: 'POST', body: {
     'accountType': accountType,
+    'registeredBusinessName': registeredBusinessName,
     'businessShortCode': businessShortCode,
     'tillNumber': tillNumber,
+    'consumerKey': consumerKey,
+    'consumerSecret': consumerSecret,
+    'passkey': passkey,
   });
 
   static Future<Map<String, dynamic>> verifyLandlordAccount(String phone) =>
