@@ -31,13 +31,18 @@ class ReadingHubStorage {
 
   Future<List<File>> listPdfs() async {
     final root = await directory();
-    final files = root
-        .listSync(followLinks: false)
+    final entities = await root.list(followLinks: false).toList();
+    final files = entities
         .whereType<File>()
         .where((file) => file.path.toLowerCase().endsWith('.pdf'))
         .toList();
-    files.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
-    return files;
+    // Read timestamps asynchronously so shelf refresh never blocks the UI
+    // thread with filesystem metadata calls.
+    final entries = await Future.wait(
+      files.map((file) async => (file, await file.lastModified())),
+    );
+    entries.sort((a, b) => b.$2.compareTo(a.$2));
+    return entries.map((entry) => entry.$1).toList();
   }
 
   bool _hasPdfHeader(Uint8List bytes) {
