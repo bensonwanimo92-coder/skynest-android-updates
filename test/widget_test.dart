@@ -35,7 +35,7 @@ void main() {
 
   testWidgets('Reading Hub exposes original booklets and an empty offline shelf', (tester) async {
     await tester.pumpWidget(readingHub());
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
     expect(find.text('Reading & Media Hub'), findsOneWidget);
 
     // The offline shelf is intentionally above the catalogue and visible
@@ -46,9 +46,9 @@ void main() {
 
   testWidgets('Reading Hub lists a saved booklet for offline reading', (tester) async {
     File('${offlineDirectory.path}${Platform.pathSeparator}the_lighthouse_garden.pdf')
-        .writeAsBytesSync(<int>[37, 80, 68, 70]);
+        .writeAsBytesSync(<int>[37, 80, 68, 70, 45, 49, 46, 52, 10]);
     await tester.pumpWidget(readingHub());
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
 
     final savedBooklet = find.widgetWithText(ListTile, 'The Lighthouse Garden');
     expect(savedBooklet, findsOneWidget);
