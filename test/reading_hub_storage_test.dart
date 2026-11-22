@@ -5,6 +5,29 @@ import 'package:chuka/reading/reading_hub_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('offline shelf lists PDFs newest first without including other files', () async {
+    final root = await Directory.systemTemp.createTemp('skynest-reading-order-');
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    final older = File('${root.path}${Platform.pathSeparator}older.pdf');
+    final newer = File('${root.path}${Platform.pathSeparator}newer.pdf');
+    await older.writeAsBytes(Uint8List.fromList('%PDF-older'.codeUnits));
+    await newer.writeAsBytes(Uint8List.fromList('%PDF-newer'.codeUnits));
+    final olderTime = DateTime.utc(2020, 1, 1);
+    final newerTime = DateTime.utc(2021, 1, 1);
+    await older.setLastModified(olderTime);
+    await newer.setLastModified(newerTime);
+    await File('${root.path}${Platform.pathSeparator}notes.txt').writeAsString('not a PDF');
+
+    final storage = ReadingHubStorage(directoryProvider: () async => root);
+    final files = await storage.listPdfs();
+
+    expect(files.map((file) => file.uri.pathSegments.last).toList(),
+        <String>['newer.pdf', 'older.pdf']);
+  });
+
+
   test('saved PDFs persist and only PDF files appear in the offline shelf', () async {
     final root = await Directory.systemTemp.createTemp('skynest-reading-storage-');
     addTearDown(() async {
