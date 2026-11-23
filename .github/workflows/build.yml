@@ -11,6 +11,7 @@ on:
       - feature/skynest-mpesa-cloudflare
       - feature/skynest-combined-upgrade
       - upgrade/mpesa-on-build-5506
+      - upgrade/build-5532-authorized-ui
     tags:
       - 'v*'
   workflow_dispatch:
