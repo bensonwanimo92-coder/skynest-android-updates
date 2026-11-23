@@ -33,7 +33,12 @@ void main() {
       // Flutter's scheduled frames so the shelf state is rendered.
       await Future<void>.delayed(const Duration(milliseconds: 500));
     });
-    await tester.pumpAndSettle();
+    // Reading Hub includes continuously animated catalogue controls. Do not
+    // use pumpAndSettle here: it waits for every animation to stop and times
+    // out even after the offline filesystem request has completed.
+    for (var frame = 0; frame < 5; frame++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
   }
 
   testWidgets('SkyNest root widget builds the application shell', (tester) async {
