@@ -23,6 +23,16 @@ void main() {
     home: ReadingHubScreen(offlineDirectoryProvider: () async => offlineDirectory),
   );
 
+  Future<void> pumpReadingHubAndWaitForShelf(WidgetTester tester) async {
+    await tester.pumpWidget(readingHub());
+    // ReadingHubStorage.listPdfs performs real filesystem I/O. A fake-clock
+    // pump alone does not reliably wait for directory enumeration and metadata.
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    });
+    await tester.pump();
+  }
+
   testWidgets('SkyNest root widget builds the application shell', (tester) async {
     // Remote photo backdrops are a production enhancement, not a dependency
     // of the application shell. Keep this smoke test fully offline.
@@ -34,8 +44,7 @@ void main() {
   });
 
   testWidgets('Reading Hub exposes original booklets and an empty offline shelf', (tester) async {
-    await tester.pumpWidget(readingHub());
-    await tester.pump(const Duration(milliseconds: 400));
+    await pumpReadingHubAndWaitForShelf(tester);
     expect(find.text('Reading & Media Hub'), findsOneWidget);
 
     // The offline shelf is intentionally above the catalogue and visible
