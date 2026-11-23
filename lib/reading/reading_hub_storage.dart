@@ -20,10 +20,10 @@ class ReadingHubStorage {
             '${(await getApplicationDocumentsDirectory()).path}'
             '${Platform.pathSeparator}SkyNest Reading',
           );
-    // Create the app-private shelf directory before the asynchronous listing
-    // and PDF operations.
-    if (!target.existsSync()) {
-      target.createSync(recursive: true);
+    // Keep directory preparation asynchronous so shelf refreshes do not block
+    // the UI thread on filesystem metadata or directory creation.
+    if (!await target.exists()) {
+      await target.create(recursive: true);
     }
     return target;
   }
