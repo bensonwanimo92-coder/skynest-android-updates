@@ -1065,6 +1065,104 @@ String _menuImageFor(String title) {
   return _skynestPropertyPhotos[0];
 }
 
+
+class SkyNestAboutScreen extends StatefulWidget {
+  const SkyNestAboutScreen({super.key});
+  @override
+  State<SkyNestAboutScreen> createState() => _SkyNestAboutScreenState();
+}
+
+class _SkyNestAboutScreenState extends State<SkyNestAboutScreen> {
+  final ScrollController _creditsController = ScrollController();
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_creditsController.hasClients) return;
+      final distance = _creditsController.position.maxScrollExtent;
+      if (distance <= 0) return;
+      _creditsController.animateTo(
+        distance,
+        duration: Duration(milliseconds: (distance * 42).round().clamp(45000, 100000)),
+        curve: Curves.linear,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _creditsController.dispose();
+    super.dispose();
+  }
+
+  Widget _creditText(String text, {double size = 18, Color color = Colors.white, bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 26),
+      child: Text(text, textAlign: TextAlign.center,
+        style: TextStyle(color: color, fontSize: size, height: 1.65,
+          fontWeight: bold ? FontWeight.w800 : FontWeight.w400,
+          letterSpacing: bold ? 1.5 : 0.35)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF05070C),
+      appBar: AppBar(title: const Text('About SkyNest'),
+        backgroundColor: const Color(0xFF05070C), foregroundColor: Colors.white),
+      body: Stack(children: [
+        const Positioned.fill(child: DecoratedBox(
+          decoration: BoxDecoration(gradient: RadialGradient(
+            center: Alignment.topCenter, radius: 1.25,
+            colors: [Color(0xFF17243A), Color(0xFF05070C)])))),
+        Positioned.fill(child: ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            begin: Alignment.topCenter, end: Alignment.bottomCenter,
+            colors: [Colors.transparent, Colors.white, Colors.white, Colors.transparent],
+            stops: [0, 0.12, 0.86, 1]).createShader(bounds),
+          blendMode: BlendMode.dstIn,
+          child: SingleChildScrollView(controller: _creditsController,
+            child: Column(children: [
+              SizedBox(height: MediaQuery.of(context).size.height * 0.72),
+              _creditText('A STORY OF VISION AND PERSEVERANCE', size: 14, color: const Color(0xFFD9BD83), bold: true),
+              const SizedBox(height: 24),
+              _creditText('SKYNEST', size: 38, color: const Color(0xFFE7CC91), bold: true),
+              _creditText('Property management, built with purpose.', size: 17),
+              const SizedBox(height: 52),
+              _creditText('FOUNDER', size: 13, color: const Color(0xFFD9BD83), bold: true),
+              _creditText('BENSON WANIMO', size: 27, bold: true),
+              _creditText('Email: bensonwanimo92@gmail.com', size: 16),
+              _creditText('Phone: 0746941942', size: 16),
+              const SizedBox(height: 42),
+              _creditText('A SPECIAL DEDICATION', size: 13, color: const Color(0xFFD9BD83), bold: true),
+              _creditText('Inspired by Dad,\nWilson Kundu Biketi.', size: 22, bold: true),
+              const SizedBox(height: 48),
+              _creditText('THE JOURNEY', size: 14, color: const Color(0xFFD9BD83), bold: true),
+              _creditText('SkyNest began as an idea: to make property management clearer, more useful and more dependable. Turning that idea into a working product has demanded patience, learning and persistence.', size: 18),
+              _creditText('Along the way, the work has faced failed builds, Android compatibility challenges, installation issues, complicated integrations, tests that needed correction and upgrades that took longer than expected.', size: 18),
+              _creditText('Some setbacks meant returning to the code, tracing the cause, correcting mistakes and checking that earlier improvements remained protected. Progress was not always quick, and not every attempt worked the first time.', size: 18),
+              _creditText('Every challenge offered a lesson: reliable software is not measured only by the number of features added. It is measured by whether those features work, whether users can trust them and whether improvements are delivered responsibly.', size: 18),
+              _creditText('The SkyNest journey is still unfolding. Its story is one of ambition, honest learning, resilience and the determination to keep moving forward.', size: 18),
+              const SizedBox(height: 46),
+              _creditText('A MESSAGE TO KEEP GOING', size: 14, color: const Color(0xFFD9BD83), bold: true),
+              _creditText('Great things are rarely built without struggle. A difficult chapter does not mean the story is over. Learn from the setbacks, make the next correction, and keep building with purpose.', size: 21, bold: true),
+              _creditText('Keep building. Keep learning. Keep believing.', size: 20, color: const Color(0xFFE7CC91), bold: true),
+              const SizedBox(height: 60),
+              _creditText('SKYNEST', size: 34, color: const Color(0xFFE7CC91), bold: true),
+              _creditText('A vision strengthened by challenges.\nA future built with determination.', size: 17),
+              const SizedBox(height: 80),
+            ])),
+        )),
+      ]),
+    );
+  }
+}
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
   @override
@@ -1146,76 +1244,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Future<void> _previewModule(BuildContext context, _MenuItem item) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-      ),
-      builder: (sheetContext) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 42,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: Theme.of(sheetContext).colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
-            const SizedBox(height: 22),
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 25,
-                  backgroundColor: item.color.withOpacity(0.14),
-                  child: Icon(item.icon, color: item.color, size: 27),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    item.title,
-                    style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(
-              _modulePreviewDescription(item.title),
-              style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
-                height: 1.45,
-              ),
-            ),
-            const SizedBox(height: 22),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () {
-                  Navigator.pop(sheetContext);
-                  _open(context, item);
-                },
-                icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                label: const Text('Continue to section'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final items = <_MenuItem>[];
@@ -1240,6 +1268,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Achievements', Icons.emoji_events_outlined, Colors.amber, const AchievementsScreen()),
         _MenuItem('Pamphlets', Icons.menu_book_outlined, Colors.brown, const PamphletsScreen()),
         _MenuItem('Reading & media hub', Icons.auto_stories_rounded, Colors.teal, const ReadingHubScreen()),
+        _MenuItem('About SkyNest', Icons.movie_creation_outlined, Colors.amber, const SkyNestAboutScreen()),
         _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
         _MenuItem('Premium', Icons.workspace_premium, Colors.deepOrange, const PremiumScreen()),
       ]);
@@ -1254,6 +1283,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
         _MenuItem('Tenant portal', Icons.person_outline, Colors.cyan, const TenantPortalScreen()),
         _MenuItem('Reading & media hub', Icons.auto_stories_rounded, Colors.teal, const ReadingHubScreen()),
+        _MenuItem('About SkyNest', Icons.movie_creation_outlined, Colors.amber, const SkyNestAboutScreen()),
         _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
       ]);
     } else {
@@ -1265,6 +1295,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _MenuItem('Notices', Icons.campaign_outlined, Colors.purple, const NoticesScreen()),
         _MenuItem('Pay rent', Icons.phone_android, Colors.green, const TenantPayScreen()),
         _MenuItem('Reading & media hub', Icons.auto_stories_rounded, Colors.teal, const ReadingHubScreen()),
+        _MenuItem('About SkyNest', Icons.movie_creation_outlined, Colors.amber, const SkyNestAboutScreen()),
         _MenuItem('Themes', Icons.palette_outlined, Colors.pink, const ThemesScreen()),
       ]);
     }
@@ -1567,7 +1598,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         onTap: () async {
                                           await SkyNestFeedback.playTap();
                                           if (!context.mounted) return;
-                                          await _previewModule(context, item);
+                                          _open(context, item);
                                         },
                                         child: Stack(
                                           fit: StackFit.expand,
