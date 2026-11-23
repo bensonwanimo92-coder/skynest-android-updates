@@ -1087,7 +1087,7 @@ class _SkyNestAboutScreenState extends State<SkyNestAboutScreen> {
       if (distance <= 0) return;
       _creditsController.animateTo(
         distance,
-        duration: Duration(milliseconds: (distance * 42).round().clamp(45000, 100000)),
+        duration: Duration(milliseconds: (distance * 42).round().clamp(45000, 100000).toInt()),
         curve: Curves.linear,
       );
     });
