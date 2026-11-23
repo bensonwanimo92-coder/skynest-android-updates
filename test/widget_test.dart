@@ -31,8 +31,12 @@ void main() {
       // File listing and last-modified metadata can take longer on hosted CI
       // than a short fixed wait. Allow the real IO to complete, then settle
       // Flutter's scheduled frames so the shelf state is rendered.
-      await Future<void>.delayed(const Duration(milliseconds: 500));
+      // Hosted runners can be heavily loaded; allow filesystem enumeration to
+      // complete before advancing the widget test's fake clock.
+      await Future<void>.delayed(const Duration(seconds: 2));
     });
+    // Flush the completion callback after real filesystem IO has finished.
+    await tester.pump();
     // Reading Hub includes continuously animated catalogue controls. Do not
     // use pumpAndSettle here: it waits for every animation to stop and times
     // out even after the offline filesystem request has completed.
