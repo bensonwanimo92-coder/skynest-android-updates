@@ -56,8 +56,7 @@ void main() {
   testWidgets('Reading Hub lists a saved booklet for offline reading', (tester) async {
     File('${offlineDirectory.path}${Platform.pathSeparator}the_lighthouse_garden.pdf')
         .writeAsBytesSync(<int>[37, 80, 68, 70]);
-    await tester.pumpWidget(readingHub());
-    await tester.pump(const Duration(milliseconds: 400));
+    await pumpReadingHubAndWaitForShelf(tester);
 
     final savedBooklet = find.widgetWithText(ListTile, 'The Lighthouse Garden');
     expect(savedBooklet, findsOneWidget);
@@ -65,8 +64,7 @@ void main() {
   });
 
   testWidgets('Reading Hub category chips reveal the matching booklet shelf', (tester) async {
-    await tester.pumpWidget(readingHub());
-    await tester.pump(const Duration(milliseconds: 400));
+    await pumpReadingHubAndWaitForShelf(tester);
 
     final historyChip = find.widgetWithText(ChoiceChip, 'History');
     await tester.scrollUntilVisible(historyChip, 240, scrollable: find.byType(Scrollable).first);
