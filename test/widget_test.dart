@@ -28,9 +28,12 @@ void main() {
     // ReadingHubStorage.listPdfs performs real filesystem I/O. A fake-clock
     // pump alone does not reliably wait for directory enumeration and metadata.
     await tester.runAsync(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 150));
+      // File listing and last-modified metadata can take longer on hosted CI
+      // than a short fixed wait. Allow the real IO to complete, then settle
+      // Flutter's scheduled frames so the shelf state is rendered.
+      await Future<void>.delayed(const Duration(milliseconds: 500));
     });
-    await tester.pump();
+    await tester.pumpAndSettle();
   }
 
   testWidgets('SkyNest root widget builds the application shell', (tester) async {
