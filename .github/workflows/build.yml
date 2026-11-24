@@ -6,6 +6,13 @@ on:
       - main
       - integration/roles-on-current-main
       - release/5533-corrected-from-5532
+    paths:
+      - "lib/**"
+      - "test/**"
+      - "assets/**"
+      - "pubspec.yaml"
+      - "analysis_options.yaml"
+      - "android/**"
     tags:
       - 'v*'
   workflow_dispatch:
