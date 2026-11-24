@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - integration/roles-on-current-main
+      - release/5533-corrected-from-5532
     tags:
       - 'v*'
   workflow_dispatch:
