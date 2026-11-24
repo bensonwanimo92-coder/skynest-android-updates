@@ -388,6 +388,7 @@ async function requestStkPush(request, env) {
     throw new HttpError("Only an active tenant or caretaker linked to a landlord can pay rent.", 403);
   }
 
+  // Do not infer a rent home from caretakerIds: only assignedTenantId proves the caretaker personally rents it.
   // A caretaker may pay only for the home they personally rent, never a house
   // they manage. The landlord must link that home through rentHouseId/houseId.
   const houseId = String(role === "caretaker"
