@@ -1,5 +1,5 @@
 import { validateSuccessfulCallback } from "./payment_validation.js";
-import { validateAiRequest, safeAiEnvelope, AiRequestError } from "./ai_core_contract.js";
+import { validateAiRequest, safeAiEnvelope, assertAiRoleFeature } from "./ai_core_contract.js";
 
 // SkyNest M-Pesa Cloudflare Worker.
 // Production-only per-landlord Daraja STK Push. Live merchant credentials and Safaricom onboarding are required.
@@ -579,11 +579,6 @@ async function settleCallback(env, body, knownPending = null) {
 
 // Role-scoped SkyNest AI. Context is fetched server-side from the authenticated
 // user's own profile; client-supplied IDs and role claims are never trusted.
-const AI_ROLE_FEATURES = Object.freeze({
-  landlord: new Set(["landlord", "ledger_reports", "plans", "inventory", "reading"]),
-  caretaker: new Set(["caretaker", "ledger_reports", "plans", "inventory", "reading"]),
-  tenant: new Set(["tenant", "plans", "reading"]),
-});
 function aiProfileContext(profile) {
   const allowed = ["displayName", "role", "houseNo", "rentAmount", "rentDueDay",
     "propertyType", "occupation", "preferredLanguage", "currency"];
@@ -619,11 +614,7 @@ async function requestSkyNestAi(request, env) {
   if (profileResult.status === 404) throw new HttpError("Your SkyNest profile was not found.", 403);
   if (profileResult.status < 200 || profileResult.status >= 300) throw new HttpError("Could not load your SkyNest profile.", 502);
   const profile = decodeFields(profileResult.data.fields);
-  const role = String(profile.role || "").trim().toLowerCase();
-  const permitted = AI_ROLE_FEATURES[role];
-  if (!permitted || !permitted.has(input.feature) || String(profile.status || "active").toLowerCase() !== "active") {
-    throw new HttpError("This AI assistant is not available for your account role or status.", 403);
-  }
+  const role = assertAiRoleFeature(profile.role, input.feature, profile.status || "active");
   const context = aiProfileContext(profile);
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
