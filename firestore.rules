@@ -17,6 +17,12 @@ service cloud.firestore {
         && request.resource.data.createdBy == request.auth.uid;
     }
 
+    function isAssignedLandlord() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.landlordId
+          == resource.data.landlordId;
+    }
+
     // User profile documents and houses stored beneath each user.
     match /users/{userId} {
       allow read, write: if signedIn()
@@ -29,11 +35,37 @@ service cloud.firestore {
     }
 
     // Top-level houses collection used by the current Flutter app.
-    // HousesScreen queries where('createdBy', isEqualTo: currentUser.uid).
     match /houses/{houseId} {
       allow create: if ownsNewRecord();
       allow read, delete: if ownsExistingRecord();
       allow update: if ownsExistingRecord() && ownsNewRecord();
+    }
+
+    // Caretakers submit proposed houses for their assigned landlord to review.
+    // This is a separate queue: an offer does not become a live house automatically.
+    match /house_offers/{offerId} {
+      allow create: if signedIn()
+        && request.resource.data.submittedBy == request.auth.uid
+        && request.resource.data.landlordId is string
+        && request.resource.data.landlordId.size() > 0
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.landlordId
+          == request.resource.data.landlordId
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasAll(['submittedBy', 'landlordId', 'status']);
+
+      allow read: if signedIn()
+        && (resource.data.submittedBy == request.auth.uid
+          || resource.data.landlordId == request.auth.uid);
+
+      allow update: if signedIn()
+        && resource.data.landlordId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'reviewedAt', 'reviewNote', 'reviewedBy'])
+        && request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.reviewedBy == request.auth.uid;
+
+      allow delete: if signedIn()
+        && resource.data.landlordId == request.auth.uid;
     }
 
     match /tenants/{recordId} {
@@ -56,7 +88,6 @@ service cloud.firestore {
 
     match /subscriptions/{userId} {
       allow read: if signedIn() && request.auth.uid == userId;
-      // Premium status is written only by a trusted administrator/server.
       allow write: if false;
     }
   }
