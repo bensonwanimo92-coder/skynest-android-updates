@@ -132,10 +132,7 @@ jobs:
               if count != 1:
                   raise SystemExit("Could not pin Kotlin Gradle Plugin declaration.")
           else:
-              s = s.replace(
-                  'id("com.android.application") version "8.9.1" apply false',
-                  'id("com.android.application") version "8.9.1" apply false\n    ' + kotlin_decl,
-                  1)
+              s = s.replace(app_decl, app_decl + "\n    " + kotlin_decl, 1)
           settings.write_text(s)
 
           a = app.read_text()
