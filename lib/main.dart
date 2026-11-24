@@ -1178,20 +1178,15 @@ class SkyNestAiCentreScreen extends StatefulWidget {
 class _SkyNestAiCentreScreenState extends State<SkyNestAiCentreScreen> {
   final TextEditingController _question = TextEditingController();
   String _feature = 'landlord';
+  String _role = 'landlord';
   String _answer = '';
   bool _busy = false;
   String? _error;
 
   List<String> get _features {
-    final role = FirebaseAuth.instance.currentUser == null ? '' : _knownRole;
-    if (role == 'tenant') return const ['tenant', 'plans', 'reading'];
-    if (role == 'caretaker') return const ['caretaker', 'ledger_reports', 'plans', 'inventory', 'reading'];
+    if (_role == 'tenant') return const ['tenant', 'plans', 'reading'];
+    if (_role == 'caretaker') return const ['caretaker', 'ledger_reports', 'plans', 'inventory', 'reading'];
     return const ['landlord', 'ledger_reports', 'plans', 'inventory', 'reading'];
-  }
-
-  String get _knownRole {
-    // The server remains authoritative; this value only selects the UI options.
-    return _feature == 'tenant' ? 'tenant' : 'landlord';
   }
 
   @override
@@ -1208,6 +1203,7 @@ class _SkyNestAiCentreScreenState extends State<SkyNestAiCentreScreen> {
       final role = doc.data()?['role']?.toString() ?? 'tenant';
       if (!mounted) return;
       setState(() {
+        _role = role;
         _feature = role == 'tenant' ? 'tenant' : role == 'caretaker' ? 'caretaker' : 'landlord';
       });
     } catch (_) {}
