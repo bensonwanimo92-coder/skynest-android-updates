@@ -605,7 +605,7 @@ function aiSystemPrompt(feature, role, profile) {
   ].join("\n");
 }
 
-async function aiQueryOwnedRecords(env, collection, field, uid, limit = 20) {
+async function aiQueryOwnedRecords(env, collection, field, uid, limit = 20, op = "EQUAL") {
   if (!env.FIREBASE_PROJECT_ID) throw new HttpError("Firebase project ID is not configured.", 500);
   const token = await googleAccessToken(env);
   const url = "https://firestore.googleapis.com/v1/projects/" +
@@ -616,7 +616,7 @@ async function aiQueryOwnedRecords(env, collection, field, uid, limit = 20) {
     body: JSON.stringify({
       structuredQuery: {
         from: [{ collectionId: collection }],
-        where: { fieldFilter: { field: { fieldPath: field }, op: "EQUAL", value: { stringValue: uid } } },
+        where: { fieldFilter: { field: { fieldPath: field }, op, value: { stringValue: uid } } },
         limit,
       },
     }),
@@ -646,6 +646,18 @@ async function aiBusinessContext(env, uid, role, feature, profile) {
       paidRecords: payments.filter(p => String(p.status || "").toLowerCase() === "paid").length,
       paidAmountKes: paidTotal,
     };
+  } else if (role === "caretaker" && feature === "caretaker") {
+    const houses = await aiQueryOwnedRecords(env, "houses", "caretakerIds", uid, 30, "ARRAY_CONTAINS");
+    context.assignedPropertySummary = {
+      assignedHousesReturned: houses.length,
+      occupied: houses.filter(h => Boolean(h.assignedTenantId) || h.isOccupied === true).length,
+      vacant: houses.filter(h => !h.assignedTenantId && h.isOccupied !== true).length,
+    };
+    const landlordId = String(profile.landlordId || "");
+    if (landlordId) {
+      const complaints = await aiQueryOwnedRecords(env, "complaints", "landlordId", landlordId, 30);
+      context.complaintSummary = { landlordComplaintRecordsReturned: complaints.length };
+    }
   } else if (role === "tenant" && feature === "tenant") {
     const houseId = String(profile.houseId || "");
     if (houseId && /^[A-Za-z0-9_-]{1,160}$/.test(houseId)) {
@@ -660,6 +672,15 @@ async function aiBusinessContext(env, uid, role, feature, profile) {
         }
       }
     }
+    const [payments, complaints] = await Promise.all([
+      aiQueryOwnedRecords(env, "payments", "tenantId", uid, 20),
+      aiQueryOwnedRecords(env, "complaints", "createdBy", uid, 20),
+    ]);
+    context.ownRecordsSummary = {
+      paymentRecordsReturned: payments.length,
+      paidPaymentRecords: payments.filter(p => String(p.status || "").toLowerCase() === "paid").length,
+      complaintRecordsReturned: complaints.length,
+    };
   }
   return context;
 }
