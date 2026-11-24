@@ -689,7 +689,7 @@ export default {
       }
       return json({ error: "Not found" }, 404);
     } catch (error) {
-      const status = error instanceof HttpError ? error.status : 500;
+      const status = Number.isInteger(error?.status) ? error.status : 500;
       return json({ error: error?.message || "Payment service error." }, status);
     }
   },
