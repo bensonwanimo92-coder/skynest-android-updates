@@ -5,12 +5,16 @@ on:
     branches:
       - main
       - integration/roles-on-current-main
-      - integration/skynest-complete-release-candidate
-      - feature/skynest-control-centre
-      - feature/skynest-build-3409
-      - feature/skynest-mpesa-cloudflare
-      - feature/skynest-combined-upgrade
-      - upgrade/mpesa-on-build-5506
+      - release/5533-corrected-from-5532
+      - release/5537-verified-5532-upgrade
+    paths:
+      - "lib/**"
+      - "test/**"
+      - "assets/**"
+      - "pubspec.yaml"
+      - "analysis_options.yaml"
+      - "android/**"
+      - ".github/workflows/build.yml"
     tags:
       - 'v*'
   workflow_dispatch:
@@ -44,7 +48,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: '3.47.0'
+          flutter-version: '3.47.9'
           cache: true
 
       - name: Generate Android project files
@@ -129,10 +133,7 @@ jobs:
               if count != 1:
                   raise SystemExit("Could not pin Kotlin Gradle Plugin declaration.")
           else:
-              s = s.replace(
-                  'id("com.android.application") version "8.11.1" apply false',
-                  'id("com.android.application") version "8.11.1" apply false\n    ' + kotlin_decl,
-                  1)
+              s = s.replace(app_decl, app_decl + "\n    " + kotlin_decl, 1)
           settings.write_text(s)
 
           a = app.read_text()
@@ -146,17 +147,18 @@ jobs:
           w = wrapper.read_text()
           w, count = re.subn(
               r'(?m)^distributionUrl=.*$',
-              'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-bin.zip',
+              'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14-bin.zip',
               w, count=1)
           if count != 1:
-              raise SystemExit("Could not pin Gradle wrapper distribution to 8.14.3.")
+              raise SystemExit("Could not pin Gradle wrapper distribution to 8.14.")
           wrapper.write_text(w)
 
-          assert 'version "8.11.1"' in settings.read_text()
-          assert 'version "2.2.20"' in settings.read_text()
-          assert 'gradle-8.14.3-bin.zip' in wrapper.read_text()
+          assert 'id("com.android.application") version "8.11.1" apply false' in settings.read_text()
+          assert 'id("com.android.library") version "8.11.1" apply false' in settings.read_text()
+          assert 'id("org.jetbrains.kotlin.android") version "2.2.20" apply false' in settings.read_text()
+          assert 'gradle-8.14-bin.zip' in wrapper.read_text()
           assert 'id("org.jetbrains.kotlin.android")' in app.read_text()
-          print("PASS: Flutter 3.47.0 + Android Gradle Plugin 8.11.1 / Gradle 8.14.3 / Kotlin Gradle Plugin 2.2.20 pinned.")
+          print("PASS: Flutter 3.47.9 + Android Gradle Plugin 8.11.1 / Gradle 8.14 / Kotlin Gradle Plugin 2.2.20 pinned.")
           PY
 
       - name: Enable core library desugaring for local notifications
@@ -269,7 +271,6 @@ jobs:
               "android.permission.POST_NOTIFICATIONS",
               "android.permission.READ_MEDIA_IMAGES",
               "android.permission.READ_MEDIA_VIDEO",
-              "android.permission.READ_MEDIA_AUDIO",
           ]
           present = {p.get(android + "name") for p in root.findall("uses-permission")}
           # Camera is optional at install time; voice calling remains available on devices without one.
@@ -697,7 +698,7 @@ jobs:
               print(f"Patched: {file}")
           PY
 
-      - name: Package APK for 32-bit and 64-bit ARM devices and resolve Flutter libapp duplicates
+      - name: Restrict APK native packaging to ARM64 and resolve Flutter libapp duplicate
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -714,18 +715,17 @@ jobs:
 
           config = '''    packaging {
                   jniLibs {
-                      // Resolve duplicate Flutter app libraries for both supported ARM ABIs.
+                      // Resolve only the duplicate ARM64 Flutter app library.
                       pickFirsts.add("lib/arm64-v8a/libapp.so")
-                      pickFirsts.add("lib/armeabi-v7a/libapp.so")
-                      // Keep both 64-bit and 32-bit ARM devices supported; exclude x86.
+                      // Keep the distributable APK ARM64-only.
+                      excludes.add("**/armeabi-v7a/**")
                       excludes.add("**/x86/**")
                       excludes.add("**/x86_64/**")
                   }
               }
 
           '''
-          if ('pickFirsts.add("lib/arm64-v8a/libapp.so")' not in source
-              or 'pickFirsts.add("lib/armeabi-v7a/libapp.so")' not in source):
+          if 'pickFirsts.add("lib/arm64-v8a/libapp.so")' not in source:
               source = source.replace(marker, marker + "\n" + config, 1)
               path.write_text(source)
 
@@ -736,7 +736,7 @@ jobs:
               raise SystemExit("Invalid literal backslash-n sequence found in generated Kotlin Gradle file.")
           required = (
               "pickFirsts.add(\"lib/arm64-v8a/libapp.so\")",
-              "pickFirsts.add(\"lib/armeabi-v7a/libapp.so\")",
+              "excludes.add(\"**/armeabi-v7a/**\")",
               "excludes.add(\"**/x86/**\")",
               "excludes.add(\"**/x86_64/**\")",
           )
@@ -745,7 +745,7 @@ jobs:
           missing = [item for item in required if item not in check]
           if missing:
               raise SystemExit("Native packaging configuration incomplete: " + ", ".join(missing))
-          print("PASS: valid Kotlin DSL packaging block; ARM64 and ARMv7 libapp duplicates resolved; x86 ABIs excluded.")
+          print("PASS: valid Kotlin DSL packaging block; ARM64 libapp duplicate resolved; non-ARM64 ABIs excluded.")
           PY
 
       - name: Set up Shorebird
@@ -774,18 +774,9 @@ jobs:
             echo "::error::GITHUB_RUN_NUMBER is not a valid integer."
             exit 1
           fi
-          if [ "${GITHUB_REF:-}" = "refs/heads/feature/skynest-control-centre" ]; then
-            build_number=$((3000 + run_number))
-            echo "Feature-branch validation build number: $build_number"
-            echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # All distributable SkyNest APKs must upgrade the known-good installed
-          # build 4415. Branch-local counters previously produced 2445/2446,
-          # which Android rejects as downgrades on devices with 4415.
-          build_number=$((5000 + run_number))
-          # Installed customer baseline is Build 5532. Never generate a downgrade.
-          if [ "$build_number" -le 5532 ]; then build_number=5533; fi
+          build_number=$((2000 + run_number))
+          # Installed production app is build 5532; never produce a downgrade.
+          if [ "$build_number" -lt 5535 ]; then build_number=5535; fi
           while RELEASE_LIST="$release_list" CANDIDATE="$build_number" python3 - <<'PY'
           import os
           import re
@@ -802,7 +793,7 @@ jobs:
           echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
 
       - name: Build Shorebird release APK
-        if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') && github.ref != 'refs/heads/integration/roles-on-current-main' && github.ref != 'refs/heads/feature/skynest-control-centre' && github.ref != 'refs/heads/feature/skynest-combined-upgrade' }}
+        if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') && github.ref != 'refs/heads/integration/roles-on-current-main' }}
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -812,19 +803,19 @@ jobs:
           SKYNEST_TURN_URL: ${{ secrets.SKYNEST_TURN_URL }}
           SKYNEST_TURN_USERNAME: ${{ secrets.SKYNEST_TURN_USERNAME }}
           SKYNEST_TURN_CREDENTIAL: ${{ secrets.SKYNEST_TURN_CREDENTIAL }}
-          SKYNEST_API_BASE_URL: ${{ vars.SKYNEST_API_BASE_URL }}
         run: |
-          # Package both 64-bit and 32-bit ARM variants so older/32-bit-only Android phones can install SkyNest.
-          # Set the ABI list once at the Shorebird release layer to avoid duplicate Flutter flags.
-          shorebird release android --artifact apk --target-platform android-arm,android-arm64 --flutter-version=3.47.0 -- \
+          # Set the Android ABI once at the Shorebird release layer.
+          # Forwarding the same --target-platform flag to Flutter duplicates
+          # arm64-v8a/libapp.so in the generated Gradle copy task.
+          shorebird release android --artifact apk --target-platform android-arm,android-arm64 --flutter-version=3.47.9 -- \
             --build-name=1.1.3 --build-number="$BUILD_NUMBER" \
             --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" \
             --dart-define=SKYNEST_TURN_USERNAME="$SKYNEST_TURN_USERNAME" \
             --dart-define=SKYNEST_TURN_CREDENTIAL="$SKYNEST_TURN_CREDENTIAL" \
-            --dart-define=SKYNEST_API_BASE_URL="$SKYNEST_API_BASE_URL"
+            --android-skip-build-dependency-validation --verbose
 
       - name: Build integration APK without publishing a Shorebird release
-        if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') && (github.ref == 'refs/heads/integration/roles-on-current-main' || github.ref == 'refs/heads/feature/skynest-control-centre' || github.ref == 'refs/heads/feature/skynest-combined-upgrade') }}
+        if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') && github.ref == 'refs/heads/integration/roles-on-current-main' }}
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -833,15 +824,13 @@ jobs:
           SKYNEST_TURN_URL: ${{ secrets.SKYNEST_TURN_URL }}
           SKYNEST_TURN_USERNAME: ${{ secrets.SKYNEST_TURN_USERNAME }}
           SKYNEST_TURN_CREDENTIAL: ${{ secrets.SKYNEST_TURN_CREDENTIAL }}
-          SKYNEST_API_BASE_URL: ${{ vars.SKYNEST_API_BASE_URL }}
         run: |
           flutter build apk --release --target-platform android-arm,android-arm64 \
             --android-skip-build-dependency-validation --verbose \
             --build-name=1.1.3 --build-number="$BUILD_NUMBER" \
             --dart-define=SKYNEST_TURN_URL="$SKYNEST_TURN_URL" \
             --dart-define=SKYNEST_TURN_USERNAME="$SKYNEST_TURN_USERNAME" \
-            --dart-define=SKYNEST_TURN_CREDENTIAL="$SKYNEST_TURN_CREDENTIAL" \
-            --dart-define=SKYNEST_API_BASE_URL="$SKYNEST_API_BASE_URL"
+            --dart-define=SKYNEST_TURN_CREDENTIAL="$SKYNEST_TURN_CREDENTIAL"
 
 
       - name: Publish SkyNest surprise OTA patch
@@ -883,14 +872,14 @@ jobs:
           APK="build/app/outputs/flutter-apk/app-release.apk"
           APK_BYTES="$(stat -c '%s' "$APK")"
           APK_MB="$((APK_BYTES / 1024 / 1024))"
-          echo "Multi-ABI ARM release APK size: ${APK_MB} MB"
+          echo "Multi-ABI release APK size: ${APK_MB} MB"
           if [ "$APK_BYTES" -gt $((85 * 1024 * 1024)) ]; then
-            echo "::warning::APK is above the former 85 MB guideline. Size is reported for visibility, not used as a build blocker."
+            echo "::warning::APK exceeds the former 85 MB guideline; size is reported only and does not block the release."
           fi
           ABIS="$(unzip -Z1 "$APK" | sed -n 's#^lib/\([^/]*\)/.*#\1#p' | sort -u | tr '\n' ' ')"
           echo "Native ABIs in APK: $ABIS"
-          if [[ "$ABIS" != *"arm64-v8a"* || "$ABIS" != *"armeabi-v7a"* ]]; then
-            echo "::error::Expected both arm64-v8a and armeabi-v7a APK libraries but found: $ABIS"
+          if [ "$ABIS" != "arm64-v8a armeabi-v7a " ] && [ "$ABIS" != "arm64-v8a armeabi-v7a" ]; then
+            echo "::error::Expected both arm64-v8a and armeabi-v7a libraries but found: $ABIS"
             exit 1
           fi
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
@@ -915,7 +904,7 @@ jobs:
   publish-release:
     name: Publish verified SkyNest GitHub release
     needs: build
-    if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && needs.build.outputs.firebase_configured == 'true' }}
+    if: ${{ !contains(github.event.head_commit.message || '', '[ota-only]') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release/5537-verified-5532-upgrade' || startsWith(github.ref, 'refs/tags/')) && needs.build.outputs.firebase_configured == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Download verified APK artifact
@@ -927,7 +916,7 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/integration/roles-on-current-main') && format('v1.1.3+{0}', needs.build.outputs.build_number) || github.ref_name }}
+          tag_name: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/integration/roles-on-current-main' || github.ref == 'refs/heads/release/5537-verified-5532-upgrade') && format('v1.1.3+{0}', needs.build.outputs.build_number) || github.ref_name }}
           name: SkyNest Android 1.1.3 (build ${{ needs.build.outputs.build_number }})
           target_commitish: ${{ github.sha }}
           files: dist/app-release.apk
