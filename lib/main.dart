@@ -1163,6 +1163,175 @@ class _SkyNestAboutScreenState extends State<SkyNestAboutScreen> {
   }
 }
 
+
+const String _skyNestAiBaseUrl = String.fromEnvironment(
+  'SKYNEST_API_BASE_URL',
+  defaultValue: 'https://mpesaapi.bensonwanimo92.workers.dev',
+);
+
+class SkyNestAiCentreScreen extends StatefulWidget {
+  const SkyNestAiCentreScreen({super.key});
+  @override
+  State<SkyNestAiCentreScreen> createState() => _SkyNestAiCentreScreenState();
+}
+
+class _SkyNestAiCentreScreenState extends State<SkyNestAiCentreScreen> {
+  final TextEditingController _question = TextEditingController();
+  String _feature = 'landlord';
+  String _answer = '';
+  bool _busy = false;
+  String? _error;
+
+  List<String> get _features {
+    final role = FirebaseAuth.instance.currentUser == null ? '' : _knownRole;
+    if (role == 'tenant') return const ['tenant', 'plans', 'reading'];
+    if (role == 'caretaker') return const ['caretaker', 'ledger_reports', 'plans', 'inventory', 'reading'];
+    return const ['landlord', 'ledger_reports', 'plans', 'inventory', 'reading'];
+  }
+
+  String get _knownRole {
+    // The server remains authoritative; this value only selects the UI options.
+    return _feature == 'tenant' ? 'tenant' : 'landlord';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoleDefault();
+  }
+
+  Future<void> _loadRoleDefault() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || !firebaseReady) return;
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final role = doc.data()?['role']?.toString() ?? 'tenant';
+      if (!mounted) return;
+      setState(() {
+        _feature = role == 'tenant' ? 'tenant' : role == 'caretaker' ? 'caretaker' : 'landlord';
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _ask() async {
+    final question = _question.text.trim();
+    if (question.isEmpty || _busy) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() => _error = 'Sign in to use SkyNest AI.');
+      return;
+    }
+    setState(() { _busy = true; _error = null; _answer = ''; });
+    HttpClient? client;
+    try {
+      final token = await user.getIdToken();
+      if (token == null || token.isEmpty) throw Exception('Your session needs refreshing. Sign in again.');
+      final uri = Uri.parse('$_skyNestAiBaseUrl/api/ai/ask');
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+      final request = await client.postUrl(uri);
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({'feature': _feature, 'question': question}));
+      final response = await request.close().timeout(const Duration(seconds: 45));
+      final text = await response.transform(utf8.decoder).join();
+      final data = jsonDecode(text) as Map<String, dynamic>;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(data['error']?.toString() ?? 'SkyNest AI could not answer right now.');
+      }
+      if (!mounted) return;
+      setState(() => _answer = data['answer']?.toString() ?? 'No answer was returned.');
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      client?.close(force: true);
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _question.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final choices = _features;
+    if (!choices.contains(_feature)) _feature = choices.first;
+    return Scaffold(
+      appBar: AppBar(title: const Text('SkyNest AI Centre')),
+      body: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.auto_awesome, size: 34),
+                const SizedBox(height: 8),
+                Text('Your property assistant', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 6),
+                const Text('Ask for explanations, planning help and practical guidance. AI suggestions do not make payments or change your records.'),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String>(
+            value: _feature,
+            decoration: const InputDecoration(labelText: 'Assistant'),
+            items: choices.map((value) => DropdownMenuItem(
+              value: value,
+              child: Text({
+                'landlord': 'Landlord AI',
+                'caretaker': 'Caretaker AI',
+                'tenant': 'Tenant AI',
+                'ledger_reports': 'Ledger & Reports AI',
+                'plans': 'Plans AI',
+                'inventory': 'Inventory AI',
+                'reading': 'Reading AI',
+              }[value] ?? value),
+            )).toList(),
+            onChanged: _busy ? null : (value) { if (value != null) setState(() { _feature = value; _answer = ''; }); },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _question,
+            minLines: 3,
+            maxLines: 6,
+            maxLength: 4000,
+            decoration: const InputDecoration(
+              labelText: 'What would you like help with?',
+              hintText: 'Ask a question about your SkyNest work...',
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _busy ? null : _ask,
+            icon: _busy
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.send_rounded),
+            label: Text(_busy ? 'Thinking...' : 'Ask SkyNest AI'),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ],
+          if (_answer.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: SelectableText(_answer, style: Theme.of(context).textTheme.bodyLarge),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
   @override
@@ -1247,6 +1416,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final items = <_MenuItem>[];
+    final aiCentre = _MenuItem('SkyNest AI Centre', Icons.auto_awesome, Colors.deepPurple, const SkyNestAiCentreScreen());
     if (userRole == 'landlord') {
       items.addAll([
         _MenuItem('Houses', Icons.home_work_outlined, Colors.orange, const HousesScreen()),
@@ -1301,6 +1471,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ]);
     }
 
+    items.add(aiCentre);
     items.add(_MenuItem('Discovery', Icons.explore_rounded, const Color(0xFF06B6D4), const MarketDiscoveryScreen()));
     items.add(_MenuItem('Sounds & vibration', Icons.volume_up_rounded, Colors.deepOrange, const SoundSettingsScreen()));
     items.add(_MenuItem('Security & fingerprint', Icons.fingerprint_rounded, Colors.blueGrey, const SecuritySettingsScreen()));
