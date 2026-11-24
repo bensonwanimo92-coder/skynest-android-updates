@@ -621,10 +621,13 @@ async function aiQueryOwnedRecords(env, collection, field, uid, limit = 20, op =
       },
     }),
   });
-  const result = await response.json().catch(() => []);
-  if (!response.ok || !Array.isArray(result)) return [];
-  return result.data
-    .filter(item => item.document && item.document.fields)
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !Array.isArray(result)) {
+    // Never turn a failed Firestore query into an empty/zero business summary.
+    throw new HttpError("A SkyNest data query failed. No financial or property totals were calculated.", 502);
+  }
+  return result
+    .filter(item => item && item.document && item.document.fields)
     .map(item => decodeFields(item.document.fields));
 }
 async function aiBusinessContext(env, uid, role, feature, profile) {
@@ -643,7 +646,11 @@ async function aiBusinessContext(env, uid, role, feature, profile) {
       aiQueryOwnedRecords(env, "houses", "createdBy", uid, 30),
       aiQueryOwnedRecords(env, "payments", "landlordId", uid, 30),
     ]);
-    const paidTotal = payments.filter(p => String(p.status || "").toLowerCase() === "paid")
+    const receivedPayments = payments.filter(p => {
+      const status = String(p.status || "").toLowerCase();
+      return status === "paid" || status.includes("received");
+    });
+    const paidTotal = receivedPayments
       .reduce((sum, p) => sum + (Number(p.amount || p.amountKes) || 0), 0);
     context.propertySummary = {
       housesReturned: houses.length,
@@ -652,7 +659,7 @@ async function aiBusinessContext(env, uid, role, feature, profile) {
     };
     context.paymentSummary = {
       recordsReturned: payments.length,
-      paidRecords: payments.filter(p => String(p.status || "").toLowerCase() === "paid").length,
+      paidRecords: receivedPayments.length,
       paidAmountKes: paidTotal,
     };
   } else if (role === "caretaker" && feature === "caretaker") {
@@ -687,7 +694,7 @@ async function aiBusinessContext(env, uid, role, feature, profile) {
     ]);
     context.ownRecordsSummary = {
       paymentRecordsReturned: payments.length,
-      paidPaymentRecords: payments.filter(p => String(p.status || "").toLowerCase() === "paid").length,
+      paidPaymentRecords: payments.filter(p => { const status = String(p.status || "").toLowerCase(); return status === "paid" || status.includes("received"); }).length,
       complaintRecordsReturned: complaints.length,
     };
   }
