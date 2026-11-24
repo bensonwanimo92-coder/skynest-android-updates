@@ -659,7 +659,10 @@ export default {
     });
     const url = new URL(request.url);
     try {
-      if (request.method === "POST" && url.pathname === "/api/ai/ask") {\n        return await requestSkyNestAi(request, env);\n      }\n      if (request.method === "GET" && url.pathname === "/health") {
+      if (request.method === "POST" && url.pathname === "/api/ai/ask") {
+        return await requestSkyNestAi(request, env);
+      }
+      if (request.method === "GET" && url.pathname === "/health") {
         return json({ ok: true, service: "skynest-mpesa", environment: "production" });
       }
       if (request.method === "GET" && url.pathname === "/api/mpesa/account") {
