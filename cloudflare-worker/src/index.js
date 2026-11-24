@@ -1,5 +1,6 @@
 import { validateSuccessfulCallback } from "./payment_validation.js";
 import { validateAiRequest, safeAiEnvelope, assertAiRoleFeature } from "./ai_core_contract.js";
+import { generateSkyNestAnswer } from "./ai_provider.js";
 
 // SkyNest M-Pesa Cloudflare Worker.
 // Production-only per-landlord Daraja STK Push. Live merchant credentials and Safaricom onboarding are required.
@@ -706,7 +707,6 @@ async function requestSkyNestAi(request, env) {
   let body;
   try { body = await request.json(); } catch { throw new HttpError("Request body must be valid JSON."); }
   const input = validateAiRequest(body);
-  if (!env.OPENAI_API_KEY) throw new HttpError("SkyNest AI provider is not configured yet. Add the OPENAI_API_KEY secret to the Cloudflare Worker.", 503);
   const profileResult = await firestore(env, "users/" + encodeURIComponent(uid));
   if (profileResult.status === 404) throw new HttpError("Your SkyNest profile was not found.", 403);
   if (profileResult.status < 200 || profileResult.status >= 300) throw new HttpError("Could not load your SkyNest profile.", 502);
@@ -719,29 +719,17 @@ async function requestSkyNestAi(request, env) {
     if (error instanceof HttpError) throw error;
     throw new HttpError("Could not safely load the SkyNest data needed for this answer.", 502);
   }
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { authorization: "Bearer " + env.OPENAI_API_KEY, "content-type": "application/json" },
-    body: JSON.stringify({
-      model: String(env.SKYNEST_AI_MODEL || "gpt-4o-mini"),
-      temperature: 0.2,
-      max_tokens: 700,
-      messages: [
-        { role: "system", content: aiSystemPrompt(input.feature, role, context) },
-        { role: "user", content: input.question },
-      ],
-    }),
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const status = response.status === 429 ? 503 : 502;
-    throw new HttpError(response.status === 429
-      ? "SkyNest AI is temporarily busy. Please try again shortly."
-      : "SkyNest AI provider request failed. Check the configured provider secret and account.", status);
+  let answer;
+  try {
+    answer = await generateSkyNestAnswer(env, [
+      { role: "system", content: aiSystemPrompt(input.feature, role, context) },
+      { role: "user", content: input.question },
+    ]);
+  } catch (error) {
+    if (error?.status) throw new HttpError(error.message, error.status);
+    throw new HttpError("SkyNest AI is temporarily unavailable. Please try again shortly.", 503);
   }
-  const answer = result.choices?.[0]?.message?.content;
-  if (typeof answer !== "string" || !answer.trim()) throw new HttpError("SkyNest AI returned an empty response.", 502);
-  return json(safeAiEnvelope({ feature: input.feature, answer: answer.trim() }));
+  return json(safeAiEnvelope({ feature: input.feature, answer }));
 }
 
 async function handleCallback(request, env) {
