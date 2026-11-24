@@ -28,6 +28,17 @@ Configure under Cloudflare > Workers & Pages > skynestmpesaapi > Settings > Vari
 
 All Daraja credentials are central SkyNest Cloudflare secrets. Landlords enter only PayBill or Till details. Never commit secrets or send them in chat. Standard STK Push does not let an API client redirect funds to arbitrary merchant shortcodes merely by changing `PartyB`; direct settlement needs Safaricom-approved merchant routing.
 
+## SkyNest AI (Cloudflare Workers AI)
+
+The Worker exposes the authenticated POST /api/ai/ask route. AI inference runs through the Cloudflare Workers AI binding (AI) configured in wrangler.toml; no OpenAI API key is required and no model is bundled in the Android APK.
+
+- Default model: @cf/meta/llama-3.1-8b-instruct; optional Worker variable: SKYNEST_AI_MODEL.
+- Deploy the updated Worker with Wrangler after confirming Workers AI is enabled for the Cloudflare account.
+- The route verifies the Firebase ID token, loads the user's server-side profile, enforces role/feature permissions, and retrieves limited context for the signed-in account.
+- Landlord, caretaker and tenant scopes are separated. The AI is advisory only and cannot execute payments, change rent, delete records, assign tenants or change permissions.
+- Cloudflare plan/usage limits apply. The free allowance is not unlimited; add operational rate limits and monitor usage before broad rollout.
+- Do not put model files, API keys or Firebase service-account credentials in the Flutter app.
+
 ## API routes
 
 - `GET /health` — Worker health and configured environment.
