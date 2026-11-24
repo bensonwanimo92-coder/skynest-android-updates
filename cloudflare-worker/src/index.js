@@ -594,7 +594,7 @@ function aiSystemPrompt(feature, role, profile) {
   return [
     "You are SkyNest AI, an assistant inside a rental/property management application.",
     "The authenticated account role is " + role + ". The permitted assistant area is " + feature + ".",
-    "Use only the supplied minimal profile context. Never claim to have read records that are not supplied.",
+    "Use only the supplied minimal verified context. Never claim to have read records that are not supplied.",
     "Do not invent rent balances, payments, arrears, receipts, tenant identities, house occupancy, or financial figures.",
     "For missing information, explain what data is needed and direct the user to the relevant SkyNest screen.",
     "Never request passwords, PINs, API keys, M-Pesa credentials, or Firebase secrets.",
@@ -606,8 +606,13 @@ function aiSystemPrompt(feature, role, profile) {
 }
 
 async function aiQueryOwnedRecords(env, collection, field, uid, limit = 20) {
-  const result = await firestore(env, ":runQuery", {
+  if (!env.FIREBASE_PROJECT_ID) throw new HttpError("Firebase project ID is not configured.", 500);
+  const token = await googleAccessToken(env);
+  const url = "https://firestore.googleapis.com/v1/projects/" +
+    encodeURIComponent(env.FIREBASE_PROJECT_ID) + "/databases/(default)/documents:runQuery";
+  const response = await fetch(url, {
     method: "POST",
+    headers: { authorization: "Bearer " + token, "content-type": "application/json" },
     body: JSON.stringify({
       structuredQuery: {
         from: [{ collectionId: collection }],
@@ -616,7 +621,8 @@ async function aiQueryOwnedRecords(env, collection, field, uid, limit = 20) {
       },
     }),
   });
-  if (result.status < 200 || result.status >= 300 || !Array.isArray(result.data)) return [];
+  const result = await response.json().catch(() => []);
+  if (!response.ok || !Array.isArray(result)) return [];
   return result.data
     .filter(item => item.document && item.document.fields)
     .map(item => decodeFields(item.document.fields));
