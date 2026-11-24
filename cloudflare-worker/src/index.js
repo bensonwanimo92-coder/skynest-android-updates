@@ -606,7 +606,7 @@ function aiSystemPrompt(feature, role, profile) {
 }
 
 async function aiQueryOwnedRecords(env, collection, field, uid, limit = 20) {
-  const result = await firestore(env, collection + ":runQuery", {
+  const result = await firestore(env, ":runQuery", {
     method: "POST",
     body: JSON.stringify({
       structuredQuery: {
