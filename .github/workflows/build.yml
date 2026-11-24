@@ -698,7 +698,7 @@ jobs:
               print(f"Patched: {file}")
           PY
 
-      - name: Restrict APK native packaging to ARM64 and resolve Flutter libapp duplicate
+      - name: Preserve ARM32 and ARM64 APK libraries and resolve Flutter libapp duplicates
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -715,10 +715,9 @@ jobs:
 
           config = '''    packaging {
                   jniLibs {
-                      // Resolve only the duplicate ARM64 Flutter app library.
+                      // Keep both supported ARM ABIs; resolve only Flutter libapp duplicates.
                       pickFirsts.add("lib/arm64-v8a/libapp.so")
-                      // Keep the distributable APK ARM64-only.
-                      excludes.add("**/armeabi-v7a/**")
+                      pickFirsts.add("lib/armeabi-v7a/libapp.so")
                       excludes.add("**/x86/**")
                       excludes.add("**/x86_64/**")
                   }
@@ -728,15 +727,22 @@ jobs:
           if 'pickFirsts.add("lib/arm64-v8a/libapp.so")' not in source:
               source = source.replace(marker, marker + "\n" + config, 1)
               path.write_text(source)
+          else:
+              # Upgrade an existing ARM64-only packaging block without duplicating it.
+              source = source.replace('                      excludes.add("**/armeabi-v7a/**")\n', "")
+              if 'pickFirsts.add("lib/armeabi-v7a/libapp.so")' not in source:
+                  source = source.replace(
+                      '                      pickFirsts.add("lib/arm64-v8a/libapp.so")',
+                      '                      pickFirsts.add("lib/arm64-v8a/libapp.so")\n                      pickFirsts.add("lib/armeabi-v7a/libapp.so")',
+                      1)
+              path.write_text(source)
 
           check = path.read_text()
-          # Detect a literal backslash+n (the prior failure) without relying on
-          # Python string-escape spelling inside this YAML-embedded script.
           if chr(92) + "n" in check:
               raise SystemExit("Invalid literal backslash-n sequence found in generated Kotlin Gradle file.")
           required = (
               "pickFirsts.add(\"lib/arm64-v8a/libapp.so\")",
-              "excludes.add(\"**/armeabi-v7a/**\")",
+              "pickFirsts.add(\"lib/armeabi-v7a/libapp.so\")",
               "excludes.add(\"**/x86/**\")",
               "excludes.add(\"**/x86_64/**\")",
           )
@@ -745,7 +751,9 @@ jobs:
           missing = [item for item in required if item not in check]
           if missing:
               raise SystemExit("Native packaging configuration incomplete: " + ", ".join(missing))
-          print("PASS: valid Kotlin DSL packaging block; ARM64 libapp duplicate resolved; non-ARM64 ABIs excluded.")
+          if 'excludes.add("**/armeabi-v7a/**")' in check:
+              raise SystemExit("ARM32 ABI exclusion remains in the packaging configuration.")
+          print("PASS: both ARM32 and ARM64 libraries retained; only x86 ABIs excluded.")
           PY
 
       - name: Set up Shorebird
