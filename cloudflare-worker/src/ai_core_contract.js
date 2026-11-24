@@ -43,3 +43,18 @@ export function enforceActionConfirmation(action) {
   }
   return true;
 }
+
+export const AI_ROLE_FEATURES = Object.freeze({
+  landlord: Object.freeze(["landlord", "ledger_reports", "plans", "inventory", "reading"]),
+  caretaker: Object.freeze(["caretaker", "ledger_reports", "plans", "inventory", "reading"]),
+  tenant: Object.freeze(["tenant", "plans", "reading"]),
+});
+export function assertAiRoleFeature(roleValue, featureValue, statusValue = "active") {
+  const role = String(roleValue || "").trim().toLowerCase();
+  const status = String(statusValue || "").trim().toLowerCase();
+  const allowed = AI_ROLE_FEATURES[role] || [];
+  if (status !== "active" || !allowed.includes(String(featureValue || ""))) {
+    throw new AiRequestError("This AI assistant is not available for your account role or status.", 403);
+  }
+  return role;
+}
