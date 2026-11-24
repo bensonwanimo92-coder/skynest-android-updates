@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/index.js && node --check src/payment_validation.js",
+    "check": "node --check src/index.js && node --check src/payment_validation.js && node --check src/ai_core_contract.js && node --check src/ai_provider.js && npm test",
     "test": "node --test"
   }
 }
