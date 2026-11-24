@@ -632,7 +632,7 @@ async function aiBusinessContext(env, uid, role, feature, profile) {
       .reduce((sum, p) => sum + (Number(p.amount || p.amountKes) || 0), 0);
     context.propertySummary = {
       housesReturned: houses.length,
-      occupied: houses.filter(h => String(h.assignedTenantId || "").isNotEmpty).length,
+      occupied: houses.filter(h => String(h.assignedTenantId || "").length > 0).length,
       vacant: houses.filter(h => !h.assignedTenantId).length,
     };
     context.paymentSummary = {
