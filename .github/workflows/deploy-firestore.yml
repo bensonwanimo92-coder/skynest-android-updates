@@ -13,7 +13,7 @@ jobs:
       - name: Checkout validated integration branch
         uses: actions/checkout@v4
         with:
-          ref: integration/roles-on-current-main
+          ref: main
 
       - name: Validate deployment configuration
         env:
