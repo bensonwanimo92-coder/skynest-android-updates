@@ -629,6 +629,15 @@ async function aiQueryOwnedRecords(env, collection, field, uid, limit = 20, op =
 }
 async function aiBusinessContext(env, uid, role, feature, profile) {
   const context = { profile: aiProfileContext(profile) };
+  if (feature === "plans") {
+    const plans = await aiQueryOwnedRecords(env, "plans", "createdBy", uid, 30);
+    context.planSummary = {
+      plansReturned: plans.length,
+      completed: plans.filter(p => p.done === true).length,
+      pending: plans.filter(p => p.done !== true).length,
+      titles: plans.slice(0, 12).map(p => String(p.title || "Untitled plan").slice(0, 100)),
+    };
+  }
   if (role === "landlord" && ["landlord", "ledger_reports"].includes(feature)) {
     const [houses, payments] = await Promise.all([
       aiQueryOwnedRecords(env, "houses", "createdBy", uid, 30),
