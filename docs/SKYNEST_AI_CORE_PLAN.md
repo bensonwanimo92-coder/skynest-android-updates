@@ -1,6 +1,6 @@
 # SkyNest AI Core — integration preparation (next release)
 
-Status: first implementation committed; provider activation is still blocked until the owner configures an OpenAI API key and approves provider billing.
+Status: Cloudflare Workers AI provider adapter and binding are implemented on the release branch; live activation still requires Worker deployment and end-to-end role tests.
 
 ## Architecture
 - Single AI gateway/service; feature-specific prompt and tool adapters.
@@ -39,11 +39,11 @@ Never send secrets, unrestricted Firestore dumps, payment credentials, or unrela
 - [x] Add bounded landlord property/payment summaries, caretaker assigned-house summaries, and tenant-owned rent-home/payment/complaint summaries.
 - [x] Add the SkyNest AI Centre UI and assistant selector.
 - [x] Add tests for request validation, role isolation and action restrictions.
-- [ ] Configure OPENAI_API_KEY as a Cloudflare Worker secret; choose/approve model and billing.
+- [x] Replace paid OpenAI API dependency with Cloudflare Workers AI binding; default model is @cf/meta/llama-3.1-8b-instruct.
 - [ ] Add durable per-user rate limiting/usage budget and operational kill switch before broad production rollout.
 - [ ] Run live tests with synthetic landlord/caretaker/tenant accounts and verify Firestore index/rules behavior.
-- [ ] Implement role-aware context retrieval and deny-by-default tests.
-- [ ] Add AI Centre UI and section shortcuts.
+- [x] Implement server-side Firebase identity verification, role/feature checks, and role-scoped context retrieval (requires live synthetic-account validation).
+- [x] Add AI Centre UI and role-aware assistant selector.
 - [ ] Add fallback, quota, latency and offline messaging.
 - [ ] Test synthetic landlord/caretaker/tenant accounts and cross-role isolation.
 - [ ] Verify no production data leakage; audit AI request logging.
@@ -53,4 +53,4 @@ Never send secrets, unrestricted Firestore dumps, payment credentials, or unrela
 Approximately 1–2 working days for a usable first integration, assuming accessible, stable code and backend; this is a planning estimate, not a guaranteed schedule.
 
 ## Activation required by the owner
-The app calls `POST /api/ai/ask` on the configured `SKYNEST_API_BASE_URL` Worker. Before responses can be generated, add a server-side Worker secret named `OPENAI_API_KEY` (never put this key in Flutter or Firebase documents). Optionally set `SKYNEST_AI_MODEL`; the current default is `gpt-4o-mini`. Provider usage may incur charges. Do not enable live usage until the account owner has approved the provider and spending limits. If the secret is absent, the endpoint returns HTTP 503 without exposing a key or attempting a provider call.
+The app calls POST /api/ai/ask on the configured SKYNEST_API_BASE_URL Worker. wrangler.toml declares the Cloudflare Workers AI binding (AI), so no OpenAI API key is required and no model is packaged in the Android APK. Deploy the updated Worker with Wrangler after confirming the Cloudflare account has Workers AI enabled. The default model is @cf/meta/llama-3.1-8b-instruct; optionally override it with the Worker variable SKYNEST_AI_MODEL. Cloudflare account plan and usage limits apply; this is not unlimited free inference. Keep a usage budget/rate limit and kill switch in place before broad production rollout.
