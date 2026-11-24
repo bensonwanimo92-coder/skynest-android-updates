@@ -784,7 +784,8 @@ jobs:
           # build 4415. Branch-local counters previously produced 2445/2446,
           # which Android rejects as downgrades on devices with 4415.
           build_number=$((5000 + run_number))
-          if [ "$build_number" -le 4415 ]; then build_number=4416; fi
+          # Installed customer baseline is Build 5532. Never generate a downgrade.
+          if [ "$build_number" -le 5532 ]; then build_number=5533; fi
           while RELEASE_LIST="$release_list" CANDIDATE="$build_number" python3 - <<'PY'
           import os
           import re
