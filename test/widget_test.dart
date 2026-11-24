@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:chuka/main.dart';
 import 'package:chuka/reading/reading_hub.dart';
+import 'package:chuka/reading/reading_hub_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -19,30 +20,16 @@ void main() {
     if (documentsDirectory.existsSync()) documentsDirectory.deleteSync(recursive: true);
   });
 
-  Widget readingHub() => MaterialApp(
-    home: ReadingHubScreen(offlineDirectoryProvider: () async => offlineDirectory),
+  Widget readingHub({List<File> savedFiles = const <File>[]}) => MaterialApp(
+    home: ReadingHubScreen(storage: _FakeReadingHubStorage(savedFiles)),
   );
 
-  Future<void> pumpReadingHubAndWaitForShelf(WidgetTester tester) async {
-    await tester.pumpWidget(readingHub());
-    // ReadingHubStorage.listPdfs performs real filesystem I/O. A fake-clock
-    // pump alone does not reliably wait for directory enumeration and metadata.
-    await tester.runAsync(() async {
-      // File listing and last-modified metadata can take longer on hosted CI
-      // than a short fixed wait. Allow the real IO to complete, then settle
-      // Flutter's scheduled frames so the shelf state is rendered.
-      // Hosted runners can be heavily loaded; allow filesystem enumeration to
-      // complete before advancing the widget test's fake clock.
-      await Future<void>.delayed(const Duration(seconds: 2));
-    });
-    // Flush the completion callback after real filesystem IO has finished.
+  Future<void> pumpReadingHubAndWaitForShelf(WidgetTester tester, {List<File> savedFiles = const <File>[]}) async {
+    // UI-state tests use a deterministic storage fake. Real filesystem behavior,
+    // ordering, PDF validation and persistence are covered by storage tests.
+    await tester.pumpWidget(readingHub(savedFiles: savedFiles));
     await tester.pump();
-    // Reading Hub includes continuously animated catalogue controls. Do not
-    // use pumpAndSettle here: it waits for every animation to stop and times
-    // out even after the offline filesystem request has completed.
-    for (var frame = 0; frame < 5; frame++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+    await tester.pump(const Duration(milliseconds: 100));
   }
 
   testWidgets('SkyNest root widget builds the application shell', (tester) async {
@@ -66,9 +53,9 @@ void main() {
   });
 
   testWidgets('Reading Hub lists a saved booklet for offline reading', (tester) async {
-    File('${offlineDirectory.path}${Platform.pathSeparator}the_lighthouse_garden.pdf')
-        .writeAsBytesSync(<int>[37, 80, 68, 70]);
-    await pumpReadingHubAndWaitForShelf(tester);
+    final savedFile = File('${offlineDirectory.path}${Platform.pathSeparator}the_lighthouse_garden.pdf');
+    savedFile.writeAsBytesSync(<int>[37, 80, 68, 70, 45, 49, 46, 55]);
+    await pumpReadingHubAndWaitForShelf(tester, savedFiles: <File>[savedFile]);
 
     final savedBooklet = find.widgetWithText(ListTile, 'The Lighthouse Garden');
     expect(savedBooklet, findsOneWidget);
@@ -87,4 +74,13 @@ void main() {
     await tester.scrollUntilVisible(historyBooklet, 240, scrollable: find.byType(Scrollable).first);
     expect(historyBooklet, findsOneWidget);
   });
+}
+
+class _FakeReadingHubStorage extends ReadingHubStorage {
+  _FakeReadingHubStorage(this.files) : super();
+
+  final List<File> files;
+
+  @override
+  Future<List<File>> listPdfs() async => files;
 }

@@ -14,9 +14,10 @@ import 'latest_request_guard.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ReadingHubScreen extends StatefulWidget {
-  const ReadingHubScreen({super.key, this.offlineDirectoryProvider});
+  const ReadingHubScreen({super.key, this.offlineDirectoryProvider, this.storage});
 
   final Future<Directory> Function()? offlineDirectoryProvider;
+  final ReadingHubStorage? storage;
 
   @override
   State<ReadingHubScreen> createState() => _ReadingHubScreenState();
@@ -40,7 +41,7 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
   @override
   void initState() {
     super.initState();
-    _storage = ReadingHubStorage(directoryProvider: widget.offlineDirectoryProvider);
+    _storage = widget.storage ?? ReadingHubStorage(directoryProvider: widget.offlineDirectoryProvider);
     _refreshOfflineFiles();
   }
 
