@@ -51,6 +51,25 @@ void main() {
     );
   });
 
+  test('offline shelf skips malformed PDF files', () async {
+    final root = await Directory.systemTemp.createTemp('skynest-reading-corrupt-');
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    final valid = File('${root.path}${Platform.pathSeparator}valid.pdf');
+    final short = File('${root.path}${Platform.pathSeparator}short.pdf');
+    final malformed = File('${root.path}${Platform.pathSeparator}malformed.pdf');
+    await valid.writeAsBytes(Uint8List.fromList('%PDF-1.4\\nvalid'.codeUnits));
+    await short.writeAsBytes(Uint8List.fromList('%PDF'.codeUnits));
+    await malformed.writeAsBytes(Uint8List.fromList('plain text'.codeUnits));
+
+    final storage = ReadingHubStorage(directoryProvider: () async => root);
+    final files = await storage.listPdfs();
+
+    expect(files.map((file) => file.uri.pathSegments.last).toList(),
+        <String>['valid.pdf']);
+  });
+
   test('storage creates a missing app-private folder', () async {
     final root = await Directory.systemTemp.createTemp('skynest-reading-root-');
     addTearDown(() async {

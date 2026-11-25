@@ -31,17 +31,36 @@ class ReadingHubStorage {
   Future<List<File>> listPdfs() async {
     final root = await directory();
     final entities = await root.list(followLinks: false).toList();
-    final files = entities
+    final candidates = entities
         .whereType<File>()
         .where((file) => file.path.toLowerCase().endsWith('.pdf'))
         .toList();
-    // Read timestamps asynchronously so shelf refresh never blocks the UI
-    // thread with filesystem metadata calls.
-    final entries = await Future.wait(
-      files.map((file) async => (file, await file.lastModified())),
-    );
+
+    // A .pdf extension alone is not enough: legacy, externally copied or
+    // interrupted files may be malformed. Verify the signature asynchronously
+    // before presenting an entry, and tolerate files disappearing mid-refresh.
+    final entries = <(File, DateTime)>[];
+    for (final file in candidates) {
+      try {
+        if (!await _hasPdfFileHeader(file)) continue;
+        entries.add((file, await file.lastModified()));
+      } catch (_) {
+        // Skip an entry that became unreadable or was removed during listing.
+      }
+    }
     entries.sort((a, b) => b.$2.compareTo(a.$2));
     return entries.map((entry) => entry.$1).toList();
+  }
+
+  Future<bool> _hasPdfFileHeader(File file) async {
+    RandomAccessFile? handle;
+    try {
+      handle = await file.open(mode: FileMode.read);
+      final header = await handle.read(8);
+      return _hasPdfHeader(Uint8List.fromList(header));
+    } finally {
+      if (handle != null) await handle.close();
+    }
   }
 
   bool _hasPdfHeader(Uint8List bytes) {
