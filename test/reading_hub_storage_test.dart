@@ -104,7 +104,7 @@ void main() {
 
     final saved = await storage.savePdf(
       'history notes',
-      Uint8List.fromList('%PDF-test'.codeUnits),
+      Uint8List.fromList('%PDF-1.4 test'.codeUnits),
     );
 
     expect(await target.exists(), isTrue);
