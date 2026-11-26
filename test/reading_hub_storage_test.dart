@@ -51,23 +51,47 @@ void main() {
     );
   });
 
-  test('offline shelf skips malformed PDF files', () async {
+  test('offline shelf skips malformed PDF files and unsupported versions', () async {
     final root = await Directory.systemTemp.createTemp('skynest-reading-corrupt-');
     addTearDown(() async {
       if (await root.exists()) await root.delete(recursive: true);
     });
     final valid = File('${root.path}${Platform.pathSeparator}valid.pdf');
+    final validV2 = File('${root.path}${Platform.pathSeparator}valid_v2.pdf');
     final short = File('${root.path}${Platform.pathSeparator}short.pdf');
     final malformed = File('${root.path}${Platform.pathSeparator}malformed.pdf');
-    await valid.writeAsBytes(Uint8List.fromList('%PDF-1.4\\nvalid'.codeUnits));
+    final invalidVersion = File('${root.path}${Platform.pathSeparator}invalid_version.pdf');
+    final unsupportedVersion = File('${root.path}${Platform.pathSeparator}unsupported_version.pdf');
+    await valid.writeAsBytes(Uint8List.fromList('%PDF-1.4\\\\nvalid'.codeUnits));
+    await validV2.writeAsBytes(Uint8List.fromList('%PDF-2.0\\\\nvalid'.codeUnits));
     await short.writeAsBytes(Uint8List.fromList('%PDF'.codeUnits));
     await malformed.writeAsBytes(Uint8List.fromList('plain text'.codeUnits));
+    await invalidVersion.writeAsBytes(Uint8List.fromList('%PDF-1.x'.codeUnits));
+    await unsupportedVersion.writeAsBytes(Uint8List.fromList('%PDF-3.0'.codeUnits));
 
     final storage = ReadingHubStorage(directoryProvider: () async => root);
     final files = await storage.listPdfs();
 
-    expect(files.map((file) => file.uri.pathSegments.last).toList(),
-        <String>['valid.pdf']);
+    expect(files.map((file) => file.uri.pathSegments.last).toSet(),
+        <String>{'valid.pdf', 'valid_v2.pdf'});
+  });
+
+  test('save rejects malformed or unsupported PDF version headers', () async {
+    final root = await Directory.systemTemp.createTemp('skynest-reading-version-');
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    final storage = ReadingHubStorage(directoryProvider: () async => root);
+
+    await expectLater(
+      storage.savePdf('invalid version', Uint8List.fromList('%PDF-1.x'.codeUnits)),
+      throwsFormatException,
+    );
+    await expectLater(
+      storage.savePdf('unsupported version', Uint8List.fromList('%PDF-3.0'.codeUnits)),
+      throwsFormatException,
+    );
+    expect(await storage.listPdfs(), isEmpty);
   });
 
   test('storage creates a missing app-private folder', () async {
