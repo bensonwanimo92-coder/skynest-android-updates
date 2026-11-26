@@ -12,8 +12,8 @@ void main() {
     });
     final older = File('${root.path}${Platform.pathSeparator}older.pdf');
     final newer = File('${root.path}${Platform.pathSeparator}newer.pdf');
-    await older.writeAsBytes(Uint8List.fromList('%PDF-older'.codeUnits));
-    await newer.writeAsBytes(Uint8List.fromList('%PDF-newer'.codeUnits));
+    await older.writeAsBytes(Uint8List.fromList('%PDF-1.4 older'.codeUnits));
+    await newer.writeAsBytes(Uint8List.fromList('%PDF-1.7 newer'.codeUnits));
     final olderTime = DateTime.utc(2020, 1, 1);
     final newerTime = DateTime.utc(2021, 1, 1);
     await older.setLastModified(olderTime);
