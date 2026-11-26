@@ -64,15 +64,20 @@ class ReadingHubStorage {
   }
 
   bool _hasPdfHeader(Uint8List bytes) {
-    // SkyNest creates these PDFs locally. Generated PDF files begin with the
-    // five-byte "%PDF-" signature; reject empty or unrelated data before it
-    // can be shown as a downloadable booklet.
+    // A PDF header is "%PDF-" followed by a supported version such as
+    // "1.7" or "2.0". Validate the version bytes as well as the signature
+    // so a renamed text file with a fake prefix is not treated as a PDF.
     const header = <int>[0x25, 0x50, 0x44, 0x46, 0x2D];
     if (bytes.length < 8) return false;
     for (var index = 0; index < header.length; index++) {
       if (bytes[index] != header[index]) return false;
     }
-    return true;
+
+    if (bytes[6] != 0x2E) return false; // version separator: "."
+    final major = bytes[5];
+    final minor = bytes[7];
+    return (major == 0x31 && minor >= 0x30 && minor <= 0x37) ||
+        (major == 0x32 && minor == 0x30);
   }
 
   Future<File> savePdf(String name, Uint8List bytes) async {
