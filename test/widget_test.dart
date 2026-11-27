@@ -62,6 +62,25 @@ void main() {
     expect(find.text('Saved on this device · PDF'), findsOneWidget);
   });
 
+  testWidgets('Reading Hub refuses to preview offline PDFs larger than 32 MB', (tester) async {
+    final file = File('\${offlineDirectory.path}\${Platform.pathSeparator}large_booklet.pdf');
+    final handle = await file.open(mode: FileMode.write);
+    await handle.writeString('%PDF-1.7');
+    await handle.truncate(32 * 1024 * 1024 + 1);
+    await handle.close();
+
+    await pumpReadingHubAndWaitForShelf(tester, savedFiles: <File>[file]);
+    final tile = find.widgetWithText(ListTile, 'large booklet');
+    await tester.scrollUntilVisible(tile, 240, scrollable: find.byType(Scrollable).first);
+    await tester.tap(tile);
+    await tester.pump();
+
+    expect(
+      find.text('This PDF is larger than 32 MB and cannot be previewed in the offline shelf.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('Reading Hub category chips reveal the matching booklet shelf', (tester) async {
     await pumpReadingHubAndWaitForShelf(tester);
 
