@@ -13,6 +13,8 @@ import 'reading_hub_storage.dart';
 import 'latest_request_guard.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+const int _maxOfflinePreviewBytes = 32 * 1024 * 1024;
+
 class ReadingHubScreen extends StatefulWidget {
   const ReadingHubScreen({super.key, this.offlineDirectoryProvider, this.storage});
 
@@ -80,6 +82,15 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
       if (!await file.exists()) {
         await _refreshOfflineFiles();
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This offline file is no longer available.')));
+        return;
+      }
+      final size = await file.length();
+      if (size > _maxOfflinePreviewBytes) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('This PDF is larger than 32 MB and cannot be previewed in the offline shelf.')),
+          );
+        }
         return;
       }
       if (!mounted) return;
