@@ -63,7 +63,7 @@ void main() {
   });
 
   testWidgets('Reading Hub refuses to preview offline PDFs larger than 32 MB', (tester) async {
-    final file = File('\${offlineDirectory.path}\${Platform.pathSeparator}large_booklet.pdf');
+    final file = File('${offlineDirectory.path}${Platform.pathSeparator}large_booklet.pdf');
     final handle = await file.open(mode: FileMode.write);
     await handle.writeString('%PDF-1.7');
     await handle.truncate(32 * 1024 * 1024 + 1);
