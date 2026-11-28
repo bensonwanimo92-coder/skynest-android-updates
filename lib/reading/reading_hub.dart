@@ -84,7 +84,7 @@ class _ReadingHubScreenState extends State<ReadingHubScreen> {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This offline file is no longer available.')));
         return;
       }
-      final size = await file.length();
+      final size = await _storage.fileSize(file);
       if (size > _maxOfflinePreviewBytes) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

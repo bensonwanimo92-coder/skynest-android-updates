@@ -12,6 +12,10 @@ class ReadingHubStorage {
 
   final Future<Directory> Function()? directoryProvider;
 
+  /// Exposes file-size lookup so preview-limit behavior can be tested without
+  /// allocating a large fixture on the test runner's filesystem.
+  Future<int> fileSize(File file) => file.length();
+
   Future<Directory> directory() async {
     final provider = directoryProvider;
     final target = provider != null

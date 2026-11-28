@@ -20,14 +20,14 @@ void main() {
     if (documentsDirectory.existsSync()) documentsDirectory.deleteSync(recursive: true);
   });
 
-  Widget readingHub({List<File> savedFiles = const <File>[]}) => MaterialApp(
-    home: ReadingHubScreen(storage: _FakeReadingHubStorage(savedFiles)),
+  Widget readingHub({List<File> savedFiles = const <File>[], int? previewFileSize}) => MaterialApp(
+    home: ReadingHubScreen(storage: _FakeReadingHubStorage(savedFiles, previewFileSize: previewFileSize)),
   );
 
-  Future<void> pumpReadingHubAndWaitForShelf(WidgetTester tester, {List<File> savedFiles = const <File>[]}) async {
+  Future<void> pumpReadingHubAndWaitForShelf(WidgetTester tester, {List<File> savedFiles = const <File>[], int? previewFileSize}) async {
     // UI-state tests use a deterministic storage fake. Real filesystem behavior,
     // ordering, PDF validation and persistence are covered by storage tests.
-    await tester.pumpWidget(readingHub(savedFiles: savedFiles));
+    await tester.pumpWidget(readingHub(savedFiles: savedFiles, previewFileSize: previewFileSize));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
   }
@@ -63,17 +63,22 @@ void main() {
   });
 
   testWidgets('Reading Hub refuses to preview offline PDFs larger than 32 MB', (tester) async {
+    // A large logical size avoids creating a 32 MB fixture or depending on
+    // filesystem allocation behavior on hosted runners. A tall viewport keeps
+    // the shelf tile visible without scroll-loop timing.
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final file = File('${offlineDirectory.path}${Platform.pathSeparator}large_booklet.pdf');
-    final handle = await file.open(mode: FileMode.write);
-    await handle.writeString('%PDF-1.7');
-    await handle.truncate(32 * 1024 * 1024 + 1);
-    await handle.close();
+    file.writeAsBytesSync(<int>[37, 80, 68, 70, 45, 49, 46, 55]);
 
-    await pumpReadingHubAndWaitForShelf(tester, savedFiles: <File>[file]);
+    await pumpReadingHubAndWaitForShelf(tester, savedFiles: <File>[file], previewFileSize: 32 * 1024 * 1024 + 1);
     final tile = find.widgetWithText(ListTile, 'large booklet');
-    await tester.scrollUntilVisible(tile, 240, scrollable: find.byType(Scrollable).first);
+    expect(tile, findsOneWidget);
     await tester.tap(tile);
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
 
     expect(
       find.text('This PDF is larger than 32 MB and cannot be previewed in the offline shelf.'),
@@ -96,10 +101,14 @@ void main() {
 }
 
 class _FakeReadingHubStorage extends ReadingHubStorage {
-  _FakeReadingHubStorage(this.files) : super();
+  _FakeReadingHubStorage(this.files, {this.previewFileSize}) : super();
 
   final List<File> files;
+  final int? previewFileSize;
 
   @override
   Future<List<File>> listPdfs() async => files;
+
+  @override
+  Future<int> fileSize(File file) async => previewFileSize ?? file.length();
 }
